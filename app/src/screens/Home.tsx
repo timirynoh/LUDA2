@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { ArrowDownLeft, ArrowUpRight, Building2, ChevronRight, Eye, EyeOff, Flame, Gift, Handshake, Repeat, UtensilsCrossed, Zap } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Building2, ChevronRight, Eye, EyeOff, Flame, Handshake, House, Repeat, UtensilsCrossed, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Ring } from '../components/ui'
@@ -24,7 +24,7 @@ export default function Home() {
     { to: '/bills', icon: Zap, label: t('act.bills'), c: 'from-orange-400 to-rose-500' },
     { to: '/nearby', icon: UtensilsCrossed, label: t('act.food'), c: 'from-rose-400 to-pink-600' },
     { to: '/residency', icon: Building2, label: t('act.residency'), c: 'from-teal-300 to-cyan-600' },
-    { to: '/rewards', icon: Gift, label: t('act.rewards'), c: 'from-violet-400 to-indigo-600' },
+    { to: '/housing', icon: House, label: t('act.housing'), c: 'from-amber-400 to-orange-600' },
   ]
 
   return (

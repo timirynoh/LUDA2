@@ -1,17 +1,18 @@
 import { motion } from 'framer-motion'
-import { Building2, Gift, Handshake, MapPin, Siren, User, Zap } from 'lucide-react'
+import { Building2, Gift, Handshake, House, MapPin, Siren, User, Zap } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Header } from '../components/ui'
 import { useStore } from '../lib/store'
 
 const SOON = [
-  ['🏠', 'Housing & roommates'], ['💼', 'Part-time jobs'], ['🎓', 'Uni fees & deadlines'], ['🚌', 'Bus & taxi'],
+['💼', 'Part-time jobs'], ['🎓', 'Uni fees & deadlines'], ['🚌', 'Bus & taxi'],
   ['🧑🏾‍🤝‍🧑🏾', 'Community events'], ['⚖️', 'Legal help'],
 ]
 
 export default function More() {
   const { t } = useStore()
   const items = [
+    { to: '/housing', icon: House, label: t('act.housing'), c: 'from-amber-400 to-orange-600' },
     { to: '/bills', icon: Zap, label: t('act.bills'), c: 'from-orange-400 to-rose-500' },
     { to: '/residency', icon: Building2, label: t('act.residency'), c: 'from-teal-300 to-cyan-600' },
     { to: '/exchange?tab=p2p', icon: Handshake, label: t('act.p2p'), c: 'from-fuchsia-400 to-purple-600' },

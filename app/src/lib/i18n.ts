@@ -3,6 +3,7 @@ import type { Lang } from './data'
 type Dict = Record<string, string>
 
 const en: Dict = {
+  'act.housing': 'Housing',
   'nav.home': 'Home', 'nav.wallet': 'Wallet', 'nav.exchange': 'Exchange', 'nav.nearby': 'Nearby', 'nav.more': 'More',
   'home.hello': 'Hey', 'home.balance': 'Total balance', 'home.quick': 'Quick actions', 'home.quests': 'Daily quests',
   'home.rates': 'Live rates', 'home.streak': 'day streak', 'home.level': 'Level',
@@ -30,6 +31,7 @@ const en: Dict = {
 }
 
 const tr: Dict = {
+  'act.housing': 'Konut',
   'nav.home': 'Ana sayfa', 'nav.wallet': 'Cüzdan', 'nav.exchange': 'Döviz', 'nav.nearby': 'Yakında', 'nav.more': 'Daha',
   'home.hello': 'Selam', 'home.balance': 'Toplam bakiye', 'home.quick': 'Hızlı işlemler', 'home.quests': 'Günlük görevler',
   'home.rates': 'Canlı kurlar', 'home.streak': 'günlük seri', 'home.level': 'Seviye',
@@ -57,6 +59,7 @@ const tr: Dict = {
 }
 
 const fr: Dict = {
+  'act.housing': 'Logement',
   'nav.home': 'Accueil', 'nav.wallet': 'Portefeuille', 'nav.exchange': 'Change', 'nav.nearby': 'Autour', 'nav.more': 'Plus',
   'home.hello': 'Salut', 'home.balance': 'Solde total', 'home.quick': 'Actions rapides', 'home.quests': 'Quêtes du jour',
   'home.rates': 'Taux en direct', 'home.streak': 'jours de suite', 'home.level': 'Niveau',
@@ -84,6 +87,7 @@ const fr: Dict = {
 }
 
 const sw: Dict = {
+  'act.housing': 'Makazi',
   'nav.home': 'Nyumbani', 'nav.wallet': 'Pochi', 'nav.exchange': 'Badilisha', 'nav.nearby': 'Karibu', 'nav.more': 'Zaidi',
   'home.hello': 'Habari', 'home.balance': 'Salio lote', 'home.quick': 'Vitendo vya haraka', 'home.quests': 'Changamoto za leo',
   'home.rates': 'Viwango vya sasa', 'home.streak': 'siku mfululizo', 'home.level': 'Kiwango',
@@ -111,6 +115,7 @@ const sw: Dict = {
 }
 
 const ar: Dict = {
+  'act.housing': 'السكن',
   'nav.home': 'الرئيسية', 'nav.wallet': 'المحفظة', 'nav.exchange': 'الصرف', 'nav.nearby': 'بالقرب', 'nav.more': 'المزيد',
   'home.hello': 'أهلاً', 'home.balance': 'الرصيد الإجمالي', 'home.quick': 'إجراءات سريعة', 'home.quests': 'مهام اليوم',
   'home.rates': 'أسعار مباشرة', 'home.streak': 'أيام متتالية', 'home.level': 'المستوى',

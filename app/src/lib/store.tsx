@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { BADGES, LANGS, LEVELS, type Lang } from './data'
+import type { Listing } from './housing'
 import { translate } from './i18n'
 import { hashPin } from './crypto'
 
@@ -28,6 +29,10 @@ export interface State {
   docs: string[]
   permitExpiry: string
   contacted: number
+  savedHomes: string[]
+  viewings: { id: string; listingId: string; title: string; date: string }[]
+  myListings: Listing[]
+  connections: string[]
 }
 
 const KEY = 'luda.v1'
@@ -39,6 +44,7 @@ export const initialState: State = {
   balances: { TRY: 0, NGN: 0, USD: 0 },
   txs: [], xp: 0, points: 0, streak: 1, lastDay: today(),
   badges: [], quests: [], trades: [], savedBills: [], docs: [], permitExpiry: '', contacted: 0,
+  savedHomes: [], viewings: [], myListings: [], connections: [],
 }
 
 function load(): State {

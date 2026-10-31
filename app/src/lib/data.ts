@@ -92,6 +92,8 @@ export const BADGES: Record<string, { name: string; emoji: string; desc: string 
   paperwork: { name: 'Paperwork Pro', emoji: '📑', desc: 'Ticked off every residency document' },
   verified: { name: 'Verified', emoji: '✅', desc: 'Completed identity verification' },
   streak7: { name: 'On Fire', emoji: '🔥', desc: '7-day streak' },
+  home_sweet: { name: 'Home Sweet Home', emoji: '🏡', desc: 'Booked a house viewing' },
+  good_neighbour: { name: 'Good Neighbour', emoji: '🤝', desc: 'Posted a listing or found a roommate' },
 }
 
 export const QUESTS = [
@@ -102,4 +104,5 @@ export const QUESTS = [
   { id: 'p2p', title: 'Finish a safe P2P trade', xp: 200, to: '/exchange' },
   { id: 'explore', title: 'Contact 3 places nearby', xp: 60, to: '/nearby' },
   { id: 'residency', title: 'Complete residency checklist', xp: 120, to: '/residency' },
+  { id: 'housing', title: 'Book a house viewing', xp: 70, to: '/housing' },
 ]

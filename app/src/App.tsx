@@ -6,6 +6,7 @@ import { useStore } from './lib/store'
 import Bills from './screens/Bills'
 import Exchange from './screens/Exchange'
 import Home from './screens/Home'
+import Housing from './screens/Housing'
 import More from './screens/More'
 import Nearby from './screens/Nearby'
 import Onboarding from './screens/Onboarding'
@@ -41,6 +42,7 @@ export default function App() {
                 <Route path="/nearby" element={<Nearby />} />
                 <Route path="/more" element={<More />} />
                 <Route path="/bills" element={<Bills />} />
+                <Route path="/housing" element={<Housing />} />
                 <Route path="/residency" element={<Residency />} />
                 <Route path="/rewards" element={<Rewards />} />
                 <Route path="/profile" element={<Profile />} />
