@@ -7,7 +7,7 @@ export const tierOf = (s: Pick<State, 'phoneVerified' | 'verified'>): Tier => (s
 export const TIERS = [
   { name: 'Explorer', emoji: '👀', how: 'Just signed up', color: 'from-slate-400 to-slate-600' },
   { name: 'Verified', emoji: '📱', how: 'Phone number · 30 seconds', color: 'from-sky-400 to-indigo-600' },
-  { name: 'Fully verified', emoji: '🛡️', how: 'ID + selfie · 2 minutes', color: 'from-mint-400 to-emerald-600' },
+  { name: 'KYC verified', emoji: '🛡️', how: 'ID + selfie (KYC) · 2 minutes', color: 'from-mint-400 to-emerald-600' },
 ] as const
 
 export interface Feature { label: string; emoji: string; tier: Tier }
@@ -23,10 +23,10 @@ export const FEATURES: Feature[] = [
   { label: 'Book house viewings', emoji: '📅', tier: 1 }, { label: 'Find roommates', emoji: '🤝', tier: 1 },
   { label: 'Flash help: get things fixed', emoji: '🛠️', tier: 1 }, { label: 'Bus & airport tickets', emoji: '🎟️', tier: 1 },
   { label: 'Ride Saver discounts', emoji: '💸', tier: 1 }, { label: 'RSVP & post events', emoji: '📣', tier: 1 },
-  { label: 'Deposit & withdraw money', emoji: '💰', tier: 2 }, { label: 'Convert Naira, Cedi, CFA → Lira', emoji: '💱', tier: 2 },
+  { label: 'Top up your wallet (small limits)', emoji: '💰', tier: 1 }, { label: 'Withdraw & send money home', emoji: '🏦', tier: 2 }, { label: 'Convert Naira, Cedi, CFA → Lira', emoji: '💱', tier: 2 },
   { label: 'SafeSwap in-person exchange', emoji: '🔒', tier: 2 }, { label: 'Pay bills with cashback', emoji: '⚡', tier: 2 },
   { label: 'Pay tuition from your wallet', emoji: '🏛️', tier: 2 }, { label: 'Escrow-protected payments', emoji: '🛡️', tier: 2 },
 ]
 
 /** Minimum tier for home shortcuts (for lock badges). */
-export const ACTION_TIER: Record<string, Tier> = { deposit: 2, withdraw: 2, convert: 2, p2p: 2, bills: 2 }
+export const ACTION_TIER: Record<string, Tier> = { deposit: 1, withdraw: 2, convert: 2, p2p: 2, bills: 2 }

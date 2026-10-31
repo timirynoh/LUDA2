@@ -11,6 +11,7 @@ import { translate } from './i18n'
 import { hashPin } from './crypto'
 import { tierOf, type Tier } from './access'
 import { fingerprint, isDuplicate, limitInfo } from './antispam'
+import type { Kyc } from './kyc'
 
 export type TxType = 'deposit' | 'withdraw' | 'convert' | 'bill' | 'p2p' | 'reward'
 export interface Tx { id: string; type: TxType; amount: number; currency: string; label: string; ts: number; meta?: string }
@@ -78,6 +79,7 @@ export interface State {
   logins: { ts: number; how: string; device: string }[]
   inbox: { id: string; ts: number; emoji: string; title: string; read: boolean; to?: string }[]
   referral: string
+  kyc: Kyc
   recentPosts: { f: string; t: number }[]
   deposits: number
   gigs: MyGig[]
@@ -100,7 +102,7 @@ export const initialState: State = {
   university: '', classes: [], remind: { on: false, minutes: 15 }, paidFees: [],
   joinedGroups: ['g-help'], myGroups: [], chatMsgs: {}, lastRead: {}, mutedGroups: [], blockedUsers: [], hiddenMsgs: [],
   chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {}, flash: [], gigs: [], saver: { status: 'none' }, createdAt: Date.now(), toured: false, account: null, signedIn: false, lockOnOpen: true,
-  security: { frozen: false, twoStep: false, hideBalances: false, dailyWithdraw: 20000, autoLockMin: 3 }, logins: [], inbox: [], referral: '', activity: {}, recentPosts: [], deposits: 0,
+  security: { frozen: false, twoStep: false, hideBalances: false, dailyWithdraw: 20000, autoLockMin: 3 }, logins: [], inbox: [], referral: '', kyc: { status: 'none' }, activity: {}, recentPosts: [], deposits: 0,
 }
 
 function load(): State {
@@ -110,6 +112,7 @@ function load(): State {
     const s = { ...initialState, ...JSON.parse(raw) } as State
     s.sections = { ...initialState.sections, ...s.sections }
     s.security = { ...initialState.security, ...s.security }
+    if (s.verified && s.kyc.status === 'none') s.kyc = { status: 'verified' } // older demo profiles
     if (s.account && !s.account.stay) s.signedIn = false
     // daily streak bookkeeping
     const t = today()

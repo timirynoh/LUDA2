@@ -3,6 +3,7 @@ import { ArrowLeftRight, Grid2x2, Home as HomeIcon, MessageCircle, Wallet as Wal
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { Toasts } from './components/ui'
 import { UnlockSheet, useTierCelebration } from './components/Verify'
+import { useKycReview } from './components/Kyc'
 import { useStore } from './lib/store'
 import Bills from './screens/Bills'
 import Exchange from './screens/Exchange'
@@ -49,6 +50,7 @@ export default function App() {
   useClassReminders()
   useGigProgress()
   useTierCelebration()
+  useKycReview()
   const inRoom = loc.pathname.startsWith('/chats/')
   const [splash, setSplash] = useState(true)
   const [authView, setAuthView] = useState<'landing' | 'signup' | 'signin'>('landing')

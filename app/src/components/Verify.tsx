@@ -1,32 +1,15 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Camera, Check, ChevronRight, IdCard, Loader2, Lock, Sparkles } from 'lucide-react'
+import { Check, ChevronRight, Lock, Sparkles } from 'lucide-react'
+import { KycFlow } from './Kyc'
 import { useEffect, useRef, useState } from 'react'
 import { FEATURES, TIERS, tierOf, type Tier } from '../lib/access'
 import { useStore } from '../lib/store'
 import { PhoneVerify } from './PhoneVerify'
 import { Ring, Sheet } from './ui'
 
-/** Inline ID + selfie check (demo: any photo or "skip"). */
+/** Inline KYC (ID document + liveness selfie). */
 export function IdVerify() {
-  const { s, set, reward } = useStore()
-  const [step, setStep] = useState<'id' | 'selfie' | 'checking'>('id')
-  if (s.verified) return <p className="flex items-center gap-1 text-xs text-mint-300"><Check size={14} /> ID verified</p>
-  const next = async () => {
-    if (step === 'id') return setStep('selfie')
-    setStep('checking')
-    await new Promise((r) => setTimeout(r, 1600))
-    set((p) => ({ ...p, verified: true }))
-    reward(150, { quest: 'verify', badge: 'verified', title: 'Identity verified' })
-  }
-  if (step === 'checking') return <p className="flex items-center gap-2 text-sm text-slate-300"><Loader2 size={16} className="animate-spin text-mint-300" /> Matching your face to your document…</p>
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-xs text-slate-400">{step === 'id' ? 'Step 1/2 · Photo of your passport or residence card' : 'Step 2/2 · Quick selfie to prove it’s you'}</p>
-      <label className="btn-primary cursor-pointer py-2.5 text-sm">{step === 'id' ? <IdCard size={16} /> : <Camera size={16} />} {step === 'id' ? 'Scan / upload ID' : 'Take selfie'}
-        <input type="file" accept="image/*" capture={step === 'id' ? 'environment' : 'user'} className="hidden" onChange={next} /></label>
-      <button className="text-[11px] text-slate-500 underline" onClick={next}>Skip (demo)</button>
-    </div>
-  )
+  return <KycFlow />
 }
 
 function TierStep({ n, done, active, title, sub, children }: { n: number; done: boolean; active: boolean; title: string; sub: string; children?: React.ReactNode }) {
@@ -67,7 +50,7 @@ function UnlockInner() {
         <div className="flex flex-col gap-3">
           <p className="text-sm text-slate-300">You can look around freely. To <b>{gateReq.what.toLowerCase()}</b>, Luda needs to know you're a real person. It keeps scammers out and everyone safe.</p>
           <TierStep n={1} done={s.phoneVerified} active title="Verify your phone" sub={`30 seconds · unlocks ${unlocks(1).length} features`}><PhoneVerify compact /></TierStep>
-          {gateReq.tier >= 2 && <TierStep n={2} done={s.verified} active={s.phoneVerified} title="Verify your ID + selfie" sub={`2 minutes · unlocks ${unlocks(2).length} money features`}><IdVerify /></TierStep>}
+          {gateReq.tier >= 2 && <TierStep n={2} done={s.verified} active={s.phoneVerified} title="KYC: ID + selfie" sub={`2 minutes · unlocks withdrawals + ${unlocks(2).length - 1} money features`}><IdVerify /></TierStep>}
           <div className="rounded-2xl bg-fg/[0.03] p-3">
             <p className="label mb-2">You'll also unlock</p>
             <div className="flex flex-wrap gap-1.5">

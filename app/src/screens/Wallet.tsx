@@ -1,10 +1,12 @@
 import { motion } from 'framer-motion'
-import { ArrowDownLeft, ArrowUpRight, Banknote, Building, CreditCard, Loader2, ShieldCheck, Smartphone } from 'lucide-react'
+import { Lock, ArrowDownLeft, ArrowUpRight, Banknote, Building, CreditCard, Loader2, ShieldCheck, Smartphone } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DemoNote, Header, PinPad, Sheet, Success } from '../components/ui'
 import { TxList } from '../components/TxList'
 import { COUNTRIES, CURRENCIES } from '../lib/data'
+import { KYC_LIMITS } from '../lib/kyc'
+import { KycStatus } from '../components/Kyc'
 import { convert, fmt, useRates } from '../lib/fx'
 import { useStore } from '../lib/store'
 
@@ -36,13 +38,14 @@ export default function Wallet() {
   const [stage, setStage] = useState<'form' | 'pin' | 'busy' | 'done'>('form')
   const [err, setErr] = useState('')
 
-  const open = (m: Mode) => { if (gate(2, m === 'deposit' ? 'Deposit money' : 'Withdraw money')) setParams({ a: m }) }
+  const need = (m: Mode) => gate(m === 'deposit' ? 1 : 2, m === 'deposit' ? 'Top up your wallet' : 'Withdraw money (KYC required)')
+  const open = (m: Mode) => { if (need(m)) setParams({ a: m }) }
   const close = () => setParams({})
   const amt = parseFloat(amount) || 0
   // Deep links (e.g. home shortcut) respect verification and always start with a fresh form.
   useEffect(() => {
     if (!mode) return
-    if (!gate(2, mode === 'deposit' ? 'Deposit money' : 'Withdraw money')) { setParams({}); return }
+    if (!need(mode)) { setParams({}); return }
     setStage('form'); setAmount(''); setErr(''); setMethod(METHODS[mode][0].id)
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
   const m = mode ? METHODS[mode].find((x) => x.id === method) ?? METHODS[mode][0] : null
@@ -60,7 +63,16 @@ export default function Wallet() {
     else reward(10, { title: 'Withdrawal sent' })
   }
 
+  const kycOk = s.kyc.status === 'verified'
+  const L = kycOk ? KYC_LIMITS.verified : KYC_LIMITS.none
+  const totalTRY = Object.entries(s.balances).reduce((a, [c, v]) => a + convert(rates, v, c, 'TRY'), 0)
   const submit = () => {
+    if (mode === 'deposit') {
+      const todayTRY = s.txs.filter((x) => x.type === 'deposit' && new Date(x.ts).toDateString() === new Date().toDateString()).reduce((a, x) => a + convert(rates, x.amount, x.currency, 'TRY'), 0)
+      const thisTRY = convert(rates, amt, cur, 'TRY')
+      if (todayTRY + thisTRY > L.depositPerDay) return setErr(`${kycOk ? '' : 'Without KYC, '}you can top up ${fmt(L.depositPerDay, 'TRY')} per day (${fmt(Math.max(0, L.depositPerDay - todayTRY), 'TRY')} left today).${kycOk ? '' : ' Complete KYC for higher limits.'}`)
+      if (totalTRY + thisTRY > L.maxBalance) return setErr(`${kycOk ? 'Max' : 'Without KYC, max'} wallet balance is ${fmt(L.maxBalance, 'TRY')}.${kycOk ? '' : ' Complete KYC to hold more.'}`)
+    }
     if (mode === 'withdraw' && amt + fee > (s.balances[cur] ?? 0)) return setErr(t('wallet.insufficient'))
     if (mode === 'withdraw') {
       const today = s.txs.filter((x) => x.type === 'withdraw' && new Date(x.ts).toDateString() === new Date().toDateString())
@@ -90,8 +102,11 @@ export default function Wallet() {
 
       <div className="grid grid-cols-2 gap-3 px-5 pt-4">
         <button className="btn-primary py-4" onClick={() => open('deposit')}><ArrowDownLeft size={18} /> {t('act.deposit')}</button>
-        <button className="btn-ghost py-4" onClick={() => open('withdraw')}><ArrowUpRight size={18} /> {t('act.withdraw')}</button>
+        <button className="btn-ghost py-4" onClick={() => open('withdraw')}>{s.kyc.status === 'verified' ? <ArrowUpRight size={18} /> : <Lock size={16} />} {t('act.withdraw')}</button>
       </div>
+      {s.kyc.status !== 'verified' && (
+        <button className="mx-5 mt-3 block w-[calc(100%-2.5rem)] text-start" onClick={() => gate(2, 'Withdraw money (KYC required)')}><KycStatus /></button>
+      )}
 
       <div className="mx-5 mt-4 flex items-center gap-3 rounded-2xl bg-mint-400/5 p-3 text-xs text-slate-400">
         <ShieldCheck size={28} className="shrink-0 text-mint-300" />

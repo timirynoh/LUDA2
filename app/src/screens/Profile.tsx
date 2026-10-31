@@ -1,25 +1,16 @@
-import { BadgeCheck, Camera, IdCard, Loader2, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react'
+import { BadgeCheck, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
-import { Header, Sheet, Success } from '../components/ui'
+import { Header, Sheet } from '../components/ui'
+import { KycFlow, KycStatus } from '../components/Kyc'
 import { CITIES, COUNTRIES, LANGS } from '../lib/data'
 import { useStore } from '../lib/store'
 
 export default function Profile() {
-  const { s, set, t, level, reward, reset } = useStore()
-  const [kyc, setKyc] = useState<0 | 1 | 2 | 3 | 4>(0)
+  const { s, set, t, level, reset, gate } = useStore()
+  const [kyc, setKyc] = useState(false)
   const [armed, setArmed] = useState(false)
   const country = COUNTRIES.find((c) => c.code === s.country)!
-
-  const next = async (n: 2 | 3) => {
-    setKyc(n)
-    if (n === 3) {
-      await new Promise((r) => setTimeout(r, 1800))
-      set((p) => ({ ...p, verified: true }))
-      reward(150, { quest: 'verify', badge: 'verified', title: 'Identity verified' })
-      setKyc(4)
-    }
-  }
 
   return (
     <div>
@@ -33,14 +24,10 @@ export default function Profile() {
           </div>
         </div>
 
-        {!s.verified ? (
-          <button onClick={() => setKyc(1)} className="card flex items-center gap-3 border-gold-400/40 bg-gold-400/10 text-start">
-            <ShieldCheck className="text-gold-300" />
-            <div className="flex-1"><p className="font-semibold">{t('profile.verify')}</p><p className="text-xs text-slate-400">Unlock P2P swaps & higher limits · +150 XP</p></div>
-          </button>
-        ) : (
-          <div className="card flex items-center gap-3 border-mint-400/30 bg-mint-400/5"><ShieldCheck className="text-mint-300" /><p className="font-semibold">{t('profile.verified')} · Tier 2</p></div>
-        )}
+        <button onClick={() => (s.phoneVerified ? setKyc(true) : gate(2, 'KYC verification'))} className="text-start">
+          <KycStatus />
+          {s.kyc.status === 'none' && <span className="btn-primary mt-2 w-full py-3 text-sm">Start KYC · +150 XP</span>}
+        </button>
 
         <div className="grid grid-cols-2 gap-2">
           <Link to="/security" className="card flex items-center gap-3 py-3"><ShieldCheck className="text-mint-300" size={20} /><span className="text-sm font-semibold">Security Center</span></Link>
@@ -117,29 +104,8 @@ export default function Profile() {
         <button className="btn-ghost text-rose-300" onClick={() => (armed ? reset() : setArmed(true))}>{armed ? 'Tap again to confirm reset' : t('profile.reset')}</button>
       </div>
 
-      <Sheet open={kyc > 0} onClose={() => setKyc(0)} title={t('profile.verify')}>
-        {kyc === 1 && (
-          <div className="flex flex-col gap-4 text-center">
-            <div className="mx-auto grid size-20 place-items-center rounded-3xl bg-fg/5"><IdCard size={36} className="text-mint-300" /></div>
-            <p className="font-semibold">Scan your passport or residence card</p>
-            <p className="text-sm text-slate-400">We check the document's security features and expiry. Your data is encrypted and only used for verification.</p>
-            <label className="btn-primary cursor-pointer py-4"><Camera size={18} /> Take photo / upload
-              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={() => next(2)} /></label>
-            <button className="text-xs text-slate-500" onClick={() => next(2)}>Skip (demo)</button>
-          </div>
-        )}
-        {kyc === 2 && (
-          <div className="flex flex-col gap-4 text-center">
-            <div className="mx-auto grid size-40 place-items-center rounded-full border-4 border-dashed border-mint-400/60 text-6xl">🙂</div>
-            <p className="font-semibold">Liveness selfie</p>
-            <p className="text-sm text-slate-400">Look at the camera, then turn your head slowly. This proves it's really you.</p>
-            <label className="btn-primary cursor-pointer py-4"><Camera size={18} /> Start selfie
-              <input type="file" accept="image/*" capture="user" className="hidden" onChange={() => next(3)} /></label>
-            <button className="text-xs text-slate-500" onClick={() => next(3)}>Skip (demo)</button>
-          </div>
-        )}
-        {kyc === 3 && <div className="flex flex-col items-center gap-3 py-12 text-slate-300"><Loader2 className="animate-spin text-mint-300" size={40} />Matching face to document…</div>}
-        {kyc === 4 && <Success title="You're verified ✅" sub="P2P SafeSwap unlocked." onClose={() => setKyc(0)} />}
+      <Sheet open={kyc} onClose={() => setKyc(false)} title="KYC verification">
+        <KycFlow />
       </Sheet>
     </div>
   )
