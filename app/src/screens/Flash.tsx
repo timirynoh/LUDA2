@@ -32,20 +32,20 @@ export function FlashBubble({ f, size = 64 }: { f: FlashReq; size?: number }) {
 }
 
 export default function Flash() {
-  const { s, t } = useStore()
+  const { s, t, gate } = useStore()
   const [params, setParams] = useSearchParams()
   const { mine, others } = useFlashFeed()
   const [tab, setTab] = useState<'nearby' | 'mine' | 'gigs'>('nearby')
   const openId = params.get('id')
   const open = [...s.flash, ...others].find((f) => f.id === openId)
-  const posting = params.get('new') === '1'
+  const posting = params.get('new') === '1' && s.phoneVerified
   const city = CITIES.find((c) => c.id === s.city)!
 
   return (
     <div>
       <Header back title={t('act.flash')} sub={`📍 ${city.name} · fix it fast, pay safely`} />
       <div className="flex flex-col gap-3 px-5">
-        <button onClick={() => setParams({ new: '1' })} className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-yellow-300 via-orange-500 to-rose-600 p-5 text-start text-ink-950 shadow-xl shadow-orange-500/20">
+        <button onClick={() => gate(1, 'Post a Flash request') && setParams({ new: '1' })} className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-yellow-300 via-orange-500 to-rose-600 p-5 text-start text-ink-950 shadow-xl shadow-orange-500/20">
           <motion.div className="absolute -top-8 -right-6 text-8xl opacity-20" animate={{ rotate: [0, 10, -10, 0] }} transition={{ repeat: Infinity, duration: 3 }}>⚡</motion.div>
           <p className="text-2xl font-extrabold">Need something fixed?</p>
           <p className="mt-1 text-sm font-medium text-ink-950/80">Washing machine, leak, phone screen, moving… post it in 10 seconds. Fixers nearby send offers.</p>
@@ -110,7 +110,7 @@ function ReqCard({ f, i, onOpen }: { f: FlashReq; i: number; onOpen: () => void 
 }
 
 function PostFlash({ onClose, onPosted }: { onClose: () => void; onPosted: (id: string) => void }) {
-  const { s, set, reward } = useStore()
+  const { s, set, reward, allow } = useStore()
   const areas = AREAS[s.city] ?? AREAS.lefkosa
   const [text, setText] = useState('')
   const [area, setArea] = useState(areas[0])
@@ -125,6 +125,7 @@ function PostFlash({ onClose, onPosted }: { onClose: () => void; onPosted: (id: 
   const post = () => {
     const c = checkText(text)
     if (!c.ok) return setErr(c.scam ? `Blocked: ${c.scam}` : `Please remove inappropriate words (${c.bad.join(', ')})`)
+    if (!allow('flash', text)) return
     const id = `myfl-${uid()}`
     const base = { id, text: text.trim(), cat: chosen, budget: +budget || undefined }
     const f: FlashReq = { ...base, emoji, city: s.city, area, urgent, from: s.name, flag: '', ts: Date.now(), mine: true, offers: demoOffers(base), status: 'open' }
@@ -169,7 +170,7 @@ function Stars({ value, onPick }: { value: number; onPick?: (n: number) => void 
 }
 
 function MyRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
-  const { s, set, addTx, reward, checkPin, toast } = useStore()
+  const { s, set, addTx, reward, checkPin, toast, gate } = useStore()
   const [, tick] = useState(0)
   const [choose, setChoose] = useState<Offer | null>(null)
   const [cashOk, setCashOk] = useState(false)
@@ -269,7 +270,7 @@ function MyRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
             <div className="flex flex-col items-center gap-2"><p className="text-sm text-slate-300">Lock ₺{choose.price} in escrow</p><PinPad error={err} onDone={lock} /></div>
           ) : (
             <div className="flex flex-col gap-3">
-              <button disabled={bal < choose.price} onClick={() => { setPin('lock'); setErr('') }} className="glass flex items-start gap-3 rounded-2xl border-mint-400/60 bg-mint-400/10 p-4 text-start disabled:opacity-50">
+              <button disabled={bal < choose.price} onClick={() => { if (!gate(2, 'Escrow-protected payments')) return; setPin('lock'); setErr('') }} className="glass flex items-start gap-3 rounded-2xl border-mint-400/60 bg-mint-400/10 p-4 text-start disabled:opacity-50">
                 <ShieldCheck className="shrink-0 text-mint-300" />
                 <span><span className="flex items-center gap-2 font-semibold">Pay with Luda escrow <span className="chip bg-mint-400 py-0.5 text-[10px] text-ink-950">SAFEST</span></span>
                   <span className="text-xs text-slate-400">₺{choose.price} is held safely and released only when you confirm the job is done. Disputes covered.</span></span>
@@ -290,7 +291,7 @@ function MyRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
 }
 
 function OthersRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
-  const { s, set, reward, toast } = useStore()
+  const { s, set, reward, toast, gate, allow } = useStore()
   const mine = s.gigs.find((g) => g.reqId === f.id)
   const [price, setPrice] = useState(String(f.budget ?? ''))
   const [eta, setEta] = useState('Within 1 hour')
@@ -311,11 +312,11 @@ function OthersRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
                   <input className="input ps-8 text-lg font-bold" inputMode="numeric" placeholder="Your price" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))} /></div>
                 <select className="input" value={eta} onChange={(e) => setEta(e.target.value)}>{['Within 1 hour', 'Today', 'Tomorrow', 'This weekend'].map((x) => <option key={x}>{x}</option>)}</select>
               </div>
-              <button className="btn-gold py-4" disabled={!+price} onClick={offer}><Wrench size={18} /> I can fix it: send offer</button>
+              <button className="btn-gold py-4" disabled={!+price} onClick={() => gate(1, 'Offer to fix things') && allow('offer') && offer()}><Wrench size={18} /> I can fix it: send offer</button>
               <p className="flex items-start gap-2 text-[11px] text-slate-500"><ShieldCheck size={14} className="shrink-0 text-mint-400" /> Get paid through Luda escrow: the money is already locked before you start, so you're never left unpaid.</p>
             </>
           )}
-          <button className="text-xs text-slate-500 underline" onClick={() => { set((p) => ({ ...p, reports: [...p.reports, f.id] })); toast({ title: 'Reported. Thanks for keeping Luda safe', emoji: '🛡️' }); onClose() }}>Report this request</button>
+          <button className="text-xs text-slate-500 underline" onClick={() => { if (!allow('report')) return; set((p) => ({ ...p, reports: [...p.reports, f.id] })); toast({ title: 'Reported. Thanks for keeping Luda safe', emoji: '🛡️' }); onClose() }}>Report this request</button>
         </div>
       )}
     </Sheet>

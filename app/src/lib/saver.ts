@@ -8,6 +8,8 @@ export interface SaverCheck { key: string; label: string; ok: boolean; fix?: str
 export function saverChecks(s: State): SaverCheck[] {
   return [
     { key: 'phone', label: 'Phone number verified (one account per number)', ok: s.phoneVerified, fix: 'verify' },
+    { key: 'id', label: 'ID + selfie verified (one person, one account)', ok: s.verified, fix: 'id' },
+    { key: 'wallet', label: 'Topped up your Luda wallet at least once', ok: s.deposits > 0, fix: 'deposit' },
     { key: 'profile', label: 'Profile complete (name & city)', ok: !!s.name && !!s.city },
     { key: 'standing', label: 'Good standing (no active strikes or bans)', ok: s.chatStrikes.until < Date.now() },
     { key: 'refunds', label: `Fewer than ${SAVER.maxRefundsPerMonth} refunds this month`, ok: refundsThisMonth(s.tickets) < SAVER.maxRefundsPerMonth },

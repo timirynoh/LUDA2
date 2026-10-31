@@ -42,6 +42,28 @@ export default function Profile() {
           <div className="card flex items-center gap-3 border-mint-400/30 bg-mint-400/5"><ShieldCheck className="text-mint-300" /><p className="font-semibold">{t('profile.verified')} · Tier 2</p></div>
         )}
 
+        <div className="grid grid-cols-2 gap-2">
+          <Link to="/security" className="card flex items-center gap-3 py-3"><ShieldCheck className="text-mint-300" size={20} /><span className="text-sm font-semibold">Security Center</span></Link>
+          <Link to="/help" className="card flex items-center gap-3 py-3"><span className="text-lg">💬</span><span className="text-sm font-semibold">Help & Support</span></Link>
+        </div>
+
+        {s.account && (
+          <section className="card grid gap-3">
+            <p className="label">Account</p>
+            <div className="flex items-center justify-between text-sm"><span className="text-slate-400">Username</span><span className="font-semibold">@{s.account.username}</span></div>
+            <div className="flex items-center justify-between text-sm"><span className="text-slate-400">Email</span><span className="font-semibold">{s.account.email}</span></div>
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span><span className="block font-semibold">Ask for PIN when opening Luda</span><span className="text-xs text-slate-400">Recommended: protects your wallet if someone has your phone</span></span>
+              <input type="checkbox" className="size-5 accent-emerald-500" checked={s.lockOnOpen} onChange={(e) => set((p) => ({ ...p, lockOnOpen: e.target.checked }))} />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span className="font-semibold">Keep me signed in</span>
+              <input type="checkbox" className="size-5 accent-emerald-500" checked={s.account.stay} onChange={(e) => set((p) => ({ ...p, account: p.account ? { ...p.account, stay: e.target.checked } : p.account }))} />
+            </label>
+            <button className="btn-ghost py-2.5 text-sm" onClick={() => set((p) => ({ ...p, signedIn: false }))}>Sign out</button>
+          </section>
+        )}
+
         <section className="card">
           <p className="label mb-3">Theme</p>
           <div className="grid grid-cols-3 gap-2">

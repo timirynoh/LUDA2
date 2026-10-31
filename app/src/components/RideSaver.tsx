@@ -5,6 +5,8 @@ import { SAVER, TICKET_DISCOUNT } from '../config'
 import { saverChecks, saverState } from '../lib/saver'
 import { useStore } from '../lib/store'
 import { PhoneVerify } from './PhoneVerify'
+import { IdVerify } from './Verify'
+import { Link } from 'react-router-dom'
 import { Sheet } from './ui'
 
 /** Small status / promo strip for Ride Saver. */
@@ -15,7 +17,7 @@ export function SaverCard({ onOpen, dismissible }: { onOpen: () => void; dismiss
   if (st.active) return (
     <button onClick={onOpen} className="flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-violet-500/20 to-fuchsia-500/10 p-3 text-start">
       <span className="text-2xl">🎟️</span>
-      <span className="flex-1 text-sm"><b>Ride Saver active</b><span className="block text-xs text-slate-400">{st.leftToday} discounted ticket{st.leftToday === 1 ? '' : 's'} left today · {st.leftMonth} this month</span></span>
+      <span className="flex-1 text-sm"><b>Ride Saver active</b><span className="block text-xs text-slate-400">{st.leftMonth} of {SAVER.perMonth} discounted tickets left this month</span></span>
       <span className="chip bg-mint-400/15 text-mint-300">−₺{TICKET_DISCOUNT.single}</span>
     </button>
   )
@@ -23,7 +25,7 @@ export function SaverCard({ onOpen, dismissible }: { onOpen: () => void; dismiss
     <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-500 via-fuchsia-700 to-indigo-900 p-4 text-white">
       {dismissible && <button className="absolute end-3 top-3 text-white/60" aria-label="Not now" onClick={() => set((p) => ({ ...p, saver: { status: 'declined' } }))}><X size={16} /></button>}
       <p className="flex items-center gap-2 text-lg font-extrabold"><Ticket size={20} /> Ride for less with Luda</p>
-      <p className="mt-1 text-sm text-white/80">{s.saver.status === 'member' && !st.active ? st.message : `Get ₺${TICKET_DISCOUNT.single} off one-way and ₺${TICKET_DISCOUNT.return} off return bus & airport tickets. Opt in, and we check your account automatically.`}</p>
+      <p className="mt-1 text-sm text-white/80">{s.saver.status === 'member' && !st.active ? st.message : `${SAVER.perMonth} discounted tickets every month: ₺${TICKET_DISCOUNT.single} off one-way, ₺${TICKET_DISCOUNT.return} off return. Opt in and qualified members are selected automatically.`}</p>
       <button onClick={onOpen} className="btn mt-3 bg-white px-4 py-2 text-sm text-ink-950">{s.saver.status === 'member' ? 'See details' : 'Opt in to Ride Saver'}</button>
     </div>
   )
@@ -63,7 +65,8 @@ export function SaverSheet({ onClose }: { onClose: () => void }) {
           <div className="rounded-2xl bg-fg/[0.03] p-4 text-sm">
             <p className="label mb-2">Fair-use rules</p>
             <ul className="grid gap-1.5 text-slate-300">
-              <li>• Up to <b>{SAVER.perDay} discounted tickets a day</b> and <b>{SAVER.perMonth} a month</b></li>
+              <li>• <b>{SAVER.perMonth} discounted tickets per month</b>. After that you can still buy tickets at the normal price (wallet in Lira or Naira, or card)</li>
+              <li>• To qualify: phone + ID verified and at least one wallet top-up (stops fake accounts)</li>
               <li>• Discount covers <b>you + {SAVER.companions} companion</b> per ticket; extra seats pay normal price</li>
               <li>• Tickets carry your name and a <b>live QR that changes every 30s</b>. Screenshots don't work.</li>
               <li>• No refunds in the last {SAVER.noRefundMinutes} minutes. More than {SAVER.maxRefundsPerMonth} refunds a month pauses the discount.</li>
@@ -85,6 +88,8 @@ export function SaverSheet({ onClose }: { onClose: () => void }) {
                 <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className={`rounded-2xl border p-3 ${c.ok ? 'border-mint-400/30 bg-mint-400/5' : 'border-rose-400/30 bg-rose-500/5'}`}>
                   <p className="flex items-center gap-2 text-sm">{c.ok ? <Check size={16} className="text-mint-300" /> : <X size={16} className="text-rose-300" />}{c.label}</p>
                   {!c.ok && c.fix === 'verify' && phase === 'result' && <div className="mt-2 ps-6"><PhoneVerify compact /></div>}
+                  {!c.ok && c.fix === 'id' && phase === 'result' && s.phoneVerified && <div className="mt-2 ps-6"><IdVerify /></div>}
+                  {!c.ok && c.fix === 'deposit' && phase === 'result' && <Link to="/wallet?a=deposit" onClick={onClose} className="btn-primary mt-2 ms-6 w-fit px-4 py-2 text-xs">Top up wallet</Link>}
                 </motion.div>
               )}
             </AnimatePresence>

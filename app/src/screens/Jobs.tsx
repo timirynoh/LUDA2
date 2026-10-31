@@ -21,7 +21,7 @@ export function StatusChip({ m }: { m: PostMeta }) {
 }
 
 export default function Jobs() {
-  const { s, set, t } = useStore()
+  const { s, set, t, gate } = useStore()
   const [tab, setTab] = useState<'browse' | 'mine'>('browse')
   const [cat, setCat] = useState<'All' | JobCat>('All')
   const [open, setOpen] = useState<Job | null>(null)
@@ -67,7 +67,7 @@ export default function Jobs() {
             </motion.button>
           ))}
           <div className="pointer-events-none fixed inset-x-0 bottom-28 z-30 mx-auto flex max-w-md justify-end px-5">
-            <button onClick={() => setPosting(true)} className="btn-gold pointer-events-auto rounded-full px-5 shadow-2xl"><Plus size={18} /> Post a job</button>
+            <button onClick={() => gate(1, 'Post jobs') && setPosting(true)} className="btn-gold pointer-events-auto rounded-full px-5 shadow-2xl"><Plus size={18} /> Post a job</button>
           </div>
         </div>
       ) : (
@@ -111,7 +111,7 @@ export default function Jobs() {
 }
 
 function JobSheet({ job: j, onClose }: { job: Job; onClose: () => void }) {
-  const { s, set, reward, toast } = useStore()
+  const { s, set, reward, toast, gate, allow } = useStore()
   const applied = s.applications.some((a) => a.jobId === j.id)
   const [msg, setMsg] = useState(`Hi! I'm ${s.name}, based in ${CITIES.find((c) => c.id === s.city)?.name}. I'd love to apply for the ${j.title} role.`)
   const [cv, setCv] = useState('')
@@ -121,7 +121,7 @@ function JobSheet({ job: j, onClose }: { job: Job; onClose: () => void }) {
     reward(s.quests.includes('job') ? 10 : 60, { quest: 'job', badge: 'hustler', title: 'Application sent' })
     setDone(true)
   }
-  const report = () => { set((p) => ({ ...p, reports: [...p.reports, j.id] })); reward(10, { badge: 'guardian', title: 'Thanks for reporting' }); toast({ title: 'Our team will review this job', emoji: '🛡️' }); onClose() }
+  const report = () => { if (!allow('report')) return; set((p) => ({ ...p, reports: [...p.reports, j.id] })); reward(10, { badge: 'guardian', title: 'Thanks for reporting' }); toast({ title: 'Our team will review this job', emoji: '🛡️' }); onClose() }
   return (
     <Sheet open onClose={onClose} title={j.title}>
       {done ? <Success title="Application sent 💼" sub={`${j.company} will see your profile and message. Track it under "Mine".`} onClose={onClose} /> : (
@@ -141,8 +141,8 @@ function JobSheet({ job: j, onClose }: { job: Job; onClose: () => void }) {
           <p className="rounded-2xl bg-fg/[0.03] p-3 text-sm text-slate-300">{j.desc}</p>
           {j.quick && !j.mine ? (
             <div className="grid grid-cols-2 gap-2">
-              <a href={`tel:${j.contact}`} onClick={apply} className="btn-primary py-4"><Phone size={18} /> Call</a>
-              <a href={`https://wa.me/${(j.contact ?? '').replace(/\D/g, '')}`} target="_blank" rel="noreferrer" onClick={apply} className="btn bg-emerald-500/15 py-4 text-emerald-200"><MessageCircle size={18} /> WhatsApp</a>
+              <a href={`tel:${j.contact}`} onClick={() => gate(1, 'Contact employers') && apply()} className="btn-primary py-4"><Phone size={18} /> Call</a>
+              <a href={`https://wa.me/${(j.contact ?? '').replace(/\D/g, '')}`} target="_blank" rel="noreferrer" onClick={() => gate(1, 'Contact employers') && apply()} className="btn bg-emerald-500/15 py-4 text-emerald-200"><MessageCircle size={18} /> WhatsApp</a>
               <p className="col-span-2 text-center text-xs text-slate-500" dir="ltr">📞 {j.contact}</p>
             </div>
           ) : !j.mine && (applied ? <p className="rounded-2xl bg-mint-400/10 p-3 text-center text-sm text-mint-200">✓ You applied. Check "Mine" for updates.</p> : (
@@ -152,7 +152,7 @@ function JobSheet({ job: j, onClose }: { job: Job; onClose: () => void }) {
                 <FileText size={18} className="text-slate-400" /><span className="flex-1 truncate">{cv || 'Attach CV (optional)'}</span>
                 <input type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={(e) => setCv(e.target.files?.[0]?.name ?? '')} />
               </label>
-              <button className="btn-primary py-4" onClick={apply}>Apply now</button>
+              <button className="btn-primary py-4" onClick={() => gate(1, 'Apply for jobs') && allow('apply') && apply()}>Apply now</button>
             </>
           ))}
           {!j.mine && <button className="text-xs text-slate-500 underline" onClick={report}>Report this job (scam, asks for money, fake)</button>}
@@ -163,7 +163,7 @@ function JobSheet({ job: j, onClose }: { job: Job; onClose: () => void }) {
 }
 
 function PostJob({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { s, set, toast } = useStore()
+  const { s, set, toast, allow } = useStore()
   const areas = AREAS[s.city] ?? AREAS.lefkosa
   const [f, setF] = useState({ title: '', cat: 'Hospitality' as JobCat, type: 'Part-time' as JobType, pay: '', unit: 'hour' as Job['unit'], hours: '', area: areas[0], desc: '', permit: true })
   const [done, setDone] = useState(false)
@@ -175,6 +175,7 @@ function PostJob({ open, onClose }: { open: boolean; onClose: () => void }) {
   const quickSubmit = () => {
     const c = checkText(q.text)
     if (!c.ok) return setErr(c.scam ? `Blocked: ${c.scam}. Never ask workers for money.` : `Please remove inappropriate words (${c.bad.join(', ')})`)
+    if (!allow('quickjob', q.text)) return
     const now = Date.now()
     const j: Job = {
       id: `myjob-${uid()}`, title: q.text.trim().slice(0, 80), company: s.isAdmin ? 'Luda Official' : s.name, city: s.city, area: parsed.area ?? areas[0],
@@ -187,6 +188,9 @@ function PostJob({ open, onClose }: { open: boolean; onClose: () => void }) {
     setDone(true)
   }
   const submit = () => {
+    const c = checkText(`${f.title} ${f.desc}`)
+    if (!c.ok) return toast({ title: c.scam ? `Blocked: ${c.scam}` : 'Please remove inappropriate words', emoji: '⚠️' })
+    if (!allow('job', `${f.title} ${f.desc}`)) return
     const now = Date.now()
     const j: Job = {
       id: `myjob-${uid()}`, title: f.title, company: s.isAdmin ? 'Luda Official' : s.proofs.business === 'company' ? `${s.name}'s business` : s.name,

@@ -46,6 +46,8 @@ export default function Rewards() {
           ))}
         </div>
 
+        <InviteCard />
+
         <section className="card">
           <div className="mb-3 flex items-center justify-between"><p className="font-bold">🪙 {t('rewards.points')}</p><p className="text-xl font-extrabold text-gold-300">{s.points}</p></div>
           <div className="flex flex-col gap-2">
@@ -107,5 +109,25 @@ export default function Rewards() {
         </section>
       </div>
     </div>
+  )
+}
+
+function InviteCard() {
+  const { s, set, toast } = useStore()
+  const base = (s.account?.username ?? s.name ?? 'friend').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'FRIEND'
+  const num = String((base.split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % 90) + 10)
+  const code = s.referral || `LUDA-${base}${num}`
+  const msg = `Join me on Luda, the app for Africans in North Cyprus: wallet, SafeSwap, houses, jobs & more. Use my code ${code} for 100 bonus XP 🎁`
+  const copy = async () => {
+    if (!s.referral) set((p) => ({ ...p, referral: code }))
+    try { await navigator.clipboard.writeText(msg); toast({ title: 'Invite copied', emoji: '📋' }) } catch { toast({ title: `Your code: ${code}`, emoji: '🎁' }) }
+  }
+  return (
+    <section className="card bg-gradient-to-br from-gold-400/15 to-transparent">
+      <p className="font-bold">🎁 Invite friends</p>
+      <p className="mt-1 text-sm text-slate-400">You both get <b>100 XP</b> when they verify their account. Invites only count for real, verified people.</p>
+      <div className="mt-3 flex items-center gap-2 rounded-2xl border border-dashed border-gold-400/40 bg-gold-400/5 p-3"><span className="flex-1 font-mono text-lg font-bold tracking-widest">{code}</span><button className="chip bg-fg/10 py-2" onClick={copy}>Copy</button></div>
+      <a href={`https://wa.me/?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" onClick={() => { if (!s.referral) set((p) => ({ ...p, referral: code })) }} className="btn-primary mt-3 w-full py-3 text-sm">Share on WhatsApp</a>
+    </section>
   )
 }

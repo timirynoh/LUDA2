@@ -109,6 +109,7 @@ export const BADGES: Record<string, { name: string; emoji: string; desc: string 
 }
 
 export const QUESTS = [
+  { id: 'phone', title: 'Verify your phone number', xp: 50, to: '/profile' },
   { id: 'verify', title: 'Verify your identity', xp: 150, to: '/profile' },
   { id: 'deposit', title: 'Top up your wallet', xp: 50, to: '/wallet' },
   { id: 'bill', title: 'Pay your first bill', xp: 80, to: '/bills' },

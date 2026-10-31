@@ -23,7 +23,7 @@ function mockBill(biller: string, account: string) {
 }
 
 export default function Bills() {
-  const { s, set, t, addTx, reward } = useStore()
+  const { s, set, t, addTx, reward, gate } = useStore()
   const city = CITIES.find((c) => c.id === s.city)!
   const [biller, setBiller] = useState<string | null>(null)
   const [account, setAccount] = useState('')
@@ -32,7 +32,9 @@ export default function Bills() {
   const b = BILLERS.find((x) => x.id === biller)
   const name = (id: string, n: string) => (id === 'water' ? `${city.name} Municipality Water` : n)
 
-  const open = (id: string, acc = '') => { setBiller(id); setAccount(acc); setBill(null); setStage('form') }
+  const open = (id: string, acc = '') => {
+    if (!gate(2, 'Pay bills')) return
+    setBiller(id); setAccount(acc); setBill(null); setStage('form') }
   const fetchBill = async () => { setStage('busy'); await new Promise((r) => setTimeout(r, 900)); setBill(mockBill(biller!, account)); setStage('bill') }
   const pay = () => {
     const amt = bill!.amount

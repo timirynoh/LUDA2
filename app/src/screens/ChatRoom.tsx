@@ -15,7 +15,7 @@ const STRIKE_LIMIT = 3, MUTE_MS = 10 * 60_000
 export default function ChatRoom() {
   const { id = '' } = useParams()
   const nav = useNavigate()
-  const { s, set, toast, reward } = useStore()
+  const { s, set, toast, reward, gate } = useStore()
   const g = useGroups().find((x) => x.id === id)
   const joined = s.joinedGroups.includes(id)
   const [text, setText] = useState('')
@@ -47,6 +47,8 @@ export default function ChatRoom() {
     const body = text.trim()
     if (!body || muted) return
     if (rateLimited(sentTimes.current)) return setWarn('🐢 Slow down: max 5 messages every 10 seconds.')
+    const lastMine = [...(s.chatMsgs[id] ?? [])].reverse().find((m) => m.mine)
+    if (lastMine && lastMine.text.trim().toLowerCase() === body.toLowerCase() && Date.now() - lastMine.ts < 5 * 60_000) return setWarn('🔁 You just sent that. Repeating messages counts as spam.')
     const c = checkText(body)
     if (!c.ok) {
       const count = s.chatStrikes.count + 1
@@ -172,7 +174,7 @@ export default function ChatRoom() {
       {/* composer */}
       {!joined ? (
         <div className="border-t border-fg/10 bg-ink-900/90 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <button className="btn-primary w-full py-4" onClick={() => setRules(true)}>Join {g.name} to chat</button>
+          <button className="btn-primary w-full py-4" onClick={() => gate(1, 'Join group chats') && setRules(true)}>Join {g.name} to chat</button>
         </div>
       ) : (
         <div className="border-t border-fg/10 bg-ink-900/90 px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl">

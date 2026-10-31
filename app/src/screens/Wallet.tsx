@@ -1,11 +1,11 @@
 import { motion } from 'framer-motion'
 import { ArrowDownLeft, ArrowUpRight, Banknote, Building, CreditCard, Loader2, ShieldCheck, Smartphone } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DemoNote, Header, PinPad, Sheet, Success } from '../components/ui'
 import { TxList } from '../components/TxList'
 import { COUNTRIES, CURRENCIES } from '../lib/data'
-import { fmt } from '../lib/fx'
+import { convert, fmt, useRates } from '../lib/fx'
 import { useStore } from '../lib/store'
 
 type Mode = 'deposit' | 'withdraw'
@@ -25,19 +25,26 @@ const METHODS: Record<Mode, { id: string; icon: typeof CreditCard; name: string;
 }
 
 export default function Wallet() {
-  const { s, set, t, addTx, reward, checkPin } = useStore()
+  const { s, set, t, addTx, reward, checkPin, gate } = useStore()
   const [params, setParams] = useSearchParams()
   const mode = (params.get('a') as Mode | null) ?? null
   const home = COUNTRIES.find((c) => c.code === s.country)!
+  const { rates } = useRates()
   const [cur, setCur] = useState('TRY')
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('card')
   const [stage, setStage] = useState<'form' | 'pin' | 'busy' | 'done'>('form')
   const [err, setErr] = useState('')
 
-  const open = (m: Mode) => { setParams({ a: m }); setStage('form'); setAmount(''); setErr(''); setMethod(METHODS[m][0].id) }
+  const open = (m: Mode) => { if (gate(2, m === 'deposit' ? 'Deposit money' : 'Withdraw money')) setParams({ a: m }) }
   const close = () => setParams({})
   const amt = parseFloat(amount) || 0
+  // Deep links (e.g. home shortcut) respect verification and always start with a fresh form.
+  useEffect(() => {
+    if (!mode) return
+    if (!gate(2, mode === 'deposit' ? 'Deposit money' : 'Withdraw money')) { setParams({}); return }
+    setStage('form'); setAmount(''); setErr(''); setMethod(METHODS[mode][0].id)
+  }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
   const m = mode ? METHODS[mode].find((x) => x.id === method) ?? METHODS[mode][0] : null
   const fee = m ? amt * m.fee : 0
   const currencies = [...new Set(['TRY', home.currency, 'USD', 'EUR', ...Object.keys(s.balances)])]
@@ -46,7 +53,7 @@ export default function Wallet() {
     setStage('busy')
     await new Promise((r) => setTimeout(r, 1400))
     const delta = mode === 'deposit' ? amt - fee : -(amt + fee)
-    set((p) => ({ ...p, balances: { ...p.balances, [cur]: (p.balances[cur] ?? 0) + delta } }))
+    set((p) => ({ ...p, balances: { ...p.balances, [cur]: (p.balances[cur] ?? 0) + delta }, deposits: p.deposits + (mode === 'deposit' ? 1 : 0) }))
     addTx({ type: mode!, amount: delta, currency: cur, label: `${mode === 'deposit' ? 'Deposit' : 'Withdrawal'} · ${m!.name}`, meta: fee ? `fee ${fmt(fee, cur)}` : 'no fee' })
     setStage('done')
     if (mode === 'deposit') reward(s.quests.includes('deposit') ? 10 : 50, { quest: 'deposit', badge: 'first_deposit', title: 'Wallet topped up' })
@@ -55,6 +62,12 @@ export default function Wallet() {
 
   const submit = () => {
     if (mode === 'withdraw' && amt + fee > (s.balances[cur] ?? 0)) return setErr(t('wallet.insufficient'))
+    if (mode === 'withdraw') {
+      const today = s.txs.filter((x) => x.type === 'withdraw' && new Date(x.ts).toDateString() === new Date().toDateString())
+      const usedTRY = today.reduce((a, x) => a + Math.abs(convert(rates, x.amount, x.currency, 'TRY')), 0)
+      const thisTRY = convert(rates, amt + fee, cur, 'TRY')
+      if (usedTRY + thisTRY > s.security.dailyWithdraw) return setErr(`Daily withdrawal limit is ${fmt(s.security.dailyWithdraw, 'TRY')} (${fmt(Math.max(0, s.security.dailyWithdraw - usedTRY), 'TRY')} left today). Change it in Security Center.`)
+    }
     setErr('')
     if (mode === "withdraw") setStage("pin")
     else execute()

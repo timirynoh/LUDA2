@@ -5,6 +5,9 @@ import { Link } from 'react-router-dom'
 import { Ring, Sheet } from '../components/ui'
 import { FlashBubbles, FlashPop } from '../components/FlashBubbles'
 import { SaverCard, SaverSheet } from '../components/RideSaver'
+import { UnlockCard, WelcomeTour } from '../components/Verify'
+import { ACTION_TIER, tierOf } from '../lib/access'
+import { Bell, Lock, Search as SearchIcon } from 'lucide-react'
 import { ACTIONS, MAX_SHORTCUTS } from '../lib/actions'
 import { calendarFor, daysUntil, nextClass, UNIVERSITIES } from '../lib/uni'
 import { CITIES, COUNTRIES, CURRENCIES, QUESTS } from '../lib/data'
@@ -20,7 +23,7 @@ export default function Home() {
   const deadline = useMemo(() => (s.university ? calendarFor(s.university).find((i) => i.kind !== 'term' && daysUntil(i.end ?? i.start) >= 0) : undefined), [s.university])
   const isLight = s.theme === 'light' || (s.theme === 'system' && !!window.matchMedia?.('(prefers-color-scheme: light)').matches)
   const { rates, live } = useRates()
-  const [hide, setHide] = useState(false)
+  const [hide, setHide] = useState(s.security.hideBalances)
   const home = COUNTRIES.find((c) => c.code === s.country)!
   const city = CITIES.find((c) => c.id === s.city)!
   const total = Object.entries(s.balances).reduce((a, [c, v]) => a + convert(rates, v, c, 'TRY'), 0)
@@ -38,13 +41,16 @@ export default function Home() {
           </Ring>
         </Link>
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-slate-400">{t('home.hello')} {home.flag} · {city.name}</p>
+          <p className="text-sm text-slate-400">{t('home.hello')} {home.flag} · {city.name} · <Link to="/rewards" className="text-orange-300"><Flame size={12} className="inline" />{s.streak}</Link></p>
           <p className="truncate text-lg font-bold">{s.name} <span className="text-sm font-medium text-slate-400">· {level.emoji} {level.name}</span></p>
         </div>
+        <Link to="/search" className="glass grid size-10 place-items-center rounded-2xl" aria-label="Search"><SearchIcon size={18} /></Link>
+        <Link to="/inbox" className="glass relative grid size-10 place-items-center rounded-2xl" aria-label="Notifications"><Bell size={18} />
+          {s.inbox.some((n) => !n.read) && <span className="absolute -end-1 -top-1 grid min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{s.inbox.filter((n) => !n.read).length}</span>}</Link>
         <button onClick={() => set((p) => ({ ...p, theme: isLight ? 'dark' : 'light' }))} className="glass grid size-10 place-items-center rounded-2xl" aria-label="Toggle day / night">
           {isLight ? <Moon size={18} className="text-indigo-500" /> : <Sun size={18} className="text-gold-300" />}
         </button>
-        <Link to="/rewards" className="chip bg-orange-500/15 py-2 text-orange-300"><Flame size={14} /> {s.streak}</Link>
+
       </div>
 
       {s.sections.flash && <FlashBubbles />}
@@ -75,7 +81,10 @@ export default function Home() {
         </div>
       </motion.div>
 
-      {s.saver.status === 'none' && <SaverCard dismissible onOpen={() => setSaverOpen(true)} />}
+      <UnlockCard />
+      <WelcomeTour />
+
+      {s.saver.status === 'none' && tierOf(s) >= 2 && <SaverCard dismissible onOpen={() => setSaverOpen(true)} />}
       {saverOpen && <SaverSheet onClose={() => setSaverOpen(false)} />}
 
       {activeTrade && (
@@ -114,8 +123,9 @@ export default function Home() {
           {actions.map(({ id, to, icon: Icon, key, c }, i) => (
             <motion.div key={id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
               <Link to={to} className="flex flex-col items-center gap-2 text-center">
-                <div className={`grid size-14 place-items-center rounded-2xl bg-gradient-to-br ${c} text-white shadow-lg transition active:scale-90`}>
+                <div className={`relative grid size-14 place-items-center rounded-2xl bg-gradient-to-br ${c} text-white shadow-lg transition active:scale-90`}>
                   <Icon size={22} strokeWidth={2.2} />
+                  {(ACTION_TIER[id] ?? 0) > tierOf(s) && <span className="absolute -end-1 -top-1 grid size-5 place-items-center rounded-full bg-ink-900 text-slate-300 ring-2 ring-ink-950"><Lock size={10} /></span>}
                 </div>
                 <span className="text-[11px] leading-tight font-medium text-slate-300">{t(key)}</span>
               </Link>

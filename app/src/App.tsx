@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeftRight, Grid2x2, Home as HomeIcon, MessageCircle, Wallet as WalletIcon } from 'lucide-react'
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { Toasts } from './components/ui'
+import { UnlockSheet, useTierCelebration } from './components/Verify'
 import { useStore } from './lib/store'
 import Bills from './screens/Bills'
 import Exchange from './screens/Exchange'
@@ -10,6 +11,15 @@ import Housing from './screens/Housing'
 import More from './screens/More'
 import Nearby from './screens/Nearby'
 import Onboarding from './screens/Onboarding'
+import { Landing, LockScreen, SignIn, SignUp, Splash } from './screens/Auth'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { IdleGuard } from './components/IdleGuard'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { OfflineBanner } from './components/OfflineBanner'
+import Security from './screens/Security'
+import Inbox from './screens/Inbox'
+import Search from './screens/Search'
+import Help from './screens/Help'
 import Profile from './screens/Profile'
 import Residency from './screens/Residency'
 import Rewards from './screens/Rewards'
@@ -38,16 +48,46 @@ export default function App() {
   const loc = useLocation()
   useClassReminders()
   useGigProgress()
+  useTierCelebration()
   const inRoom = loc.pathname.startsWith('/chats/')
+  const [splash, setSplash] = useState(true)
+  const [authView, setAuthView] = useState<'landing' | 'signup' | 'signin'>('landing')
+  const [unlocked, setUnlocked] = useState(false)
+  const [forceLock, setForceLock] = useState(false)
+  const lockNow = useCallback(() => { setUnlocked(false); setForceLock(true) }, [])
+  useEffect(() => { const t = setTimeout(() => setSplash(false), 1700); return () => clearTimeout(t) }, [])
+  // Just signed in or just finished onboarding in this session → no PIN prompt needed.
+  const prev = useRef({ signedIn: s.signedIn, onboarded: s.onboarded })
+  useEffect(() => {
+    if ((!prev.current.signedIn && s.signedIn) || (!prev.current.onboarded && s.onboarded)) setUnlocked(true)
+    if (prev.current.signedIn && !s.signedIn) { setUnlocked(false); setAuthView('signin') }
+    prev.current = { signedIn: s.signedIn, onboarded: s.onboarded }
+  }, [s.signedIn, s.onboarded])
+  // Older demo profiles (before accounts existed) keep working.
+  const legacy = !s.account && s.onboarded
+  const authed = legacy || (!!s.account && s.signedIn)
+
+  let gateScreen: React.ReactNode = null
+  if (!authed) gateScreen = authView === 'signup'
+    ? <SignUp onBack={() => setAuthView('landing')} onSignIn={() => setAuthView('signin')} />
+    : authView === 'signin' ? <SignIn onBack={() => setAuthView('landing')} onSignUp={() => setAuthView('signup')} />
+    : <Landing onSignUp={() => setAuthView('signup')} onSignIn={() => setAuthView('signin')} />
+  else if (!s.onboarded) gateScreen = <Onboarding />
+  else if ((s.lockOnOpen || forceLock) && !unlocked && !legacy) gateScreen = <LockScreen onUnlock={() => { setUnlocked(true); setForceLock(false) }} />
 
   return (
     <div className="mx-auto min-h-dvh max-w-md sm:my-6 sm:min-h-[calc(100dvh-3rem)] sm:overflow-hidden sm:rounded-[2.5rem] sm:border sm:border-fg/10 sm:bg-ink-900/60 sm:shadow-2xl sm:shadow-black/60 relative">
       <Toasts />
-      {!s.onboarded ? <Onboarding /> : (
+      <OfflineBanner />
+      {!gateScreen && !legacy && <IdleGuard minutes={s.security.autoLockMin} onLock={lockNow} />}
+      {!gateScreen && <UnlockSheet />}
+      <AnimatePresence>{splash && <Splash key="splash" />}</AnimatePresence>
+      {gateScreen ? <AnimatePresence mode="wait"><motion.div key={`${authView}-${authed}-${s.onboarded}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>{gateScreen}</motion.div></AnimatePresence> : (
         <>
           <AnimatePresence mode="wait">
             <motion.main key={loc.pathname} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.22 }} className="pb-32">
+              <ErrorBoundary key={loc.pathname}>
               <Routes location={loc}>
                 <Route path="/" element={<Home />} />
                 <Route path="/wallet" element={<Wallet />} />
@@ -62,6 +102,10 @@ export default function App() {
                 <Route path="/transport" element={<Transport />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/flash" element={<Flash />} />
+                <Route path="/security" element={<Security />} />
+                <Route path="/inbox" element={<Inbox />} />
+                <Route path="/search" element={<Search />} />
+                <Route path="/help" element={<Help />} />
                 <Route path="/chats" element={<Chats />} />
                 <Route path="/chats/:id" element={<ChatRoom />} />
                 <Route path="/residency" element={<Residency />} />
@@ -69,6 +113,7 @@ export default function App() {
                 <Route path="/profile" element={<Profile />} />
                 <Route path="*" element={<Home />} />
               </Routes>
+              </ErrorBoundary>
             </motion.main>
           </AnimatePresence>
           {!inRoom && <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">

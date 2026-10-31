@@ -33,7 +33,7 @@ export function GroupAvatar({ g, size = 'size-12' }: { g: Group; size?: string }
 }
 
 export default function Chats() {
-  const { s, t } = useStore()
+  const { s, t, gate } = useStore()
   const groups = useGroups()
   const [tab, setTab] = useState<'mine' | 'discover'>(s.joinedGroups.length ? 'mine' : 'discover')
   const [q, setQ] = useState('')
@@ -50,7 +50,7 @@ export default function Chats() {
   return (
     <div>
       <Header title={t('nav.chats')} sub="Groups for the community"
-        right={<button onClick={() => setCreating(true)} className="btn-primary size-11 rounded-2xl p-0" aria-label="Create group"><Plus size={20} /></button>} />
+        right={<button onClick={() => gate(1, 'Create a group') && setCreating(true)} className="btn-primary size-11 rounded-2xl p-0" aria-label="Create group"><Plus size={20} /></button>} />
       <div className="flex flex-col gap-3 px-5">
         <div className="relative"><Search size={18} className="absolute start-4 top-1/2 -translate-y-1/2 text-slate-500" />
           <input className="input ps-11" placeholder="Search groups" value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -101,6 +101,7 @@ export default function Chats() {
 }
 
 function DiscoverCard({ g, i }: { g: Group; i: number }) {
+  const { gate } = useStore()
   const [rules, setRules] = useState(false)
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 8) * 0.03 }} className="card">
@@ -118,7 +119,7 @@ function DiscoverCard({ g, i }: { g: Group; i: number }) {
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <Link to={`/chats/${g.id}`} className="btn-ghost py-2.5 text-sm">Peek</Link>
-        <button className="btn-primary py-2.5 text-sm" onClick={() => setRules(true)}>Join</button>
+        <button className="btn-primary py-2.5 text-sm" onClick={() => gate(1, 'Join group chats') && setRules(true)}>Join</button>
       </div>
       {rules && <JoinRules g={g} onClose={() => setRules(false)} />}
     </motion.div>
@@ -153,13 +154,14 @@ const EMOJIS = ['💬', '🌍', '🎓', '⛪', '🕌', '⚽', '🎶', '🍲', '�
 const TONES = ['from-emerald-500 to-green-800', 'from-sky-500 to-blue-800', 'from-fuchsia-500 to-purple-800', 'from-amber-400 to-orange-700', 'from-rose-400 to-pink-800', 'from-cyan-400 to-sky-800']
 
 function CreateGroup({ onClose }: { onClose: () => void }) {
-  const { s, set, reward } = useStore()
+  const { s, set, reward, allow } = useStore()
   const nav = useNavigate()
   const [f, setF] = useState({ name: '', desc: '', emoji: '💬', tone: TONES[0], cat: 'Country' as GroupCat, extra: '' })
   const [err, setErr] = useState('')
   const create = () => {
     const c = checkText(`${f.name} ${f.desc} ${f.extra}`)
     if (!c.ok) return setErr(c.scam ? `Blocked: ${c.scam}` : `Please remove inappropriate words (${c.bad.join(', ')})`)
+    if (!allow('group', f.name)) return
     const g: Group = {
       id: `my-${uid()}`, name: f.name.trim(), desc: f.desc.trim() || 'A new Luda community group', emoji: f.emoji, tone: f.tone, cat: f.cat,
       members: 1, online: 1, mine: true, createdAt: Date.now(), official: s.isAdmin, city: s.city, rules: f.extra.trim() ? [...BASE_RULES, f.extra.trim()] : BASE_RULES,

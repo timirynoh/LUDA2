@@ -42,9 +42,27 @@ export const KIBHAS_FARES: Record<string, number> = { lefkosa: 250, girne: 350, 
  * automatically if their account passes the checks in lib/saver.ts.
  */
 export const SAVER = {
-  perDay: 2, // discounted tickets per day
-  perMonth: 20, // discounted tickets per calendar month
+  perDay: 2, // discounted tickets per day (the monthly cap below is the real limit)
+  perMonth: 2, // discounted tickets per calendar month
   companions: 1, // discounted seats besides the member's own, per ticket
   maxRefundsPerMonth: 3, // more refunds than this pauses the discount for the month
   noRefundMinutes: 30, // no refunds this close to departure
+}
+
+/**
+ * Anti-spam: max actions per rolling 24h, per user. Duplicate posts are also blocked.
+ */
+export const DAILY_LIMITS: Record<string, { max: number; label: string }> = {
+  flash: { max: 3, label: 'Flash requests' },
+  quickjob: { max: 3, label: 'quick job posts' },
+  job: { max: 3, label: 'job posts' },
+  house: { max: 2, label: 'house posts' },
+  event: { max: 3, label: 'event posts' },
+  group: { max: 2, label: 'new groups' },
+  apply: { max: 15, label: 'job applications' },
+  offer: { max: 10, label: 'fixer offers' },
+  viewing: { max: 5, label: 'viewing bookings' },
+  roommate: { max: 10, label: 'roommate requests' },
+  report: { max: 10, label: 'reports' },
+  ticket: { max: 6, label: 'ticket purchases' },
 }

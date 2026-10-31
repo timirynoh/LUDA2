@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowDownUp, BadgeCheck, CheckCircle2, Clock, Lock, MapPin, QrCode, ShieldAlert, ShieldCheck, Siren, Star } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { DemoNote, Header, PinPad, Segmented, Sheet, Success } from '../components/ui'
 import { P2P_FEE } from '../config'
 import { handshakeCode, randomSecret, verifyHandshake } from '../lib/crypto'
@@ -40,7 +40,7 @@ export default function Exchange() {
 }
 
 function Convert() {
-  const { s, set, t, addTx, reward } = useStore()
+  const { s, set, t, addTx, reward, gate } = useStore()
   const { rates, live } = useRates()
   const home = COUNTRIES.find((c) => c.code === s.country)!
   const [from, setFrom] = useState(home.currency === 'TRY' ? 'USD' : home.currency)
@@ -53,6 +53,7 @@ function Convert() {
   const all = Object.keys(CURRENCIES)
 
   const go = () => {
+    if (!gate(2, 'Convert currency')) return
     set((p) => ({ ...p, balances: { ...p.balances, [from]: (p.balances[from] ?? 0) - amt, [to]: (p.balances[to] ?? 0) + out } }))
     addTx({ type: 'convert', amount: out, currency: to, label: `Converted ${fmt(amt, from)} → ${to}` })
     reward(s.quests.includes('fx') ? 10 : 40, { quest: 'fx', badge: 'fx_wizard', title: 'Currency converted' })
@@ -103,7 +104,7 @@ function Convert() {
 interface Offer { id: string; name: string; flag: string; rating: number; trades: number; rate: number; min: number; max: number; spot: string; km: number; mins: number }
 
 function P2P() {
-  const { s, set, t, addTx, checkPin } = useStore()
+  const { s, set, t, addTx, checkPin, gate } = useStore()
   const { rates } = useRates()
   const home = COUNTRIES.find((c) => c.code === s.country)!
   const hc = home.currency === 'TRY' ? 'USD' : home.currency
@@ -162,11 +163,11 @@ function P2P() {
         </ol>
       </div>
 
-      {!s.verified && (
-        <Link to="/profile" className="card flex items-center gap-3 border-gold-400/40 bg-gold-400/10">
+      {!(s.verified && s.phoneVerified) && (
+        <button onClick={() => gate(2, 'SafeSwap in-person exchange')} className="card flex items-center gap-3 border-gold-400/40 bg-gold-400/10 text-start">
           <ShieldAlert className="text-gold-300" />
-          <div className="flex-1 text-sm"><p className="font-semibold">Verify your identity to trade</p><p className="text-slate-400">Takes 1 minute · +150 XP</p></div>
-        </Link>
+          <div className="flex-1 text-sm"><p className="font-semibold">Verify to start trading</p><p className="text-slate-400">Phone + ID · about 2 minutes · +200 XP</p></div>
+        </button>
       )}
 
       {live.length > 0 && (
@@ -207,7 +208,7 @@ function P2P() {
           </div>
           <div className="mt-3 flex items-center justify-between">
             <p className="flex items-center gap-1 text-xs text-slate-400"><MapPin size={12} />{o.spot} · <Clock size={12} />~{o.mins}m reply</p>
-            <button className="btn-primary px-4 py-2 text-sm" disabled={!s.verified} onClick={() => { setOffer(o); setStage('form'); setErr(''); setTl(String(Math.min(1000, o.max))); setSpot(o.spot) }}>Trade</button>
+            <button className="btn-primary px-4 py-2 text-sm" onClick={() => { if (!gate(2, 'SafeSwap in-person exchange')) return; setOffer(o); setStage('form'); setErr(''); setTl(String(Math.min(1000, o.max))); setSpot(o.spot) }}>Trade</button>
           </div>
         </motion.div>
       ))}

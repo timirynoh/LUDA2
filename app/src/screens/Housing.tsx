@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { PostGate } from '../components/PostGate'
 import { DemoNote, Header, Segmented, Sheet, Success } from '../components/ui'
 import { isVisible } from '../lib/posting'
+import { checkText } from '../lib/moderation'
 import { StatusChip } from './Jobs'
 import { AREAS, listingsFor, REVIEWS, roommatesFor, type HomeType, type Listing } from '../lib/housing'
 import { CITIES } from '../lib/data'
@@ -54,7 +55,7 @@ function useAllListings() {
 }
 
 function Homes() {
-  const { s, set } = useStore()
+  const { s, set, gate } = useStore()
   const all = useAllListings()
   const [type, setType] = useState<'All' | HomeType>('All')
   const [furnished, setFurnished] = useState(false)
@@ -123,7 +124,7 @@ function Homes() {
       {!list.length && <p className="py-10 text-center text-sm text-slate-400">No places match. Try widening your filters.</p>}
 
       <div className="pointer-events-none fixed inset-x-0 bottom-28 z-30 mx-auto flex max-w-md justify-end px-5">
-        <button onClick={() => setPosting(true)} className="btn-gold pointer-events-auto rounded-full px-5 shadow-2xl"><Plus size={18} /> List a room</button>
+        <button onClick={() => gate(1, 'Post your house or room') && setPosting(true)} className="btn-gold pointer-events-auto rounded-full px-5 shadow-2xl"><Plus size={18} /> List a room</button>
       </div>
 
       {open && <ListingSheet listing={open} onClose={() => setOpen(null)} />}
@@ -133,7 +134,7 @@ function Homes() {
 }
 
 function ListingSheet({ listing: l, onClose }: { listing: Listing; onClose: () => void }) {
-  const { s, set, reward, toast } = useStore()
+  const { s, set, reward, toast, gate, allow } = useStore()
   const days = useMemo(() => Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i + 1); return d }), [])
   const [day, setDay] = useState(0)
   const [time, setTime] = useState('17:00')
@@ -141,6 +142,7 @@ function ListingSheet({ listing: l, onClose }: { listing: Listing; onClose: () =
   const [reporting, setReporting] = useState(false)
   const confirmedDays = l.mine ? Math.floor((Date.now() - (l.confirmedAt ?? Date.now())) / 86_400_000) : l.posted % 7
   const report = (why: string) => {
+    if (!allow('report')) return
     set((p) => ({ ...p, reports: [...p.reports, l.id] }))
     reward(10, { badge: 'guardian', title: `Reported: ${why}` })
     toast({ title: 'Hidden for you. Luda will check it', emoji: '🛡️' })
@@ -205,7 +207,7 @@ function ListingSheet({ listing: l, onClose }: { listing: Listing; onClose: () =
           </div>
           <div className="grid grid-cols-[auto_1fr] gap-2">
             <button className="btn-ghost" onClick={() => toast({ title: `Message sent to ${l.landlord}`, emoji: '💬' })}><MessageCircle size={18} /></button>
-            <button className="btn-primary py-4" disabled={l.mine} onClick={book}><CalendarCheck size={18} /> Book viewing</button>
+            <button className="btn-primary py-4" disabled={l.mine} onClick={() => gate(1, 'Book house viewings') && allow('viewing') && book()}><CalendarCheck size={18} /> Book viewing</button>
           </div>
           <p className="text-center text-[11px] text-slate-500">🔒 Coming soon: pay your deposit into Luda escrow. It's released to the landlord only after you get the keys.</p>
           {!l.mine && (reporting ? (
@@ -220,12 +222,15 @@ function ListingSheet({ listing: l, onClose }: { listing: Listing; onClose: () =
 }
 
 function PostSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { s, set, reward } = useStore()
+  const { s, set, reward, toast, allow } = useStore()
   const areas = AREAS[s.city] ?? AREAS.lefkosa
   const [f, setF] = useState({ type: 'Room' as HomeType, area: areas[0], price: '200', furnished: true, bills: false, note: '', address: '', photos: 0 })
   const [done, setDone] = useState(false)
 
   const submit = () => {
+    const c = checkText(`${f.note} ${f.address}`)
+    if (!c.ok) return toast({ title: c.scam ? `Blocked: ${c.scam}` : 'Please remove inappropriate words', emoji: '⚠️' })
+    if (!allow('house', `${f.note} ${f.address}`)) return
     const now = Date.now()
     const l: Listing = {
       status: s.isAdmin || (s.proofs.housing && s.proofs.housing !== 'photos') ? 'live' : 'pending', official: s.isAdmin, createdAt: now, confirmedAt: now, photos: f.photos,
@@ -277,10 +282,10 @@ function PostSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 function Roommates() {
-  const { s, set, reward } = useStore()
+  const { s, set, reward, gate, allow } = useStore()
   const people = useMemo(() => roommatesFor(s.city), [s.city])
   const connect = (id: string, name: string) => {
-    if (s.connections.includes(id)) return
+    if (s.connections.includes(id) || !gate(1, 'Find roommates') || !allow('roommate')) return
     set((p) => ({ ...p, connections: [...p.connections, id] }))
     reward(15, { badge: 'good_neighbour', title: `Request sent to ${name}` })
   }

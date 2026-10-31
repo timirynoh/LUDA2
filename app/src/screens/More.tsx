@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Siren, User } from 'lucide-react'
+import { LifeBuoy, ShieldCheck, Siren, User } from 'lucide-react'
 import { ACTIONS } from '../lib/actions'
 import { Link } from 'react-router-dom'
 import { Header } from '../components/ui'
@@ -16,7 +16,7 @@ export default function More() {
     <div>
       <Header title={t('more.title')} />
       <div className="grid grid-cols-2 gap-3 px-5">
-        {[...items, { id: 'profile', to: '/profile', icon: User, key: 'profile.title', c: 'from-slate-400 to-slate-600' }].map(({ id, to, icon: Icon, key, c }, i) => (
+        {[...items, { id: 'security', to: '/security', icon: ShieldCheck, key: 'Security Center', c: 'from-emerald-500 to-teal-800' }, { id: 'help', to: '/help', icon: LifeBuoy, key: 'Help & Support', c: 'from-sky-400 to-blue-700' }, { id: 'profile', to: '/profile', icon: User, key: 'profile.title', c: 'from-slate-400 to-slate-600' }].map(({ id, to, icon: Icon, key, c }, i) => (
           <motion.div key={id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
             <Link to={to} className="card flex h-full flex-col gap-3">
               <div className={`grid size-12 place-items-center rounded-2xl bg-gradient-to-br ${c} text-white shadow-lg`}><Icon size={22} /></div>

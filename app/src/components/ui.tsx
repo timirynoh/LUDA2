@@ -61,7 +61,7 @@ export function PinPad({ onDone, error }: { onDone: (pin: string) => void; error
   useEffect(() => { if (error) setPin('') }, [error])
   const press = (d: string) => setPin((p) => (p.length < 4 ? p + d : p))
   return (
-    <div className="flex flex-col items-center gap-6">
+    <div className="flex w-full flex-col items-center gap-6">
       <motion.div className="flex gap-4" animate={error ? { x: [0, -10, 10, -6, 6, 0] } : {}} key={error}>
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className={`size-4 rounded-full transition ${i < pin.length ? 'scale-110 bg-mint-400 shadow-[0_0_12px] shadow-mint-400' : 'bg-fg/15'}`} />

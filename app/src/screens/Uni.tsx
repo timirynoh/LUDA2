@@ -299,7 +299,7 @@ function Deadlines({ uni }: { uni: string }) {
 /* ------------------------------ Fees ------------------------------ */
 
 function Fees({ uni }: { uni: string }) {
-  const { s, set, addTx, reward, checkPin } = useStore()
+  const { s, set, addTx, reward, checkPin, gate } = useStore()
   const { yearly, items } = feesForUni(uni)
   const [paying, setPaying] = useState<string | null>(null)
   const [err, setErr] = useState('')
@@ -330,7 +330,7 @@ function Fees({ uni }: { uni: string }) {
             <div className={`grid size-10 place-items-center rounded-xl ${isPaid ? 'bg-mint-400/15 text-mint-300' : d < 0 ? 'bg-rose-500/15 text-rose-300' : 'bg-gold-400/15 text-gold-300'}`}>{isPaid ? <Check size={18} /> : '💳'}</div>
             <div className="flex-1"><p className="text-sm font-semibold">{f.title}</p><p className={`text-xs ${!isPaid && d < 0 ? 'text-rose-300' : 'text-slate-400'}`}>{isPaid ? 'Paid' : d < 0 ? `Overdue by ${-d} days` : `Due in ${d} days`} · {fmt(f.amount, 'USD')}</p></div>
             {!isPaid && <div className="flex flex-col items-end gap-1">
-              <button className="btn-gold px-3 py-2 text-xs" onClick={() => { setPaying(f.id); setErr(''); setDone(false) }}>Pay</button>
+              <button className="btn-gold px-3 py-2 text-xs" onClick={() => { if (!gate(2, 'Pay tuition')) return; setPaying(f.id); setErr(''); setDone(false) }}>Pay</button>
               <button className="text-[10px] text-slate-500 underline" onClick={() => set((p) => ({ ...p, paidFees: [...p.paidFees, f.id] }))}>Paid elsewhere</button>
             </div>}
           </div>

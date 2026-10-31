@@ -1,6 +1,6 @@
 export interface Ticket {
   id: string; code: string; operator: string; from: string; to: string; date: string; time: string
-  returnDate?: string; returnTime?: string; pax: number; total: number; saved: number; paidWith: 'wallet' | 'card'
+  returnDate?: string; returnTime?: string; pax: number; total: number; saved: number; paidWith: 'wallet' | 'card' | 'home'; paidCur?: string; paidAmount?: number
   createdAt: number; status: 'valid' | 'used' | 'refunded'; kind: 'bus' | 'shuttle'
   holder: string; secret: string; refundedAt?: number
 }

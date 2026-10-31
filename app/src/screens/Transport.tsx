@@ -9,7 +9,8 @@ import { SaverCard, SaverSheet } from '../components/RideSaver'
 import { handshakeCode, randomSecret } from '../lib/crypto'
 import { quote, refundsThisMonth, saverState } from '../lib/saver'
 import { CITIES, SAFE_SPOTS } from '../lib/data'
-import { fmt } from '../lib/fx'
+import { convert, fmt, useRates } from '../lib/fx'
+import { COUNTRIES, CURRENCIES } from '../lib/data'
 import { uid, useStore } from '../lib/store'
 import { departures, luhn, ticketCode, type Ticket } from '../lib/tickets'
 import { ERCAN, km, routesFrom, taxiFare } from '../lib/transport'
@@ -75,9 +76,9 @@ function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
   const refundsLeft = SAVER.maxRefundsPerMonth - refundsThisMonth(s.tickets)
   const refund = () => {
     if (tooLate) return toast({ title: `No refunds in the last ${SAVER.noRefundMinutes} minutes before departure`, emoji: '⛔' })
-    set((p) => ({ ...p, tickets: p.tickets.map((x) => (x.id === tk.id ? { ...x, status: 'refunded', refundedAt: Date.now() } : x)), balances: tk.paidWith === 'wallet' ? { ...p.balances, TRY: (p.balances.TRY ?? 0) + tk.total } : p.balances }))
-    if (tk.paidWith === 'wallet') addTx({ type: 'bill', amount: tk.total, currency: 'TRY', label: `Refund · ${tk.operator} ${tk.from}→${tk.to}` })
-    toast({ title: tk.paidWith === 'wallet' ? 'Refunded to your wallet' : 'Refund sent to your card (3–5 days)', emoji: '↩️' })
+    set((p) => ({ ...p, tickets: p.tickets.map((x) => (x.id === tk.id ? { ...x, status: 'refunded', refundedAt: Date.now() } : x)), balances: tk.paidWith === 'wallet' ? { ...p.balances, TRY: (p.balances.TRY ?? 0) + tk.total } : tk.paidWith === 'home' && tk.paidCur ? { ...p.balances, [tk.paidCur]: (p.balances[tk.paidCur] ?? 0) + (tk.paidAmount ?? 0) } : p.balances }))
+    if (tk.paidWith !== 'card') addTx({ type: 'bill', amount: tk.paidWith === 'home' ? tk.paidAmount ?? 0 : tk.total, currency: tk.paidWith === 'home' ? tk.paidCur ?? 'TRY' : 'TRY', label: `Refund · ${tk.operator} ${tk.from}→${tk.to}` })
+    toast({ title: tk.paidWith === 'card' ? 'Refund sent to your card (3–5 days)' : 'Refunded to your wallet', emoji: '↩️' })
     onClose()
   }
   return (
@@ -109,7 +110,7 @@ function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
 interface Trip { from: string; to: string; operator: string; official: { single: number; ret: number }; every: number; estimated?: boolean; kind: Ticket['kind']; first?: string; last?: string }
 
 function BusTickets() {
-  const { s } = useStore()
+  const { s, gate } = useStore()
   const [trip, setTrip] = useState<Trip | null>(null)
   const [dir, setDir] = useState<'gl' | 'lg'>(s.city === 'lefkosa' ? 'lg' : 'gl')
   const from = dir === 'gl' ? 'Girne' : 'Lefkoşa', to = dir === 'gl' ? 'Lefkoşa' : 'Girne'
@@ -135,7 +136,7 @@ function BusTickets() {
       </div>
       <p className="label">Choose your bus</p>
       {GIRNE_LEFKOSA.operators.map((o) => (
-        <button key={o.id} onClick={() => setTrip({ from, to, operator: o.name, official: { single: GIRNE_LEFKOSA.single, ret: GIRNE_LEFKOSA.return }, every: o.every, kind: 'bus' })} className="card flex items-center gap-3 text-start">
+        <button key={o.id} onClick={() => gate(1, 'Buy bus tickets') && setTrip({ from, to, operator: o.name, official: { single: GIRNE_LEFKOSA.single, ret: GIRNE_LEFKOSA.return }, every: o.every, kind: 'bus' })} className="card flex items-center gap-3 text-start">
           <div className={`grid size-12 place-items-center rounded-2xl bg-gradient-to-br ${o.color} text-white`}><Bus /></div>
           <div className="flex-1"><p className="font-semibold">{o.name}</p><p className="text-xs text-slate-400">{from} → {to} · every {o.every} min · ~30 min</p></div>
           <span className="chip bg-mint-400/15 py-2 text-mint-300">Book</span>
@@ -144,7 +145,7 @@ function BusTickets() {
 
       <p className="label mt-3">Other routes from {city.name}</p>
       {others.map((r) => (
-        <button key={r.to.id} onClick={() => setTrip({ from: city.name, to: r.to.name, operator: 'Intercity bus', official: { single: r.fare, ret: r.fare * 2 - 20 }, every: r.every.includes('15') ? 30 : 60, estimated: true, kind: 'bus', first: '07:00', last: '19:00' })} className="card text-start">
+        <button key={r.to.id} onClick={() => gate(1, 'Buy bus tickets') && setTrip({ from: city.name, to: r.to.name, operator: 'Intercity bus', official: { single: r.fare, ret: r.fare * 2 - 20 }, every: r.every.includes('15') ? 30 : 60, estimated: true, kind: 'bus', first: '07:00', last: '19:00' })} className="card text-start">
           <div className="flex items-center gap-2 font-semibold">{city.name} <ArrowRight size={14} className="text-slate-500 rtl:rotate-180" /> {r.to.name}<span className="ms-auto font-extrabold text-mint-300">₺{price(r.fare, false)}</span></div>
           <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-400"><span><Clock size={11} className="inline" /> ~{r.mins} min</span><span>{r.every}</span><span><MapPin size={11} className="inline" /> {r.from}</span></p>
         </button>
@@ -157,7 +158,7 @@ function BusTickets() {
 /* ------------------------------ Booking ------------------------------ */
 
 function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
-  const { s, set, addTx, reward, checkPin } = useStore()
+  const { s, set, addTx, reward, checkPin, gate, allow } = useStore()
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d.toISOString().slice(0, 10) }), [])
   const [ret, setRet] = useState(false)
   const [date, setDate] = useState(days[0])
@@ -169,7 +170,10 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const rd = rdate < date ? date : rdate
   const rtimes = departures(rd, trip.first, trip.last, trip.every).filter((t) => rd !== date || t > goTime)
   const [pax, setPax] = useState(1)
-  const [pay, setPay] = useState<'wallet' | 'card'>('wallet')
+  const [pay, setPay] = useState<'wallet' | 'card' | 'home'>('wallet')
+  const { rates } = useRates()
+  const hc = COUNTRIES.find((c) => c.code === s.country)?.currency ?? 'NGN'
+  const showHome = hc !== 'TRY'
   const [card, setCard] = useState({ num: '', exp: '', cvv: '' })
   const [stage, setStage] = useState<'form' | 'pin' | 'done'>('form')
   const [err, setErr] = useState('')
@@ -180,8 +184,10 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const official = q.full, total = q.total, saved = q.saved
   const [saverOpen, setSaverOpen] = useState(false)
   const bal = s.balances.TRY ?? 0
+  const homeBal = s.balances[hc] ?? 0
+  const homeNeeded = convert(rates, total, 'TRY', hc) * 1.008 // live rate + 0.8% FX spread
   const cardOk = luhn(card.num) && /^\d{2}\/\d{2}$/.test(card.exp) && /^\d{3,4}$/.test(card.cvv)
-  const canPay = !!(time || times[0]) && (!ret || !!(rtime || rtimes[0])) && (pay === 'wallet' ? bal >= total : cardOk)
+  const canPay = !!(time || times[0]) && (!ret || !!(rtime || rtimes[0])) && (pay === 'wallet' ? bal >= total : pay === 'home' ? homeBal >= homeNeeded : cardOk)
 
   const issue = () => {
     const tk: Ticket = {
@@ -189,18 +195,24 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
       returnDate: ret ? rd : undefined, returnTime: ret ? rtime || rtimes[0] : undefined, pax, total, saved, paidWith: pay, createdAt: Date.now(), status: 'valid', kind: trip.kind,
       holder: s.name, secret: randomSecret(),
     }
-    set((p) => ({ ...p, tickets: [tk, ...p.tickets], balances: pay === 'wallet' ? { ...p.balances, TRY: (p.balances.TRY ?? 0) - total } : p.balances }))
-    addTx({ type: 'bill', amount: -total, currency: 'TRY', label: `${trip.operator} · ${trip.from}→${trip.to}`, meta: `${pay === 'card' ? 'card' : 'wallet'} · saved ₺${saved}` })
+    if (pay === 'home') { tk.paidCur = hc; tk.paidAmount = homeNeeded }
+    set((p) => ({ ...p, tickets: [tk, ...p.tickets], balances: pay === 'wallet' ? { ...p.balances, TRY: (p.balances.TRY ?? 0) - total } : pay === 'home' ? { ...p.balances, [hc]: (p.balances[hc] ?? 0) - homeNeeded } : p.balances }))
+    addTx({ type: 'bill', amount: pay === 'home' ? -homeNeeded : -total, currency: pay === 'home' ? hc : 'TRY', label: `${trip.operator} · ${trip.from}→${trip.to}`, meta: `${pay === 'card' ? 'card' : pay === 'home' ? `${hc} wallet` : 'wallet'}${saved ? ` · saved ₺${saved}` : ''}` })
     reward(s.quests.includes('ticket') ? 10 : 50, { quest: 'ticket', badge: 'traveller', title: saved ? `Saved ₺${saved} on your ticket` : 'Ticket booked' })
     setMade(tk); setStage('done')
   }
-  const submit = () => { setErr(''); if (pay === 'wallet') setStage('pin'); else issue() }
+  const submit = () => {
+    setErr('')
+    if (pay !== 'card' && !gate(2, 'Pay from your Luda wallet')) return
+    if (!allow('ticket')) return
+    if (pay !== 'card') setStage('pin'); else issue()
+  }
 
   return (
     <Sheet open onClose={onClose} title={`${trip.operator}`}>
       {stage === 'done' && made ? <Success title="Ticket booked 🎟️" sub={`${made.from} → ${made.to} · ${made.time}. Code ${made.code}.${made.saved ? ` You saved ₺${made.saved}!` : ''} Find it under "My tickets".`} onClose={onClose} /> :
         stage === 'pin' ? (
-          <div className="flex flex-col items-center gap-3"><p className="text-sm text-slate-300">Pay {fmt(total, 'TRY')} from your wallet</p>
+          <div className="flex flex-col items-center gap-3"><p className="text-sm text-slate-300">Pay {pay === 'home' ? fmt(homeNeeded, hc) : fmt(total, 'TRY')} from your wallet</p>
             <PinPad error={err} onDone={async (pin) => ((await checkPin(pin)) ? issue() : setErr('Wrong PIN'))} /></div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -224,8 +236,9 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
               <div className="mt-1 flex justify-between text-lg font-extrabold"><span>You pay</span><span>{fmt(total, 'TRY')}</span></div>
               {trip.estimated && <p className="mt-1 text-[11px] text-slate-500">Fare estimated for this route in the demo.</p>}
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setPay('wallet')} className={`glass flex flex-col items-start gap-1 rounded-2xl p-3 text-start ${pay === 'wallet' ? 'border-mint-400/60 bg-mint-400/10' : ''}`}><Wallet size={18} /><span className="text-sm font-semibold">Luda wallet</span><span className="text-xs text-slate-400">{fmt(bal, 'TRY')}</span></button>
+            <div className={`grid gap-2 ${showHome ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <button onClick={() => setPay('wallet')} className={`glass flex flex-col items-start gap-1 rounded-2xl p-3 text-start ${pay === 'wallet' ? 'border-mint-400/60 bg-mint-400/10' : ''}`}><Wallet size={18} /><span className="text-sm font-semibold">Lira wallet</span><span className="text-xs text-slate-400">{fmt(bal, 'TRY')}</span></button>
+              {showHome && <button onClick={() => setPay('home')} className={`glass flex flex-col items-start gap-1 rounded-2xl p-3 text-start ${pay === 'home' ? 'border-mint-400/60 bg-mint-400/10' : ''}`}><span className="text-lg leading-none">{CURRENCIES[hc]?.flag}</span><span className="text-sm font-semibold">{hc} wallet</span><span className="text-xs text-slate-400">{fmt(homeBal, hc, { compact: true })}</span></button>}
               <button onClick={() => setPay('card')} className={`glass flex flex-col items-start gap-1 rounded-2xl p-3 text-start ${pay === 'card' ? 'border-mint-400/60 bg-mint-400/10' : ''}`}><CreditCard size={18} /><span className="text-sm font-semibold">Bank card</span><span className="text-xs text-slate-400">Visa · Mastercard</span></button>
             </div>
             <AnimatePresence>
@@ -238,7 +251,9 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
                 </motion.div>
               )}
             </AnimatePresence>
-            {pay === 'wallet' && bal < total && <p className="text-sm text-rose-300">Not enough TL in your wallet. <Link to="/wallet?a=deposit" className="underline">Top up</Link> or pay by card.</p>}
+            {pay === 'home' && <p className="text-xs text-slate-400">≈ {fmt(homeNeeded, hc)} at today's rate (incl. 0.8% conversion).</p>}
+            {pay === 'wallet' && bal < total && <p className="text-sm text-rose-300">Not enough TL in your wallet. <Link to="/wallet?a=deposit" className="underline">Top up</Link>{showHome ? `, pay with your ${hc} wallet` : ''} or pay by card.</p>}
+            {pay === 'home' && homeBal < homeNeeded && <p className="text-sm text-rose-300">Not enough {hc}. <Link to="/wallet?a=deposit" className="underline">Top up</Link> or pay by card.</p>}
             <button className="btn-primary py-4" disabled={!canPay} onClick={submit}><TicketIcon size={18} /> Pay {fmt(total, 'TRY')}</button>
             {saverOpen && <SaverSheet onClose={() => setSaverOpen(false)} />}
           </div>
@@ -272,7 +287,7 @@ function DayTime({ label, days, date, setDate, times, time, setTime }: { label: 
 /* ------------------------------ Airport (KIBHAS) ------------------------------ */
 
 function Airport() {
-  const { s } = useStore()
+  const { s, gate } = useStore()
   const city = CITIES.find((c) => c.id === s.city)!
   const [toAirport, setToAirport] = useState(true)
   const [book, setBook] = useState<Trip | null>(null)
@@ -289,7 +304,7 @@ function Airport() {
         <p className="mt-2"><span className="text-3xl font-extrabold">₺{active ? fare - TICKET_DISCOUNT.single : fare}</span> {active && <span className="text-sm text-white/60 line-through">₺{fare}</span>} <span className="text-xs text-white/70">per person{active ? '' : ` · ₺${fare - TICKET_DISCOUNT.single} with Ride Saver`}</span></p>
       </div>
       <Segmented value={toAirport ? 'to' : 'from'} onChange={(v) => setToAirport(v === 'to')} options={[{ value: 'to', label: '🛫 To the airport' }, { value: 'from', label: '🛬 From the airport' }]} />
-      <button className="btn-primary py-4" onClick={() => setBook({ from: toAirport ? city.name : 'Ercan Airport', to: toAirport ? 'Ercan Airport' : city.name, operator: 'KIBHAS', official: { single: fare, ret: fare * 2 }, every: 60, kind: 'shuttle', first: toAirport ? '04:00' : '06:00', last: toAirport ? '22:00' : '23:59' })}>
+      <button className="btn-primary py-4" onClick={() => gate(1, 'Book airport shuttle') && setBook({ from: toAirport ? city.name : 'Ercan Airport', to: toAirport ? 'Ercan Airport' : city.name, operator: 'KIBHAS', official: { single: fare, ret: fare * 2 }, every: 60, kind: 'shuttle', first: toAirport ? '04:00' : '06:00', last: toAirport ? '22:00' : '23:59' })}>
         <TicketIcon size={18} /> Book KIBHAS seat
       </button>
       <div className="card text-xs text-slate-400">

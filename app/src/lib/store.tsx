@@ -9,6 +9,8 @@ import type { Ticket } from './tickets'
 import type { FlashReq, MyGig } from './flash'
 import { translate } from './i18n'
 import { hashPin } from './crypto'
+import { tierOf, type Tier } from './access'
+import { fingerprint, isDuplicate, limitInfo } from './antispam'
 
 export type TxType = 'deposit' | 'withdraw' | 'convert' | 'bill' | 'p2p' | 'reward'
 export interface Tx { id: string; type: TxType; amount: number; currency: string; label: string; ts: number; meta?: string }
@@ -67,6 +69,17 @@ export interface State {
   flash: FlashReq[]
   saver: { status: 'none' | 'member' | 'declined'; joinedAt?: number }
   createdAt: number
+  toured: boolean
+  activity: Record<string, number[]>
+  account: { email: string; username: string; passHash: string; salt: string; stay: boolean } | null
+  signedIn: boolean
+  lockOnOpen: boolean
+  security: { frozen: boolean; twoStep: boolean; hideBalances: boolean; dailyWithdraw: number; autoLockMin: number }
+  logins: { ts: number; how: string; device: string }[]
+  inbox: { id: string; ts: number; emoji: string; title: string; read: boolean; to?: string }[]
+  referral: string
+  recentPosts: { f: string; t: number }[]
+  deposits: number
   gigs: MyGig[]
 }
 
@@ -86,7 +99,8 @@ export const initialState: State = {
   myJobs: [], applications: [], myEvents: [], rsvps: [],
   university: '', classes: [], remind: { on: false, minutes: 15 }, paidFees: [],
   joinedGroups: ['g-help'], myGroups: [], chatMsgs: {}, lastRead: {}, mutedGroups: [], blockedUsers: [], hiddenMsgs: [],
-  chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {}, flash: [], gigs: [], saver: { status: 'none' }, createdAt: Date.now(),
+  chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {}, flash: [], gigs: [], saver: { status: 'none' }, createdAt: Date.now(), toured: false, account: null, signedIn: false, lockOnOpen: true,
+  security: { frozen: false, twoStep: false, hideBalances: false, dailyWithdraw: 20000, autoLockMin: 3 }, logins: [], inbox: [], referral: '', activity: {}, recentPosts: [], deposits: 0,
 }
 
 function load(): State {
@@ -95,6 +109,8 @@ function load(): State {
     if (!raw) return initialState
     const s = { ...initialState, ...JSON.parse(raw) } as State
     s.sections = { ...initialState.sections, ...s.sections }
+    s.security = { ...initialState.security, ...s.security }
+    if (s.account && !s.account.stay) s.signedIn = false
     // daily streak bookkeeping
     const t = today()
     if (s.lastDay !== t) {
@@ -121,8 +137,15 @@ interface Ctx {
   /** Award XP, optionally completing a quest and unlocking a badge. */
   reward: (xp: number, opts?: { quest?: string; badge?: string; title?: string }) => void
   addTx: (tx: Omit<Tx, 'id' | 'ts'>) => void
+  notify: (emoji: string, title: string, to?: string) => void
   checkPin: (pin: string) => Promise<boolean>
   reset: () => void
+  /** Returns true if the user's tier allows it; otherwise opens the unlock sheet. */
+  gate: (tier: Tier, what: string) => boolean
+  gateReq: { tier: Tier; what: string } | null
+  closeGate: () => void
+  /** Anti-spam: checks the daily limit (and duplicate text), records the action if allowed. */
+  allow: (kind: string, text?: string) => boolean
 }
 
 const C = createContext<Ctx | null>(null)
@@ -131,6 +154,7 @@ export const uid = () => Math.random().toString(36).slice(2, 10)
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<State>(load)
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [gateReq, setGateReq] = useState<{ tier: Tier; what: string } | null>(null)
 
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(s)) } catch { /* storage unavailable */ } }, [s])
 
@@ -174,11 +198,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setTimeout(() => { if (unlocked) toast({ title: `Badge unlocked: ${BADGES[unlocked].name}`, emoji: BADGES[unlocked].emoji, xp: 25 }) }, 400)
   }, [toast])
 
+  const notify = useCallback<Ctx['notify']>((emoji, title, to) => {
+    setS((p) => ({ ...p, inbox: [{ id: uid(), ts: Date.now(), emoji, title, read: false, to }, ...p.inbox].slice(0, 100) }))
+  }, [])
   const addTx = useCallback<Ctx['addTx']>((tx) => {
-    setS((p) => ({ ...p, txs: [{ ...tx, id: uid(), ts: Date.now() }, ...p.txs].slice(0, 200) }))
+    setS((p) => ({
+      ...p, txs: [{ ...tx, id: uid(), ts: Date.now() }, ...p.txs].slice(0, 200),
+      // Every money movement creates an alert so nothing happens silently.
+      inbox: tx.amount ? [{ id: uid(), ts: Date.now(), emoji: tx.amount > 0 ? '💸' : '🧾', title: `${tx.amount > 0 ? 'Money in' : 'Money out'}: ${tx.label}`, read: false, to: '/wallet' }, ...p.inbox].slice(0, 100) : p.inbox,
+    }))
   }, [])
 
   const checkPin = useCallback(async (pin: string) => (await hashPin(pin, s.salt)) === s.pinHash, [s.salt, s.pinHash])
+
+  const gate = useCallback((tier: Tier, what: string) => {
+    if (tierOf(s) < tier) { setGateReq({ tier, what }); return false }
+    if (tier === 2 && s.security.frozen && what !== 'Everything in Luda') { toast({ title: 'Your wallet is frozen. Unfreeze it in Security Center', emoji: '🧊' }); return false }
+    return true
+  }, [s, toast])
+  const closeGate = useCallback(() => setGateReq(null), [])
+  const allow = useCallback((kind: string, text?: string) => {
+    if (s.isAdmin) return true
+    const l = limitInfo(s, kind)
+    if (!l.ok) { toast({ title: `Daily limit reached: max ${l.max} ${l.label} per day. Try again tomorrow`, emoji: '🛑' }); return false }
+    if (text && isDuplicate(s, text)) { toast({ title: "You've already posted this. Duplicate posts are blocked", emoji: '🔁' }); return false }
+    const now = Date.now()
+    setS((p) => ({
+      ...p, activity: { ...p.activity, [kind]: [...(p.activity[kind] ?? []).filter((x) => now - x < 86_400_000), now] },
+      recentPosts: text ? [...p.recentPosts.filter((x) => now - x.t < 7 * 86_400_000), { f: fingerprint(text), t: now }].slice(-100) : p.recentPosts,
+    }))
+    return true
+  }, [s, toast])
 
   const reset = useCallback(() => { try { localStorage.removeItem(KEY) } catch { /* ignore */ } setS({ ...initialState }) }, [])
 
@@ -190,8 +240,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { idx: idx + 1, name: cur.name, emoji: cur.emoji, progress, next: nxt?.min ?? cur.min }
   }, [s.xp])
 
-  const value = useMemo(() => ({ s, set, t, rtl, level, toasts, toast, reward, addTx, checkPin, reset }),
-    [s, set, t, rtl, level, toasts, toast, reward, addTx, checkPin, reset])
+  const value = useMemo(() => ({ s, set, t, rtl, level, toasts, toast, reward, addTx, notify, checkPin, reset, gate, gateReq, closeGate, allow }),
+    [s, set, t, rtl, level, toasts, toast, reward, addTx, notify, checkPin, reset, gate, gateReq, closeGate, allow])
   return <C.Provider value={value}>{children}</C.Provider>
 }
 

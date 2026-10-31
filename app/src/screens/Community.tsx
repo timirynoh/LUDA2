@@ -8,6 +8,7 @@ import { eventsFor, type Ev, type EvCat } from '../lib/community'
 import { CITIES, SAFE_SPOTS } from '../lib/data'
 import { downloadIcs } from '../lib/ics'
 import { isVisible } from '../lib/posting'
+import { checkText } from '../lib/moderation'
 import { uid, useStore } from '../lib/store'
 import { StatusChip } from './Jobs'
 
@@ -15,7 +16,7 @@ const CATS: ('All' | EvCat)[] = ['All', 'Worship', 'Culture', 'Sports', 'Career'
 const when = (ts: number) => new Date(ts).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 export default function Community() {
-  const { s, set, t } = useStore()
+  const { s, set, t, gate } = useStore()
   const [cat, setCat] = useState<'All' | EvCat>('All')
   const [open, setOpen] = useState<Ev | null>(null)
   const [posting, setPosting] = useState(false)
@@ -75,7 +76,7 @@ export default function Community() {
           </section>
         )}
         <div className="pointer-events-none fixed inset-x-0 bottom-28 z-30 mx-auto flex max-w-md justify-end px-5">
-          <button onClick={() => setPosting(true)} className="btn-gold pointer-events-auto rounded-full px-5 shadow-2xl"><Plus size={18} /> Post event</button>
+          <button onClick={() => gate(1, 'Post events') && setPosting(true)} className="btn-gold pointer-events-auto rounded-full px-5 shadow-2xl"><Plus size={18} /> Post event</button>
         </div>
       </div>
       <DemoNote />
@@ -86,9 +87,10 @@ export default function Community() {
 }
 
 function EventSheet({ ev: e, onClose }: { ev: Ev; onClose: () => void }) {
-  const { s, set, reward, toast } = useStore()
+  const { s, set, reward, toast, gate, allow } = useStore()
   const isGoing = s.rsvps.includes(e.id)
   const rsvp = () => {
+    if (!isGoing && !gate(1, 'RSVP to events')) return
     set((p) => ({ ...p, rsvps: isGoing ? p.rsvps.filter((x) => x !== e.id) : [...p.rsvps, e.id] }))
     if (!isGoing) reward(s.quests.includes('event') ? 5 : 40, { quest: 'event', badge: 'social', title: "You're going!" })
   }
@@ -111,18 +113,21 @@ function EventSheet({ ev: e, onClose }: { ev: Ev; onClose: () => void }) {
           <button className="btn-ghost" onClick={cal} aria-label="Add to calendar"><CalendarPlus size={18} /></button>
           <button className={isGoing ? 'btn-ghost py-4' : 'btn-primary py-4'} onClick={rsvp}>{isGoing ? "✓ Going (tap to cancel)" : "I'm going"}</button>
         </div>
-        {!e.mine && <button className="text-xs text-slate-500 underline" onClick={() => { set((p) => ({ ...p, reports: [...p.reports, e.id] })); reward(10, { badge: 'guardian', title: 'Thanks for reporting' }); onClose() }}>Report this event</button>}
+        {!e.mine && <button className="text-xs text-slate-500 underline" onClick={() => { if (!allow('report')) return; set((p) => ({ ...p, reports: [...p.reports, e.id] })); reward(10, { badge: 'guardian', title: 'Thanks for reporting' }); onClose() }}>Report this event</button>}
       </div>
     </Sheet>
   )
 }
 
 function PostEvent({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { s, set, toast } = useStore()
+  const { s, set, toast, allow } = useStore()
   const [f, setF] = useState({ title: '', cat: 'Culture' as EvCat, place: '', date: '', time: '18:00', desc: '', weekly: false, free: true })
   const [done, setDone] = useState(false)
   const close = () => { setDone(false); onClose() }
   const submit = () => {
+    const c = checkText(`${f.title} ${f.desc} ${f.place}`)
+    if (!c.ok) return toast({ title: c.scam ? `Blocked: ${c.scam}` : 'Please remove inappropriate words', emoji: '⚠️' })
+    if (!allow('event', `${f.title} ${f.date}`)) return
     const now = Date.now()
     const e: Ev = {
       id: `myev-${uid()}`, title: f.title, cat: f.cat, city: s.city, place: f.place, start: new Date(`${f.date}T${f.time}`).getTime(), durMin: 120,
