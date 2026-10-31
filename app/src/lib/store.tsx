@@ -4,6 +4,8 @@ import type { Listing } from './housing'
 import type { Job } from './jobs'
 import type { Ev } from './community'
 import type { ClassItem } from './ocr'
+import type { Group, Msg } from './chat'
+import type { Ticket } from './tickets'
 import { translate } from './i18n'
 import { hashPin } from './crypto'
 
@@ -40,7 +42,7 @@ export interface State {
   shortcuts: string[]
   sections: { nextClass: boolean; rates: boolean; quests: boolean; deadline: boolean }
   phoneVerified: boolean
-  proofs: { housing?: 'owner' | 'agent' | 'tenant'; business?: 'company' | 'individual'; org?: boolean }
+  proofs: { housing?: 'resident' | 'owner' | 'agent' | 'photos'; business?: 'company' | 'individual'; org?: boolean }
   isAdmin: boolean
   reports: string[]
   myJobs: Job[]
@@ -51,6 +53,16 @@ export interface State {
   classes: ClassItem[]
   remind: { on: boolean; minutes: number }
   paidFees: string[]
+  joinedGroups: string[]
+  myGroups: Group[]
+  chatMsgs: Record<string, Msg[]>
+  lastRead: Record<string, number>
+  mutedGroups: string[]
+  blockedUsers: string[]
+  hiddenMsgs: string[]
+  chatStrikes: { count: number; until: number }
+  tickets: Ticket[]
+  reacts: Record<string, string>
 }
 
 const KEY = 'luda.v1'
@@ -68,6 +80,8 @@ export const initialState: State = {
   phoneVerified: false, proofs: {}, isAdmin: false, reports: [],
   myJobs: [], applications: [], myEvents: [], rsvps: [],
   university: '', classes: [], remind: { on: false, minutes: 15 }, paidFees: [],
+  joinedGroups: ['g-help'], myGroups: [], chatMsgs: {}, lastRead: {}, mutedGroups: [], blockedUsers: [], hiddenMsgs: [],
+  chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {},
 }
 
 function load(): State {

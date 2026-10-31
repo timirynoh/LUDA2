@@ -1,12 +1,13 @@
 import type { PostMeta } from './posting'
 
 export type JobType = 'Part-time' | 'Full-time' | 'Gig' | 'Internship'
-export type JobCat = 'Hospitality' | 'Delivery' | 'Tutoring' | 'Office' | 'Tech' | 'Beauty' | 'Campus'
+export type JobCat = 'Quick' | 'Hospitality' | 'Delivery' | 'Tutoring' | 'Office' | 'Tech' | 'Beauty' | 'Campus'
 
 export interface Job extends PostMeta {
   id: string; title: string; company: string; city: string; area: string; cat: JobCat; type: JobType
   pay: number; unit: 'hour' | 'month' | 'task'; hours: string; langs: string[]; permit: boolean
   verifiedBiz: boolean; individual?: boolean; posted: number; desc: string; emoji: string; mine?: boolean
+  quick?: boolean; urgent?: boolean; contact?: string; workers?: number
 }
 
 const T: Omit<Job, 'id' | 'city' | 'area' | 'posted'>[] = [
@@ -21,8 +22,29 @@ const T: Omit<Job, 'id' | 'city' | 'area' | 'posted'>[] = [
   { title: 'Barista', company: 'Campus Corner Café', cat: 'Hospitality', type: 'Part-time', pay: 150, unit: 'hour', hours: 'Mornings', langs: ['English'], permit: true, verifiedBiz: true, desc: 'Latte art skills a plus. We train beginners.', emoji: '☕' },
 ]
 
-export function jobsFor(city: string, areas: string[]): Job[] {
-  return T.map((j, i) => ({ ...j, id: `job-${city}-${i}`, city, area: areas[i % areas.length], posted: (i * 3 + city.length) % 9, status: 'live' as const }))
+const QUICK_SAMPLES: Omit<Job, 'id' | 'city' | 'area' | 'posted'>[] = [
+  { title: '2 workers needed for construction, start 7am tomorrow', company: 'Quick post', cat: 'Quick', type: 'Gig', pay: 1500, unit: 'task', hours: 'Tomorrow, full day', langs: [], permit: false, verifiedBiz: false, desc: '2 workers needed for construction, start 7am tomorrow. Daily pay ₺1500. Call me.', emoji: '⚡', quick: true, urgent: true, contact: '+90 533 000 0000', workers: 2 },
+]
+
+/** Pull useful tags out of a one-line job post: how many people, where, what kind of work. */
+export function parseQuickJob(text: string, places: string[]) {
+  const t = text.toLowerCase()
+  const workers = +(t.match(/(\d+)\s*(?:x\s*)?(?:workers?|people|persons?|guys|ladies|staff|hands?|cleaners?|drivers?|waiters?)/)?.[1] ?? (/\b(a|one)\s+(worker|person|cleaner|driver|waiter)/.test(t) ? 1 : 0))
+  const area = places.find((p) => t.includes(p.toLowerCase()) || t.includes(p.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace('ı', 'i')))
+  const kinds: [RegExp, string, string][] = [
+    [/construct|building|site|mason|labour|labor/, 'Construction', '🏗️'], [/clean|housekeep/, 'Cleaning', '🧹'], [/deliver|rider|courier/, 'Delivery', '🛵'],
+    [/waiter|waitress|restaurant|kitchen|cook|chef|bar/, 'Hospitality', '🍽️'], [/driver|driving/, 'Driving', '🚗'], [/move|moving|carry|loading/, 'Moving help', '📦'],
+    [/paint/, 'Painting', '🎨'], [/garden|farm/, 'Garden / farm', '🌱'], [/hair|braid|barber/, 'Beauty', '💇🏾'], [/teach|tutor|lesson/, 'Tutoring', '📚'],
+  ]
+  const kind = kinds.find(([re]) => re.test(t))
+  const pay = +(t.match(/(?:₺|tl\s?|lira\s?)(\d[\d,.]*)|(\d[\d,.]*)\s?(?:₺|tl|lira)/)?.slice(1).find(Boolean)?.replace(/[,.]/g, '') ?? 0)
+  const urgent = /urgent|asap|today|tomorrow|now|immediately|acil/.test(t)
+  return { workers, area, kind: kind?.[1], emoji: kind?.[2] ?? '⚡', pay, urgent }
 }
 
-export const payText = (j: Pick<Job, 'pay' | 'unit'>) => `₺${j.pay.toLocaleString()}${j.unit === 'hour' ? '/hr' : j.unit === 'month' ? '/mo' : '/job'}`
+export function jobsFor(city: string, areas: string[]): Job[] {
+  const quick = QUICK_SAMPLES.map((j, i) => ({ ...j, id: `qjob-${city}-${i}`, city, area: areas[1 % areas.length], posted: 0, status: 'live' as const }))
+  return [...quick, ...T.map((j, i) => ({ ...j, id: `job-${city}-${i}`, city, area: areas[i % areas.length], posted: (i * 3 + city.length) % 9, status: 'live' as const }))]
+}
+
+export const payText = (j: Pick<Job, 'pay' | 'unit'>) => (j.pay ? `₺${j.pay.toLocaleString()}${j.unit === 'hour' ? '/hr' : j.unit === 'month' ? '/mo' : '/job'}` : 'Pay: call')

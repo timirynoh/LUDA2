@@ -1,22 +1,28 @@
-import { motion } from 'framer-motion'
-import { AlertTriangle, ArrowRight, Bus, Car, Clock, MapPin, Plane, Share2, Users } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ArrowLeftRight, ArrowRight, BadgePercent, Bus, Car, Clock, CreditCard, ExternalLink, MapPin, Minus, Plane, Plus, Share2, Ticket as TicketIcon, Wallet } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { DemoNote, Header, Segmented } from '../components/ui'
+import { DemoNote, Header, PinPad, Segmented, Sheet, Success } from '../components/ui'
+import { GIRNE_LEFKOSA, KIBHAS_FARES, TICKET_DISCOUNT } from '../config'
 import { CITIES, SAFE_SPOTS } from '../lib/data'
-import { useStore } from '../lib/store'
-import { ERCAN, km, poolFor, routesFrom, taxiFare } from '../lib/transport'
+import { fmt } from '../lib/fx'
+import { uid, useStore } from '../lib/store'
+import { appPrice, departures, luhn, ticketCode, type Ticket } from '../lib/tickets'
+import { ERCAN, km, routesFrom, taxiFare } from '../lib/transport'
 
-type Tab = 'bus' | 'airport' | 'taxi'
+type Tab = 'tickets' | 'airport' | 'taxi'
 
 export default function Transport() {
-  const { t } = useStore()
-  const [tab, setTab] = useState<Tab>('bus')
+  const { s, t } = useStore()
+  const [tab, setTab] = useState<Tab>('tickets')
+  const valid = s.tickets.filter((x) => x.status === 'valid')
   return (
     <div>
-      <Header back title={t('act.transport')} sub="Buses, airport & taxis" />
-      <div className="px-5"><Segmented value={tab} onChange={setTab} options={[{ value: 'bus', label: '🚌 Buses' }, { value: 'airport', label: '✈️ Airport' }, { value: 'taxi', label: '🚕 Taxi' }]} /></div>
-      {tab === 'bus' && <Buses />}
+      <Header back title={t('act.transport')} sub="Bus tickets, airport shuttle & taxis" />
+      <div className="px-5"><Segmented value={tab} onChange={setTab} options={[{ value: 'tickets', label: '🎟️ Bus tickets' }, { value: 'airport', label: '✈️ Airport' }, { value: 'taxi', label: '🚕 Taxi' }]} /></div>
+      {valid.length > 0 && <MyTickets tickets={valid} />}
+      {tab === 'tickets' && <BusTickets />}
       {tab === 'airport' && <Airport />}
       {tab === 'taxi' && <Taxi />}
       <DemoNote />
@@ -24,74 +30,251 @@ export default function Transport() {
   )
 }
 
-function Buses() {
-  const { s } = useStore()
-  const routes = useMemo(() => routesFrom(s.city), [s.city])
-  const city = CITIES.find((c) => c.id === s.city)!
+/* ------------------------------ My tickets ------------------------------ */
+
+function MyTickets({ tickets }: { tickets: Ticket[] }) {
+  const [open, setOpen] = useState<Ticket | null>(null)
   return (
-    <div className="flex flex-col gap-3 px-5 pt-4">
-      <p className="text-sm text-slate-400">Intercity buses & dolmuş from <b className="text-slate-200">{city.name}</b>. Pay the driver in cash (TL).</p>
-      {routes.map((r, i) => (
-        <motion.div key={r.to.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="card">
-          <div className="flex items-center gap-2 font-semibold">{city.name} <ArrowRight size={14} className="text-slate-500 rtl:rotate-180" /> {r.to.name}<span className="ms-auto text-lg font-extrabold text-cyan-300">~₺{r.fare}</span></div>
-          <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-            <span className="chip bg-fg/5 text-slate-300"><Clock size={11} /> ~{r.mins} min</span>
-            <span className="chip bg-fg/5 text-slate-300"><Bus size={11} /> {r.every}</span>
-            <span className="chip bg-fg/5 text-slate-300">{r.firstLast}</span>
-          </div>
-          <p className="mt-2 flex items-center gap-1 text-xs text-slate-500"><MapPin size={11} /> From {r.from}</p>
-        </motion.div>
-      ))}
-      <p className="text-center text-[11px] text-slate-500">Times and fares are estimates. Check at the terminal; live timetables come in the full version.</p>
+    <div className="px-5 pt-4">
+      <p className="label mb-2">My tickets</p>
+      <div className="-mx-5 flex gap-3 overflow-x-auto px-5 pb-1">
+        {tickets.map((tk) => (
+          <button key={tk.id} onClick={() => setOpen(tk)} className="relative min-w-60 overflow-hidden rounded-3xl bg-gradient-to-br from-violet-500 via-fuchsia-700 to-indigo-900 p-4 text-start text-white shadow-xl">
+            <div className="absolute -top-6 -right-6 size-24 rounded-full bg-white/10" />
+            <p className="flex items-center gap-1 text-xs text-white/70"><TicketIcon size={12} /> {tk.operator}</p>
+            <p className="mt-1 text-lg font-extrabold">{tk.from} → {tk.to}</p>
+            <p className="text-xs text-white/80">{new Date(tk.date + 'T12:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} · {tk.time}{tk.returnDate ? ' · return' : ''} · {tk.pax} pax</p>
+            <p className="mt-2 font-mono text-sm tracking-widest">{tk.code}</p>
+          </button>
+        ))}
+      </div>
+      {open && <TicketSheet tk={open} onClose={() => setOpen(null)} />}
     </div>
   )
 }
 
-function Airport() {
-  const { s, reward } = useStore()
+function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
+  const { set, addTx, toast } = useStore()
+  const refund = () => {
+    set((p) => ({ ...p, tickets: p.tickets.map((x) => (x.id === tk.id ? { ...x, status: 'refunded' } : x)), balances: tk.paidWith === 'wallet' ? { ...p.balances, TRY: (p.balances.TRY ?? 0) + tk.total } : p.balances }))
+    if (tk.paidWith === 'wallet') addTx({ type: 'bill', amount: tk.total, currency: 'TRY', label: `Refund · ${tk.operator} ${tk.from}→${tk.to}` })
+    toast({ title: tk.paidWith === 'wallet' ? 'Refunded to your wallet' : 'Refund sent to your card (3–5 days)', emoji: '↩️' })
+    onClose()
+  }
+  return (
+    <Sheet open onClose={onClose} title="Your e-ticket">
+      <div className="flex flex-col items-center gap-3 rounded-3xl bg-white p-5 text-ink-950">
+        <p className="text-sm font-semibold">{tk.operator}</p>
+        <p className="text-2xl font-extrabold">{tk.from} → {tk.to}</p>
+        <QRCodeSVG value={`luda://ticket/${tk.code}`} size={180} />
+        <p className="font-mono text-2xl font-black tracking-[0.3em]">{tk.code}</p>
+        <div className="grid w-full grid-cols-3 gap-2 text-center text-xs">
+          <div className="rounded-xl bg-slate-100 p-2"><p className="text-slate-500">Date</p><p className="font-bold">{new Date(tk.date + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</p></div>
+          <div className="rounded-xl bg-slate-100 p-2"><p className="text-slate-500">Departs</p><p className="font-bold">{tk.time}</p></div>
+          <div className="rounded-xl bg-slate-100 p-2"><p className="text-slate-500">Passengers</p><p className="font-bold">{tk.pax}</p></div>
+        </div>
+        {tk.returnDate && <p className="text-xs text-slate-600">Return: {new Date(tk.returnDate + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · {tk.returnTime}</p>}
+        <p className="text-xs text-slate-500">Show this QR to the driver · paid {fmt(tk.total, 'TRY')} · saved {fmt(tk.saved, 'TRY')}</p>
+      </div>
+      <button className="btn-ghost mt-3 w-full text-sm text-rose-300" onClick={refund}>Cancel & refund</button>
+    </Sheet>
+  )
+}
+
+/* ------------------------------ Bus tickets ------------------------------ */
+
+interface Trip { from: string; to: string; operator: string; official: { single: number; ret: number }; every: number; estimated?: boolean; kind: Ticket['kind']; first?: string; last?: string }
+
+function BusTickets() {
+  const { s } = useStore()
+  const [trip, setTrip] = useState<Trip | null>(null)
+  const [dir, setDir] = useState<'gl' | 'lg'>(s.city === 'lefkosa' ? 'lg' : 'gl')
+  const from = dir === 'gl' ? 'Girne' : 'Lefkoşa', to = dir === 'gl' ? 'Lefkoşa' : 'Girne'
+  const others = useMemo(() => routesFrom(s.city).filter((r) => !(['girne', 'lefkosa'].includes(s.city) && ['girne', 'lefkosa'].includes(r.to.id))), [s.city])
   const city = CITIES.find((c) => c.id === s.city)!
+
+  return (
+    <div className="flex flex-col gap-3 px-5 pt-4">
+      <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-violet-500 via-fuchsia-700 to-indigo-950 p-5 text-white">
+        <div className="absolute -top-10 -right-10 size-40 rounded-full bg-white/10 blur-2xl" />
+        <p className="chip bg-white/15 text-white"><BadgePercent size={12} /> Cheaper in Luda</p>
+        <div className="mt-3 flex items-center gap-3">
+          <p className="text-2xl font-extrabold">{from}</p>
+          <button onClick={() => setDir(dir === 'gl' ? 'lg' : 'gl')} className="grid size-9 place-items-center rounded-full bg-white/20" aria-label="Swap direction"><ArrowLeftRight size={16} /></button>
+          <p className="text-2xl font-extrabold">{to}</p>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+          <div className="rounded-2xl bg-black/20 p-3"><p className="text-xs text-white/70">One way</p><p><span className="text-xl font-extrabold">₺{appPrice(GIRNE_LEFKOSA.single, false)}</span> <span className="text-xs text-white/60 line-through">₺{GIRNE_LEFKOSA.single}</span></p></div>
+          <div className="rounded-2xl bg-black/20 p-3"><p className="text-xs text-white/70">Return</p><p><span className="text-xl font-extrabold">₺{appPrice(GIRNE_LEFKOSA.return, true)}</span> <span className="text-xs text-white/60 line-through">₺{GIRNE_LEFKOSA.return}</span></p></div>
+        </div>
+      </div>
+      <p className="label">Choose your bus</p>
+      {GIRNE_LEFKOSA.operators.map((o) => (
+        <button key={o.id} onClick={() => setTrip({ from, to, operator: o.name, official: { single: GIRNE_LEFKOSA.single, ret: GIRNE_LEFKOSA.return }, every: o.every, kind: 'bus' })} className="card flex items-center gap-3 text-start">
+          <div className={`grid size-12 place-items-center rounded-2xl bg-gradient-to-br ${o.color} text-white`}><Bus /></div>
+          <div className="flex-1"><p className="font-semibold">{o.name}</p><p className="text-xs text-slate-400">{from} → {to} · every {o.every} min · ~30 min</p></div>
+          <span className="chip bg-mint-400/15 py-2 text-mint-300">Book</span>
+        </button>
+      ))}
+
+      <p className="label mt-3">Other routes from {city.name}</p>
+      {others.map((r) => (
+        <button key={r.to.id} onClick={() => setTrip({ from: city.name, to: r.to.name, operator: 'Intercity bus', official: { single: r.fare, ret: r.fare * 2 - 20 }, every: r.every.includes('15') ? 30 : 60, estimated: true, kind: 'bus', first: '07:00', last: '19:00' })} className="card text-start">
+          <div className="flex items-center gap-2 font-semibold">{city.name} <ArrowRight size={14} className="text-slate-500 rtl:rotate-180" /> {r.to.name}<span className="ms-auto font-extrabold text-mint-300">₺{appPrice(r.fare, false)}</span></div>
+          <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-400"><span><Clock size={11} className="inline" /> ~{r.mins} min</span><span>{r.every}</span><span><MapPin size={11} className="inline" /> {r.from}</span></p>
+        </button>
+      ))}
+      {trip && <BookSheet trip={trip} onClose={() => setTrip(null)} />}
+    </div>
+  )
+}
+
+/* ------------------------------ Booking ------------------------------ */
+
+function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
+  const { s, set, addTx, reward, checkPin } = useStore()
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d.toISOString().slice(0, 10) }), [])
+  const [ret, setRet] = useState(false)
+  const [date, setDate] = useState(days[0])
+  const [rdate, setRdate] = useState(days[0])
+  const [time, setTime] = useState('')
+  const [rtime, setRtime] = useState('')
+  const times = departures(date, trip.first, trip.last, trip.every)
+  const goTime = time || times[0] || ''
+  const rd = rdate < date ? date : rdate
+  const rtimes = departures(rd, trip.first, trip.last, trip.every).filter((t) => rd !== date || t > goTime)
+  const [pax, setPax] = useState(1)
+  const [pay, setPay] = useState<'wallet' | 'card'>('wallet')
+  const [card, setCard] = useState({ num: '', exp: '', cvv: '' })
+  const [stage, setStage] = useState<'form' | 'pin' | 'done'>('form')
+  const [err, setErr] = useState('')
+  const [made, setMade] = useState<Ticket | null>(null)
+
+  const official = (ret ? trip.official.ret : trip.official.single) * pax
+  const total = appPrice(ret ? trip.official.ret : trip.official.single, ret) * pax
+  const saved = official - total
+  const bal = s.balances.TRY ?? 0
+  const cardOk = luhn(card.num) && /^\d{2}\/\d{2}$/.test(card.exp) && /^\d{3,4}$/.test(card.cvv)
+  const canPay = !!(time || times[0]) && (!ret || !!(rtime || rtimes[0])) && (pay === 'wallet' ? bal >= total : cardOk)
+
+  const issue = () => {
+    const tk: Ticket = {
+      id: uid(), code: ticketCode(), operator: trip.operator, from: trip.from, to: trip.to, date, time: time || times[0],
+      returnDate: ret ? rd : undefined, returnTime: ret ? rtime || rtimes[0] : undefined, pax, total, saved, paidWith: pay, createdAt: Date.now(), status: 'valid', kind: trip.kind,
+    }
+    set((p) => ({ ...p, tickets: [tk, ...p.tickets], balances: pay === 'wallet' ? { ...p.balances, TRY: (p.balances.TRY ?? 0) - total } : p.balances }))
+    addTx({ type: 'bill', amount: -total, currency: 'TRY', label: `${trip.operator} · ${trip.from}→${trip.to}`, meta: `${pay === 'card' ? 'card' : 'wallet'} · saved ₺${saved}` })
+    reward(s.quests.includes('ticket') ? 10 : 50, { quest: 'ticket', badge: 'traveller', title: `Saved ₺${saved} on your ticket` })
+    setMade(tk); setStage('done')
+  }
+  const submit = () => { setErr(''); if (pay === 'wallet') setStage('pin'); else issue() }
+
+  return (
+    <Sheet open onClose={onClose} title={`${trip.operator}`}>
+      {stage === 'done' && made ? <Success title="Ticket booked 🎟️" sub={`${made.from} → ${made.to} · ${made.time}. Code ${made.code}. You saved ₺${made.saved}! Find it under "My tickets".`} onClose={onClose} /> :
+        stage === 'pin' ? (
+          <div className="flex flex-col items-center gap-3"><p className="text-sm text-slate-300">Pay {fmt(total, 'TRY')} from your wallet</p>
+            <PinPad error={err} onDone={async (pin) => ((await checkPin(pin)) ? issue() : setErr('Wrong PIN'))} /></div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <p className="text-lg font-bold">{trip.from} → {trip.to}</p>
+            <Segmented value={ret ? 'ret' : 'one'} onChange={(v) => setRet(v === 'ret')} options={[{ value: 'one', label: 'One way' }, { value: 'ret', label: 'Return' }]} />
+            <DayTime label={ret ? 'Going' : 'Date'} days={days} date={date} setDate={(d) => { setDate(d); setTime('') }} times={times} time={time || times[0]} setTime={setTime} />
+            {ret && <DayTime label="Coming back" days={days.filter((d) => d >= date)} date={rd} setDate={(d) => { setRdate(d); setRtime('') }} times={rtimes} time={rtime || rtimes[0]} setTime={setRtime} />}
+            <div className="flex items-center justify-between">
+              <p className="label">Passengers</p>
+              <div className="flex items-center gap-3">
+                <button className="grid size-9 place-items-center rounded-xl bg-fg/5" disabled={pax <= 1} onClick={() => setPax(pax - 1)} aria-label="Fewer"><Minus size={16} /></button>
+                <span className="w-6 text-center text-lg font-bold">{pax}</span>
+                <button className="grid size-9 place-items-center rounded-xl bg-fg/5" disabled={pax >= 6} onClick={() => setPax(pax + 1)} aria-label="More"><Plus size={16} /></button>
+              </div>
+            </div>
+            <div className="rounded-2xl bg-fg/[0.03] p-3 text-sm">
+              <div className="flex justify-between text-slate-400"><span>Official price</span><span className="line-through">{fmt(official, 'TRY')}</span></div>
+              <div className="flex justify-between text-mint-300"><span>Luda discount (₺{ret ? TICKET_DISCOUNT.return : TICKET_DISCOUNT.single} × {pax})</span><span>−{fmt(saved, 'TRY')}</span></div>
+              <div className="mt-1 flex justify-between text-lg font-extrabold"><span>You pay</span><span>{fmt(total, 'TRY')}</span></div>
+              {trip.estimated && <p className="mt-1 text-[11px] text-slate-500">Fare estimated for this route in the demo.</p>}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setPay('wallet')} className={`glass flex flex-col items-start gap-1 rounded-2xl p-3 text-start ${pay === 'wallet' ? 'border-mint-400/60 bg-mint-400/10' : ''}`}><Wallet size={18} /><span className="text-sm font-semibold">Luda wallet</span><span className="text-xs text-slate-400">{fmt(bal, 'TRY')}</span></button>
+              <button onClick={() => setPay('card')} className={`glass flex flex-col items-start gap-1 rounded-2xl p-3 text-start ${pay === 'card' ? 'border-mint-400/60 bg-mint-400/10' : ''}`}><CreditCard size={18} /><span className="text-sm font-semibold">Bank card</span><span className="text-xs text-slate-400">Visa · Mastercard</span></button>
+            </div>
+            <AnimatePresence>
+              {pay === 'card' && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="grid grid-cols-4 gap-2 overflow-hidden">
+                  <input className="input col-span-4 font-mono" inputMode="numeric" placeholder="Card number" value={card.num} onChange={(e) => setCard({ ...card, num: e.target.value.replace(/[^\d ]/g, '').slice(0, 23) })} />
+                  <input className="input col-span-2" inputMode="numeric" placeholder="MM/YY" value={card.exp} onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 4); setCard({ ...card, exp: v.length > 2 ? `${v.slice(0, 2)}/${v.slice(2)}` : v }) }} />
+                  <input className="input col-span-2" inputMode="numeric" placeholder="CVV" type="password" value={card.cvv} onChange={(e) => setCard({ ...card, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) })} />
+                  <p className="col-span-4 text-[11px] text-slate-500">🔒 Card is charged once for this ticket only and never stored. Demo: try 4242 4242 4242 4242.</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {pay === 'wallet' && bal < total && <p className="text-sm text-rose-300">Not enough TL in your wallet. <Link to="/wallet?a=deposit" className="underline">Top up</Link> or pay by card.</p>}
+            <button className="btn-primary py-4" disabled={!canPay} onClick={submit}><TicketIcon size={18} /> Pay {fmt(total, 'TRY')}</button>
+          </div>
+        )}
+    </Sheet>
+  )
+}
+
+function DayTime({ label, days, date, setDate, times, time, setTime }: { label: string; days: string[]; date: string; setDate: (d: string) => void; times: string[]; time?: string; setTime: (t: string) => void }) {
+  return (
+    <div>
+      <p className="label mb-2">{label}</p>
+      <div className="-mx-5 flex gap-2 overflow-x-auto px-5">
+        {days.map((d, i) => {
+          const dt = new Date(d + 'T12:00')
+          return (
+            <button key={d} onClick={() => setDate(d)} className={`flex min-w-14 flex-col items-center rounded-2xl px-3 py-2 text-xs ${date === d ? 'bg-mint-400 text-ink-950' : 'glass text-slate-300'}`}>
+              <span>{i === 0 && d === new Date().toISOString().slice(0, 10) ? 'Today' : dt.toLocaleDateString(undefined, { weekday: 'short' })}</span><span className="text-lg font-bold">{dt.getDate()}</span>
+            </button>
+          )
+        })}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {times.length ? times.slice(0, 18).map((t) => <button key={t} onClick={() => setTime(t)} className={`chip py-1.5 ${time === t ? 'bg-mint-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{t}</button>)
+          : <p className="text-xs text-slate-400">No more departures this day. Pick another date.</p>}
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------ Airport (KIBHAS) ------------------------------ */
+
+function Airport() {
+  const { s } = useStore()
+  const city = CITIES.find((c) => c.id === s.city)!
+  const [toAirport, setToAirport] = useState(true)
+  const [book, setBook] = useState<Trip | null>(null)
+  const fare = KIBHAS_FARES[s.city] ?? 300
   const d = Math.round(km(city, ERCAN))
-  const [date, setDate] = useState('')
-  const [joined, setJoined] = useState(false)
-  const riders = poolFor(city.name, date)
-  const taxi = taxiFare(d)
   return (
     <div className="flex flex-col gap-3 px-5 pt-4">
       <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-cyan-500 via-sky-700 to-sky-950 p-5 text-white">
         <Plane className="absolute -right-2 -bottom-2 size-28 rotate-12 text-white/10" />
-        <p className="text-xs text-cyan-100/80">{ERCAN.name} → {city.name}</p>
-        <p className="text-3xl font-extrabold">~{d} km</p>
-        <p className="text-sm text-cyan-50/80">≈ {Math.round(d / 55 * 60 + 10)} min by road</p>
+        <p className="chip bg-white/15 text-white">KIBHAS airport shuttle</p>
+        <p className="mt-3 text-2xl font-extrabold">{toAirport ? `${city.name} → Ercan` : `Ercan → ${city.name}`}</p>
+        <p className="text-sm text-cyan-50/80">~{d} km · seats bookable in Luda</p>
+        <p className="mt-2"><span className="text-3xl font-extrabold">₺{appPrice(fare, false)}</span> <span className="text-sm text-white/60 line-through">₺{fare}</span> <span className="text-xs text-white/70">per person</span></p>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div className="card"><Bus className="text-cyan-300" size={20} /><p className="mt-2 text-sm font-semibold">Airport shuttle</p><p className="text-xs text-slate-400">Timed to flights · ~₺{Math.round((60 + d * 1.5) / 10) * 10}</p></div>
-        <div className="card"><Car className="text-gold-300" size={20} /><p className="mt-2 text-sm font-semibold">Taxi</p><p className="text-xs text-slate-400">~₺{taxi.toLocaleString()} · up to 4 people</p></div>
+      <Segmented value={toAirport ? 'to' : 'from'} onChange={(v) => setToAirport(v === 'to')} options={[{ value: 'to', label: '🛫 To the airport' }, { value: 'from', label: '🛬 From the airport' }]} />
+      <button className="btn-primary py-4" onClick={() => setBook({ from: toAirport ? city.name : 'Ercan Airport', to: toAirport ? 'Ercan Airport' : city.name, operator: 'KIBHAS', official: { single: fare, ret: fare * 2 }, every: 60, kind: 'shuttle', first: toAirport ? '04:00' : '06:00', last: toAirport ? '22:00' : '23:59' })}>
+        <TicketIcon size={18} /> Book KIBHAS seat
+      </button>
+      <div className="card text-xs text-slate-400">
+        <p className="mb-1 font-semibold text-slate-200">How it works</p>
+        <p>• From the airport, buses wait for flights. Pick the time closest after your landing.</p>
+        <p>• Show your Luda QR ticket to the driver. Luggage included.</p>
+        <p>• Luda price is ₺{TICKET_DISCOUNT.single} cheaper than the counter.</p>
       </div>
-
-      <div className="card">
-        <p className="flex items-center gap-2 font-bold"><Users size={18} className="text-fuchsia-300" /> Split a taxi from the airport</p>
-        <p className="mt-1 text-xs text-slate-400">Landing soon? Find verified Luda users on similar flights and share the ride.</p>
-        <input type="date" className="input mt-3" value={date} onChange={(e) => { setDate(e.target.value); setJoined(false) }} />
-        {date && (
-          <div className="mt-3 flex flex-col gap-2">
-            {riders.map((r) => (
-              <div key={r.name} className="flex items-center gap-3 rounded-2xl bg-fg/[0.03] p-3 text-sm">
-                <span className="text-xl">{r.flag}</span><span className="flex-1 font-semibold">{r.name}</span><span className="text-xs text-slate-400">lands {r.time} · {r.bags} bag{r.bags > 1 ? 's' : ''}</span>
-              </div>
-            ))}
-            <p className="text-center text-xs text-slate-400">Shared 4 ways ≈ <b className="text-mint-300">₺{Math.round(taxi / 4)}</b> each instead of ₺{taxi}</p>
-            <button className={joined ? 'btn-ghost' : 'btn-primary'} disabled={joined} onClick={() => { setJoined(true); reward(20, { title: 'Joined airport ride pool' }) }}>{joined ? '✓ You’re in the pool: we’ll match you' : 'Join the ride pool'}</button>
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-start gap-3 rounded-2xl bg-gold-400/10 p-3 text-xs text-gold-100">
-        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-gold-300" />
-        <span><b>Flying via Larnaca (south)?</b> You must cross into the Republic of Cyprus, and many African passports need a visa for that. Check before booking.</span>
-      </div>
+      <a href="https://kibhas.org" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1 text-xs text-sky-300 underline"><ExternalLink size={12} /> KIBHAS official website</a>
+      <p className="text-center text-[11px] text-slate-500">Live seat booking needs a partnership with KIBHAS (their booking system connected to Luda). Fares shown are publicly reported and may change.</p>
+      {book && <BookSheet trip={book} onClose={() => setBook(null)} />}
     </div>
   )
 }
+
+/* ------------------------------ Taxi ------------------------------ */
 
 function Taxi() {
   const { s, toast } = useStore()
@@ -115,7 +298,7 @@ function Taxi() {
         <p className="label mb-2">Fare estimate from {city.name}</p>
         <div className="flex flex-wrap gap-2">{dests.map((x, i) => <button key={x.name} onClick={() => setDest(i)} className={`chip py-2 ${dest === i ? 'bg-gold-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{x.name}</button>)}</div>
         <p className="mt-4 text-4xl font-extrabold">~₺{fare.toLocaleString()}</p>
-        <p className="text-xs text-slate-400">{Math.round(dests[dest].d)} km · agree the price <b>before</b> you get in. Taxis in North Cyprus rarely use meters.</p>
+        <p className="text-xs text-slate-400">{Math.round(dests[dest].d)} km · agree the price <b>before</b> you get in. Taxis here rarely use meters.</p>
       </div>
       <Link to="/nearby?cat=taxi" className="btn-gold"><Car size={18} /> Find taxi ranks near me</Link>
       <div className="card">

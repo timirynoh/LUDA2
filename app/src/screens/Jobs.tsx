@@ -1,15 +1,17 @@
 import { motion } from 'framer-motion'
-import { BadgeCheck, Briefcase, Clock, FileText, Languages, MapPin, Plus, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react'
+import { BadgeCheck, Briefcase, Clock, FileText, Languages, MapPin, MessageCircle, Phone, Plus, ShieldAlert, ShieldCheck, Trash2, Zap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { PostGate } from '../components/PostGate'
 import { DemoNote, Header, Segmented, Sheet, Success } from '../components/ui'
 import { CITIES } from '../lib/data'
 import { AREAS } from '../lib/housing'
-import { jobsFor, payText, type Job, type JobCat, type JobType } from '../lib/jobs'
+import { jobsFor, parseQuickJob, payText, type Job, type JobCat, type JobType } from '../lib/jobs'
+import { PhoneVerify } from '../components/PhoneVerify'
+import { checkText } from '../lib/moderation'
 import { isStale, isVisible, type PostMeta } from '../lib/posting'
 import { uid, useStore } from '../lib/store'
 
-const CATS: ('All' | JobCat)[] = ['All', 'Hospitality', 'Delivery', 'Tutoring', 'Office', 'Tech', 'Beauty', 'Campus']
+const CATS: ('All' | JobCat)[] = ['All', 'Quick', 'Hospitality', 'Delivery', 'Tutoring', 'Office', 'Tech', 'Beauty', 'Campus']
 
 export function StatusChip({ m }: { m: PostMeta }) {
   if (m.status === 'pending') return <span className="chip bg-gold-400/15 text-gold-300">⏳ Under review</span>
@@ -47,15 +49,18 @@ export default function Jobs() {
               <div className="flex items-start gap-3">
                 <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-lime-400/30 to-green-700/30 text-2xl">{j.emoji}</div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold">{j.title}</p>
-                  <p className="flex items-center gap-1 truncate text-xs text-slate-400">{j.verifiedBiz && <BadgeCheck size={13} className="shrink-0 text-mint-400" />}{j.official ? 'Luda Official' : j.company}{j.individual ? ' · Individual' : ''} · {j.area}</p>
+                  <p className="line-clamp-2 font-semibold">{j.title}</p>
+                  <p className="flex items-center gap-1 truncate text-xs text-slate-400">{j.verifiedBiz && <BadgeCheck size={13} className="shrink-0 text-mint-400" />}{j.official ? 'Luda Official' : j.quick ? 'Quick post' : j.company}{j.individual ? ' · Individual' : ''} · {j.area}</p>
                 </div>
                 <p className="shrink-0 font-extrabold text-mint-300">{payText(j)}</p>
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
-                <span className="chip bg-fg/5 text-slate-300">{j.type}</span>
-                <span className="chip bg-fg/5 text-slate-300"><Clock size={11} /> {j.hours}</span>
+                {!j.quick && <span className="chip bg-fg/5 text-slate-300">{j.type}</span>}
+                {!j.quick && <span className="chip bg-fg/5 text-slate-300"><Clock size={11} /> {j.hours}</span>}
+                {j.quick && !!j.workers && <span className="chip bg-fg/5 text-slate-300">👷🏾 {j.workers} needed</span>}
                 {j.permit && <span className="chip bg-sky-400/10 text-sky-200"><ShieldCheck size={11} /> Permit support</span>}
+                {j.urgent && <span className="chip animate-pulse bg-rose-500 text-white"><Zap size={11} /> URGENT</span>}
+                {j.quick && <span className="chip bg-fg/5 text-slate-300">Quick post · phone verified</span>}
                 {j.mine && <span className="chip bg-gold-400 text-ink-950">Your post</span>}
                 {s.applications.some((a) => a.jobId === j.id) && <span className="chip bg-mint-400/15 text-mint-300">✓ Applied</span>}
               </div>
@@ -134,7 +139,13 @@ function JobSheet({ job: j, onClose }: { job: Job; onClose: () => void }) {
             <p className="flex items-center gap-2"><ShieldCheck size={15} className={j.permit ? 'text-sky-300' : 'text-slate-500'} /> {j.permit ? 'Employer handles work-permit paperwork' : 'No permit support: check you can legally do this work'}</p>
           </div>
           <p className="rounded-2xl bg-fg/[0.03] p-3 text-sm text-slate-300">{j.desc}</p>
-          {!j.mine && (applied ? <p className="rounded-2xl bg-mint-400/10 p-3 text-center text-sm text-mint-200">✓ You applied. Check "Mine" for updates.</p> : (
+          {j.quick && !j.mine ? (
+            <div className="grid grid-cols-2 gap-2">
+              <a href={`tel:${j.contact}`} onClick={apply} className="btn-primary py-4"><Phone size={18} /> Call</a>
+              <a href={`https://wa.me/${(j.contact ?? '').replace(/\D/g, '')}`} target="_blank" rel="noreferrer" onClick={apply} className="btn bg-emerald-500/15 py-4 text-emerald-200"><MessageCircle size={18} /> WhatsApp</a>
+              <p className="col-span-2 text-center text-xs text-slate-500" dir="ltr">📞 {j.contact}</p>
+            </div>
+          ) : !j.mine && (applied ? <p className="rounded-2xl bg-mint-400/10 p-3 text-center text-sm text-mint-200">✓ You applied. Check "Mine" for updates.</p> : (
             <>
               <textarea className="input min-h-24" value={msg} onChange={(e) => setMsg(e.target.value)} />
               <label className="glass flex cursor-pointer items-center gap-3 rounded-2xl p-3 text-sm">
@@ -156,22 +167,67 @@ function PostJob({ open, onClose }: { open: boolean; onClose: () => void }) {
   const areas = AREAS[s.city] ?? AREAS.lefkosa
   const [f, setF] = useState({ title: '', cat: 'Hospitality' as JobCat, type: 'Part-time' as JobType, pay: '', unit: 'hour' as Job['unit'], hours: '', area: areas[0], desc: '', permit: true })
   const [done, setDone] = useState(false)
-  const close = () => { setDone(false); onClose() }
+  const [mode, setMode] = useState<'quick' | 'full'>('quick')
+  const [q, setQ] = useState({ text: '', contact: '+90 5', urgent: true })
+  const [err, setErr] = useState('')
+  const close = () => { setDone(false); setErr(''); onClose() }
+  const parsed = parseQuickJob(q.text, [...areas, ...CITIES.map((c) => c.name)])
+  const quickSubmit = () => {
+    const c = checkText(q.text)
+    if (!c.ok) return setErr(c.scam ? `Blocked: ${c.scam}. Never ask workers for money.` : `Please remove inappropriate words (${c.bad.join(', ')})`)
+    const now = Date.now()
+    const j: Job = {
+      id: `myjob-${uid()}`, title: q.text.trim().slice(0, 80), company: s.isAdmin ? 'Luda Official' : s.name, city: s.city, area: parsed.area ?? areas[0],
+      cat: 'Quick', type: 'Gig', pay: parsed.pay, unit: 'task', hours: parsed.urgent ? 'ASAP' : 'See description', langs: [], permit: false, verifiedBiz: s.isAdmin,
+      posted: 0, desc: q.text.trim(), emoji: parsed.emoji, mine: true, quick: true, urgent: q.urgent || parsed.urgent, contact: q.contact, workers: parsed.workers || 1,
+      status: 'live', official: s.isAdmin, createdAt: now, confirmedAt: now,
+    }
+    set((p) => ({ ...p, myJobs: [j, ...p.myJobs] }))
+    toast({ title: 'Job is live ⚡', emoji: '✅' })
+    setDone(true)
+  }
   const submit = () => {
     const now = Date.now()
     const j: Job = {
       id: `myjob-${uid()}`, title: f.title, company: s.isAdmin ? 'Luda Official' : s.proofs.business === 'company' ? `${s.name}'s business` : s.name,
       city: s.city, area: f.area, cat: f.cat, type: f.type, pay: +f.pay, unit: f.unit, hours: f.hours || 'Flexible', langs: ['English'], permit: f.permit,
       verifiedBiz: s.isAdmin || s.proofs.business === 'company', individual: !s.isAdmin && s.proofs.business === 'individual', posted: 0, desc: f.desc || '—', emoji: '✨', mine: true,
-      status: s.isAdmin ? 'live' : 'pending', official: s.isAdmin, createdAt: now, confirmedAt: now,
+      status: s.isAdmin || s.proofs.business === 'company' ? 'live' : 'pending', official: s.isAdmin, createdAt: now, confirmedAt: now,
     }
     set((p) => ({ ...p, myJobs: [j, ...p.myJobs] }))
-    toast({ title: s.isAdmin ? 'Job published' : 'Submitted for review', emoji: s.isAdmin ? '✅' : '⏳' })
+    toast({ title: j.status === 'live' ? 'Job published' : 'Submitted for review', emoji: j.status === 'live' ? '✅' : '⏳' })
     setDone(true)
   }
   return (
     <Sheet open={open} onClose={close} title="Post a job">
-      {done ? <Success title={s.isAdmin ? 'Job is live ✨' : 'Under review ⏳'} sub={s.isAdmin ? 'Published as Luda Official.' : 'Luda checks every job before it goes live, usually within 24 hours. You can track it under "Mine".'} onClose={close} /> : (
+      {done ? (mode === 'quick'
+        ? <Success title="Your job is live ⚡" sub="People can call or WhatsApp you right away. It hides itself after 7 days unless you confirm you're still hiring." onClose={close} />
+        : <Success title={s.isAdmin || s.proofs.business === 'company' ? 'Job is live ✨' : 'Under review ⏳'} sub={s.isAdmin ? 'Published as Luda Official.' : s.proofs.business === 'company' ? 'Your business documents are on file, so it went live instantly.' : 'Luda checks every job before it goes live, usually within 24 hours. You can track it under "Mine".'} onClose={close} />) : (
+        <>
+        <div className="mb-4"><Segmented value={mode} onChange={setMode} options={[{ value: 'quick', label: '⚡ Quick post' }, { value: 'full', label: '📋 Full listing' }]} /></div>
+        {mode === 'quick' ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-slate-400">Just type what you need, like you'd text a friend. Perfect for urgent work.</p>
+            <textarea className="input min-h-28 text-base" autoFocus placeholder="e.g. 1 worker needed in Girne for construction, ₺1500 per day, start tomorrow" value={q.text} maxLength={300}
+              onChange={(e) => { setQ({ ...q, text: e.target.value }); setErr('') }} />
+            {q.text.length > 5 && (
+              <div className="flex flex-wrap gap-1.5 text-xs">
+                <span className="chip bg-mint-400/15 text-mint-200">{parsed.emoji} {parsed.kind ?? 'General work'}</span>
+                <span className="chip bg-fg/5 text-slate-300">👷🏾 {parsed.workers || 1} needed</span>
+                <span className="chip bg-fg/5 text-slate-300">📍 {parsed.area ?? 'Area not detected'}</span>
+                {parsed.pay > 0 && <span className="chip bg-fg/5 text-slate-300">₺{parsed.pay.toLocaleString()}</span>}
+              </div>
+            )}
+            <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+              <input className="input" inputMode="tel" placeholder="Contact number" value={q.contact} onChange={(e) => setQ({ ...q, contact: e.target.value })} />
+              <button onClick={() => setQ({ ...q, urgent: !q.urgent })} className={`chip h-full px-4 ${q.urgent ? 'bg-rose-500 text-white' : 'bg-fg/5 text-slate-400'}`}><Zap size={14} /> Urgent</button>
+            </div>
+            {!s.phoneVerified && !s.isAdmin && <div className="rounded-2xl bg-fg/[0.03] p-3"><PhoneVerify /></div>}
+            {err && <p className="text-sm text-rose-300">⚠️ {err}</p>}
+            <button className="btn-primary py-4" disabled={q.text.trim().length < 10 || q.contact.replace(/\D/g, '').length < 10 || (!s.phoneVerified && !s.isAdmin)} onClick={quickSubmit}><Zap size={18} /> Post now</button>
+            <p className="text-center text-[11px] text-slate-500">Goes live instantly. Our filter blocks scams and bad language automatically.</p>
+          </div>
+        ) : (
         <PostGate kind="job">
           <div className="flex flex-col gap-3">
             <input className="input" placeholder="Job title, e.g. Barista" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
@@ -187,9 +243,11 @@ function PostJob({ open, onClose }: { open: boolean; onClose: () => void }) {
             </div>
             <textarea className="input min-h-20" placeholder="Describe the job" value={f.desc} onChange={(e) => setF({ ...f, desc: e.target.value })} />
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-emerald-500" checked={f.permit} onChange={(e) => setF({ ...f, permit: e.target.checked })} /> I will handle the worker's work-permit paperwork</label>
-            <button className="btn-primary py-4" disabled={!f.title || !+f.pay} onClick={submit}>{s.isAdmin ? 'Publish' : 'Submit for review'}</button>
+            <button className="btn-primary py-4" disabled={!f.title || !+f.pay} onClick={submit}>{s.isAdmin ? 'Publish' : s.proofs.business === 'company' ? 'Publish' : 'Submit for review'}</button>
           </div>
         </PostGate>
+        )}
+        </>
       )}
     </Sheet>
   )

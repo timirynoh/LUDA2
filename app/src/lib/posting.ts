@@ -23,8 +23,11 @@ export function postLimit(s: State, kind: PostKind, levelIdx: number) {
   return { used, max: approved ? Math.min(2 + levelIdx, 10) : 1 }
 }
 
+/** Housing proof options. Any document = goes live instantly; photos only = admin review. */
 export const PROOF_TEXT = {
-  owner: { label: 'I own it', doc: 'Title deed (Koçan) or a KIB-TEK bill in your name for this address' },
-  agent: { label: "I'm an estate agent", doc: 'Estate agent licence / company registration' },
-  tenant: { label: "I'm subletting", doc: "Landlord's signed permission to sublet + your rental contract" },
+  resident: { label: 'I live there', doc: 'Upload your KIB-TEK (electricity) or water bill for this address', instant: true },
+  owner: { label: 'I own it', doc: 'Title deed (Koçan) or a utility bill in your name', instant: true },
+  agent: { label: "I'm an estate agent", doc: 'Estate agent licence / company registration', instant: true },
+  photos: { label: 'Just photos (no document)', doc: 'Your post waits for an admin to approve it', instant: false },
 } as const
+export type ProofKind = keyof typeof PROOF_TEXT

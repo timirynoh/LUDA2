@@ -228,20 +228,22 @@ function PostSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const submit = () => {
     const now = Date.now()
     const l: Listing = {
-      status: s.isAdmin ? 'live' : 'pending', official: s.isAdmin, createdAt: now, confirmedAt: now, photos: f.photos,
+      status: s.isAdmin || (s.proofs.housing && s.proofs.housing !== 'photos') ? 'live' : 'pending', official: s.isAdmin, createdAt: now, confirmedAt: now, photos: f.photos,
       id: `mine-${uid()}`, title: f.note.trim() || `${f.type === 'Room' ? 'Room in my flat' : f.type + ' for rent'}`, type: f.type, city: s.city, area: f.area,
       price: +f.price || 0, deposit: 1, furnished: f.furnished, bills: f.bills, beds: f.type === '2+1' ? 2 : 1, baths: 1,
       landlord: s.isAdmin ? 'Luda Official' : s.name, verified: s.verified || s.isAdmin, rating: 5, reviews: 0, posted: 0, emoji: '✨', tone: 'from-gold-400 to-amber-700', mine: true,
     }
     set((p) => ({ ...p, myListings: [l, ...p.myListings] }))
-    reward(30, { badge: 'good_neighbour', title: s.isAdmin ? 'Listing published' : 'Submitted for review' })
+    reward(30, { badge: 'good_neighbour', title: l.status === 'live' ? 'Your house is live' : 'Submitted for review' })
     setDone(true)
   }
   const close = () => { setDone(false); onClose() }
+  const live = s.isAdmin || (!!s.proofs.housing && s.proofs.housing !== 'photos')
+  const minPhotos = live ? 1 : 3
 
   return (
     <Sheet open={open} onClose={close} title="List a room or flat">
-      {done ? <Success title={s.isAdmin ? "It's live ✨" : 'Under review ⏳'} sub={s.isAdmin ? 'Published as Luda Official.' : 'Luda checks your documents and photos, usually within 24 hours. Track it under "Mine".'} onClose={close} /> : (
+      {done ? <Success title={live ? "It's live ✨" : 'Under review ⏳'} sub={s.isAdmin ? 'Published as Luda Official.' : live ? 'Your bill/document is on file, so people can see your house right now.' : 'An admin checks your photos, usually within 24 hours. Track it under "Mine".'} onClose={close} /> : (
         <PostGate kind="housing">
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-2">
@@ -260,13 +262,13 @@ function PostSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
             <button onClick={() => setF({ ...f, bills: !f.bills })} className={`chip py-2 ${f.bills ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/5 text-slate-400'}`}>💡 Bills included</button>
           </div>
           <input className="input" placeholder="Exact address (only shown after a viewing is booked)" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} />
-          <label className={`glass flex cursor-pointer items-center gap-3 rounded-2xl p-3 ${f.photos >= 3 ? 'border-mint-400/40' : ''}`}>
-            <Camera size={20} className={f.photos >= 3 ? 'text-mint-300' : 'text-slate-400'} />
-            <span className="flex-1 text-sm"><b>Live photos</b> ({f.photos}/3 minimum)<span className="block text-xs text-slate-400">Taken now with your camera, so we know the place is real and current</span></span>
-            <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={(e) => setF({ ...f, photos: f.photos + (e.target.files?.length ?? 0) })} />
+          <label className={`glass flex cursor-pointer items-center gap-3 rounded-2xl p-3 ${f.photos >= minPhotos ? 'border-mint-400/40' : ''}`}>
+            <Camera size={20} className={f.photos >= minPhotos ? 'text-mint-300' : 'text-slate-400'} />
+            <span className="flex-1 text-sm"><b>Photos</b> ({f.photos}/{minPhotos} minimum)<span className="block text-xs text-slate-400">Take them now with your camera or pick from your gallery</span></span>
+            <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => setF({ ...f, photos: f.photos + (e.target.files?.length ?? 0) })} />
           </label>
           <p className="text-[11px] text-slate-500">You'll be asked every {7} days to confirm it's still available, or it's hidden automatically.</p>
-          <button className="btn-primary py-4" disabled={!+f.price || (!s.isAdmin && (f.photos < 3 || f.address.length < 5))} onClick={submit}>{s.isAdmin ? 'Publish' : 'Submit for review'} · +30 XP</button>
+          <button className="btn-primary py-4" disabled={!+f.price || (!s.isAdmin && (f.photos < minPhotos || f.address.length < 5))} onClick={submit}>{live ? 'Post now' : 'Submit for review'} · +30 XP</button>
         </div>
         </PostGate>
       )}

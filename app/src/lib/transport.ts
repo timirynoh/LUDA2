@@ -29,15 +29,3 @@ export function routesFrom(cityId: string) {
 }
 
 export const taxiFare = (d: number) => Math.round((80 + d * 32) / 10) * 10
-
-export interface PoolRider { name: string; flag: string; time: string; to: string; bags: number }
-export function poolFor(cityName: string, date: string): PoolRider[] {
-  if (!date) return []
-  const seed = date.split('-').reduce((a, x) => a + +x, 0)
-  const all: PoolRider[] = [
-    { name: 'Ifeoma', flag: '🇳🇬', time: '14:20', to: cityName, bags: 2 }, { name: 'Kudzai', flag: '🇿🇼', time: '15:05', to: cityName, bags: 1 },
-    { name: 'Aline', flag: '🇨🇲', time: '13:40', to: cityName, bags: 2 }, { name: 'Samuel', flag: '🇬🇭', time: '16:10', to: cityName, bags: 1 },
-    { name: 'Neema', flag: '🇰🇪', time: '22:30', to: cityName, bags: 1 },
-  ]
-  return all.filter((_, i) => (seed + i) % 3 !== 0)
-}

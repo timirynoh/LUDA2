@@ -1,15 +1,18 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronLeft, Delete, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../lib/store'
 
 export function Header({ title, back, right, sub }: { title: string; back?: boolean; right?: ReactNode; sub?: string }) {
   const nav = useNavigate()
+  const loc = useLocation()
+  // If this screen was opened directly (no history), "back" goes home instead of doing nothing.
+  const goBack = () => (loc.key === 'default' ? nav('/') : nav(-1))
   return (
     <div className="flex items-center gap-3 px-5 pt-6 pb-4">
       {back && (
-        <button onClick={() => nav(-1)} className="glass grid size-10 place-items-center rounded-2xl rtl:rotate-180" aria-label="Back">
+        <button onClick={goBack} className="glass grid size-10 place-items-center rounded-2xl rtl:rotate-180" aria-label="Back">
           <ChevronLeft size={20} />
         </button>
       )}

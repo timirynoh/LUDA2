@@ -6,7 +6,7 @@ import { DemoNote, Header, PinPad, Segmented, Sheet, Success } from '../componen
 import { downloadIcs } from '../lib/ics'
 import { DAY_NAMES, readTimetable, type ClassItem } from '../lib/ocr'
 import { askNotificationPermission, canNotify } from '../lib/reminders'
-import { calendarFor, daysUntil, feesFor, nextClass, nextOccurrence, sampleScreenshot, UNIVERSITIES, type CalKind } from '../lib/uni'
+import { calendarFor, daysUntil, feesFor as feesForUni, nextClass, nextOccurrence, sampleScreenshot, UNIVERSITIES, type CalKind } from '../lib/uni'
 import { fmt } from '../lib/fx'
 import { uid, useStore } from '../lib/store'
 
@@ -47,7 +47,11 @@ function Picker({ onDone }: { onDone: () => void }) {
         <div className="relative mb-2"><Search size={18} className="absolute start-4 top-1/2 -translate-y-1/2 text-slate-500" />
           <input className="input ps-11" placeholder="Search universities" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         {list.map((u) => (
-          <button key={u.id} onClick={() => { set((p) => ({ ...p, university: u.id })); onDone() }}
+          <button key={u.id} onClick={() => {
+            // Instalments already well past their due date are assumed paid at the school.
+            const past = feesForUni(u.id).items.filter((f) => daysUntil(f.due) < -14).map((f) => f.id)
+            set((p) => ({ ...p, university: u.id, paidFees: [...new Set([...p.paidFees, ...past])] })); onDone()
+          }}
             className={`glass flex items-center gap-3 rounded-2xl p-4 text-start ${s.university === u.id ? 'border-mint-400/60 bg-mint-400/10' : ''}`}>
             <div className="grid size-11 place-items-center rounded-xl bg-gradient-to-br from-indigo-400 to-blue-700 text-xs font-black text-white">{u.short.slice(0, 4)}</div>
             <div className="flex-1"><p className="font-semibold">{u.name}</p>{u.city === s.city && <p className="text-xs text-mint-300">In your city</p>}</div>
@@ -296,7 +300,7 @@ function Deadlines({ uni }: { uni: string }) {
 
 function Fees({ uni }: { uni: string }) {
   const { s, set, addTx, reward, checkPin } = useStore()
-  const { yearly, items } = feesFor(uni)
+  const { yearly, items } = feesForUni(uni)
   const [paying, setPaying] = useState<string | null>(null)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(false)

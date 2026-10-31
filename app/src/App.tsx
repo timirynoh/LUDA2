@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeftRight, Grid2x2, Home as HomeIcon, MapPin, Wallet as WalletIcon } from 'lucide-react'
+import { ArrowLeftRight, Grid2x2, Home as HomeIcon, MessageCircle, Wallet as WalletIcon } from 'lucide-react'
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { Toasts } from './components/ui'
 import { useStore } from './lib/store'
@@ -14,6 +14,8 @@ import Profile from './screens/Profile'
 import Residency from './screens/Residency'
 import Rewards from './screens/Rewards'
 import Wallet from './screens/Wallet'
+import Chats from './screens/Chats'
+import ChatRoom from './screens/ChatRoom'
 import Admin from './screens/Admin'
 import Community from './screens/Community'
 import Jobs from './screens/Jobs'
@@ -25,7 +27,7 @@ const TABS = [
   { to: '/', icon: HomeIcon, key: 'nav.home' },
   { to: '/wallet', icon: WalletIcon, key: 'nav.wallet' },
   { to: '/exchange', icon: ArrowLeftRight, key: 'nav.exchange' },
-  { to: '/nearby', icon: MapPin, key: 'nav.nearby' },
+  { to: '/chats', icon: MessageCircle, key: 'nav.chats' },
   { to: '/more', icon: Grid2x2, key: 'nav.more' },
 ]
 
@@ -33,6 +35,7 @@ export default function App() {
   const { s, t } = useStore()
   const loc = useLocation()
   useClassReminders()
+  const inRoom = loc.pathname.startsWith('/chats/')
 
   return (
     <div className="mx-auto min-h-dvh max-w-md sm:my-6 sm:min-h-[calc(100dvh-3rem)] sm:overflow-hidden sm:rounded-[2.5rem] sm:border sm:border-fg/10 sm:bg-ink-900/60 sm:shadow-2xl sm:shadow-black/60 relative">
@@ -55,6 +58,8 @@ export default function App() {
                 <Route path="/uni" element={<Uni />} />
                 <Route path="/transport" element={<Transport />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/chats" element={<Chats />} />
+                <Route path="/chats/:id" element={<ChatRoom />} />
                 <Route path="/residency" element={<Residency />} />
                 <Route path="/rewards" element={<Rewards />} />
                 <Route path="/profile" element={<Profile />} />
@@ -62,7 +67,7 @@ export default function App() {
               </Routes>
             </motion.main>
           </AnimatePresence>
-          <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {!inRoom && <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <div className="flex items-center justify-around rounded-[1.75rem] border border-fg/10 bg-ink-900/85 px-2 py-2 shadow-2xl shadow-black/50 backdrop-blur-2xl">
               {TABS.map(({ to, icon: Icon, key }) => (
                 <NavLink key={to} to={to} end={to === '/'} className="relative flex flex-1 flex-col items-center gap-0.5 py-1.5">
@@ -76,7 +81,7 @@ export default function App() {
                 </NavLink>
               ))}
             </div>
-          </nav>
+          </nav>}
         </>
       )}
     </div>

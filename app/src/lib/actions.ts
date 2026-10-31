@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowUpRight, Briefcase, Building2, Bus, Gift, GraduationCap, Handshake, House, Repeat, ShieldCheck, Users, UtensilsCrossed, Zap, type LucideIcon } from 'lucide-react'
+import { MapPin, MessageCircle, ArrowDownLeft, ArrowUpRight, Briefcase, Building2, Bus, Gift, GraduationCap, Handshake, House, Repeat, ShieldCheck, Users, UtensilsCrossed, Zap, type LucideIcon } from 'lucide-react'
 
 export interface Action { id: string; to: string; icon: LucideIcon; key: string; c: string; admin?: boolean }
 
@@ -14,6 +14,8 @@ export const ACTIONS: Action[] = [
   { id: 'jobs', to: '/jobs', icon: Briefcase, key: 'act.jobs', c: 'from-lime-400 to-green-700' },
   { id: 'community', to: '/community', icon: Users, key: 'act.community', c: 'from-pink-400 to-rose-600' },
   { id: 'transport', to: '/transport', icon: Bus, key: 'act.transport', c: 'from-cyan-400 to-sky-700' },
+  { id: 'chats', to: '/chats', icon: MessageCircle, key: 'nav.chats', c: 'from-emerald-400 to-teal-700' },
+  { id: 'nearby', to: '/nearby?cat=grocery', icon: MapPin, key: 'nav.nearby', c: 'from-sky-400 to-indigo-600' },
   { id: 'food', to: '/nearby', icon: UtensilsCrossed, key: 'act.food', c: 'from-rose-400 to-pink-600' },
   { id: 'residency', to: '/residency', icon: Building2, key: 'act.residency', c: 'from-teal-300 to-cyan-600' },
   { id: 'rewards', to: '/rewards', icon: Gift, key: 'act.rewards', c: 'from-violet-400 to-indigo-600' },

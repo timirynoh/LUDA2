@@ -33,10 +33,13 @@ It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desk
 | **Jobs** | Verified employers, permit-support flag, apply & track, post a job | ✅ sample data |
 | **Community** | Church & mosque services, culture, sports, career and help events; RSVP; add to calendar | ✅ sample data |
 | **University hub** | Pick your school → only its deadlines & fees; pay tuition from wallet; **timetable screenshot reader that runs on the phone** (tesseract.js, image never uploaded) with review/edit; reminders only if the user turns them on; calendar export | ✅ OCR real, dates sample |
-| **Transport** | Intercity buses/dolmuş, Ercan airport ride-share pool, taxi fare estimate, share-my-trip safety | ✅ estimates |
-| **Posting safety** | Every poster: ID + phone OTP + legal declaration. Houses: title deed / KIB-TEK bill / agent licence / sublet permission + 3 live photos. Jobs: business registration or "Individual". All posts reviewed before going live, hidden after 7 days unless confirmed available, user reports, 1 active post for new posters | ✅ flow simulated |
+| **Transport** | Taxi fare estimate and share-my-trip safety (tickets above) | ✅ estimates |
+| **Posting safety** | Every poster: phone OTP + legal declaration (ID optional = ✓ badge). Houses: a resident's KIB-TEK/water bill, deed or agent licence → live instantly; photos only → admin approval. Jobs: business registration or "Individual". All posts reviewed before going live, hidden after 7 days unless confirmed available, user reports, 1 active post for new posters | ✅ flow simulated |
 | **Admin console** | Owner reviews queue with red-flag checks, approves/rejects with reasons, posts as "Luda Official" | ✅ |
 | **Personalisation** | Night / Day / Auto theme; choose and order home shortcuts (max 8) and home sections | ✅ |
+| **Group chats** | Discover / join / create groups, chat bubbles, replies, reactions, typing indicator, unread badges. Safety: on-device bad-word filter (EN, TR, FR, SW, AR + Pidgin, catches disguised spellings), scam-message blocker, 3 strikes = 10-min mute, flood control, report/block, group rules on join | ✅ demo members |
+| **Quick job post** | Type one line ("1 worker needed in Girne for construction"), app detects workers/area/type/pay, goes live instantly after phone check + filter | ✅ |
+| **Bus & shuttle tickets** | Girne ⇄ Lefkoşa (VirgoBus + second operator), other routes, KIBHAS airport shuttle. Luda price = official − ₺12 (single) / − ₺14 (return) per passenger; pay with wallet (PIN) or card; QR e-ticket; refund. Operators & fares in `config.ts` | ✅ payment simulated |
 | **Gamification** | XP, 5 levels (Newcomer → Legend), daily streaks, 7 quests, 9 badges, redeemable Luda Points and a community leaderboard by country, plus XP toasts and confetti | ✅ |
 | **Languages** | English, Türkçe, Français (DRC/Cameroon), Kiswahili (Kenya/Uganda/E. DRC), العربية (Sudan) with full RTL | ✅ |
 

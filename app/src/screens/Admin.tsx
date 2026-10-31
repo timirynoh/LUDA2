@@ -31,7 +31,7 @@ export default function Admin() {
     (s[kindOf[k]] as State['myListings']).filter((x) => x.status === 'pending').map((x) => ({
       id: x.id, kind: k, title: x.title, who: `${s.name} (you)`, mine: true,
       detail: k === 'housing' ? `${s.proofs.housing ?? 'owner'} · ${x.photos ?? 0} live photos` : k === 'job' ? (s.proofs.business ?? 'company') : 'Organiser',
-      checks: [['ID verified', s.verified], ['Phone verified', s.phoneVerified], ...(k === 'housing' ? [['Proof of right to rent', !!s.proofs.housing], ['3+ live photos', (x.photos ?? 0) >= 3]] : [])] as [string, boolean][],
+      checks: [['Phone verified', s.phoneVerified], ['ID verified (optional)', s.verified], ...(k === 'housing' ? [['Bill / document on file', !!s.proofs.housing && s.proofs.housing !== 'photos'], ['3+ photos', (x.photos ?? 0) >= 3]] : [])] as [string, boolean][],
     })))
   const queue = [...mine, ...SEEDED.filter((q) => !decided[q.id])]
 
