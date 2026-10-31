@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-ink-950: #07090f;
+  --color-ink-900: #0c1019;
+  --color-ink-800: #131926;
+  --color-ink-700: #1c2434;
+  --color-ink-600: #2a3447;
+  --color-mint-300: #6ee7b7;
+  --color-mint-400: #34d399;
+  --color-mint-500: #10b981;
+  --color-gold-300: #fcd34d;
+  --color-gold-400: #fbbf24;
+}
+
+html, body, #root { height: 100%; }
+body {
+  @apply bg-ink-950 text-slate-100 antialiased;
+  background-image:
+    radial-gradient(60rem 40rem at 10% -10%, rgba(16,185,129,.12), transparent 60%),
+    radial-gradient(50rem 40rem at 110% 10%, rgba(251,191,36,.08), transparent 60%);
+  background-attachment: fixed;
+}
+::-webkit-scrollbar { width: 0; height: 0; }
+
+@utility glass {
+  @apply bg-white/[0.04] border border-white/[0.07] backdrop-blur-xl;
+}
+@utility card { @apply glass rounded-3xl p-4; }
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 font-semibold transition active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none;
+}
+@utility btn-primary { @apply btn bg-gradient-to-r from-mint-400 to-emerald-500 text-ink-950 shadow-lg shadow-emerald-500/20; }
+@utility btn-gold { @apply btn bg-gradient-to-r from-gold-300 to-amber-500 text-ink-950 shadow-lg shadow-amber-500/20; }
+@utility btn-ghost { @apply btn glass text-slate-100 hover:bg-white/[0.08]; }
+@utility input {
+  @apply w-full rounded-2xl bg-ink-800/80 border border-white/[0.08] px-4 py-3 text-slate-100 placeholder:text-slate-500 outline-none focus:border-mint-400/60 focus:ring-4 focus:ring-mint-400/10 transition;
+}
+@utility chip { @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold; }
+@utility label { @apply text-xs font-semibold uppercase tracking-wider text-slate-400; }
+@utility text-gradient { @apply bg-gradient-to-r from-mint-300 via-emerald-300 to-gold-300 bg-clip-text text-transparent; }
