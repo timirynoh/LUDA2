@@ -136,7 +136,7 @@ async function preprocess(file: Blob): Promise<Blob> {
 export async function readTimetable(file: Blob, onProgress?: (p: number, status: string) => void): Promise<{ classes: ClassItem[]; text: string; lines: string[] }> {
   const { createWorker } = await import('tesseract.js')
   const worker = await createWorker('eng', 1, {
-    workerPath: abs('ocr/worker.min.js'), corePath: abs('ocr/'), langPath: abs('ocr/'), gzip: true,
+    workerPath: abs('ocr/worker-wrap.js'), workerBlobURL: false, corePath: abs('ocr/'), langPath: abs('ocr/'), gzip: true, cacheMethod: 'none',
     logger: (m: { progress: number; status: string }) => onProgress?.(m.progress, m.status),
   })
   try {
