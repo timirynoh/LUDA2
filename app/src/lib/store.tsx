@@ -65,6 +65,8 @@ export interface State {
   tickets: Ticket[]
   reacts: Record<string, string>
   flash: FlashReq[]
+  saver: { status: 'none' | 'member' | 'declined'; joinedAt?: number }
+  createdAt: number
   gigs: MyGig[]
 }
 
@@ -84,7 +86,7 @@ export const initialState: State = {
   myJobs: [], applications: [], myEvents: [], rsvps: [],
   university: '', classes: [], remind: { on: false, minutes: 15 }, paidFees: [],
   joinedGroups: ['g-help'], myGroups: [], chatMsgs: {}, lastRead: {}, mutedGroups: [], blockedUsers: [], hiddenMsgs: [],
-  chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {}, flash: [], gigs: [],
+  chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {}, flash: [], gigs: [], saver: { status: 'none' }, createdAt: Date.now(),
 }
 
 function load(): State {

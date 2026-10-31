@@ -1,14 +1,17 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeftRight, ArrowRight, BadgePercent, Bus, Car, Clock, CreditCard, ExternalLink, MapPin, Minus, Plane, Plus, Share2, Ticket as TicketIcon, Wallet } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DemoNote, Header, PinPad, Segmented, Sheet, Success } from '../components/ui'
-import { GIRNE_LEFKOSA, KIBHAS_FARES, TICKET_DISCOUNT } from '../config'
+import { GIRNE_LEFKOSA, KIBHAS_FARES, SAVER, TICKET_DISCOUNT } from '../config'
+import { SaverCard, SaverSheet } from '../components/RideSaver'
+import { handshakeCode, randomSecret } from '../lib/crypto'
+import { quote, refundsThisMonth, saverState } from '../lib/saver'
 import { CITIES, SAFE_SPOTS } from '../lib/data'
 import { fmt } from '../lib/fx'
 import { uid, useStore } from '../lib/store'
-import { appPrice, departures, luhn, ticketCode, type Ticket } from '../lib/tickets'
+import { departures, luhn, ticketCode, type Ticket } from '../lib/tickets'
 import { ERCAN, km, routesFrom, taxiFare } from '../lib/transport'
 
 type Tab = 'tickets' | 'airport' | 'taxi'
@@ -17,9 +20,12 @@ export default function Transport() {
   const { s, t } = useStore()
   const [tab, setTab] = useState<Tab>('tickets')
   const valid = s.tickets.filter((x) => x.status === 'valid')
+  const [saver, setSaver] = useState(false)
   return (
     <div>
       <Header back title={t('act.transport')} sub="Bus tickets, airport shuttle & taxis" />
+      {tab !== 'taxi' && <div className="px-5 pb-3"><SaverCard onOpen={() => setSaver(true)} /></div>}
+      {saver && <SaverSheet onClose={() => setSaver(false)} />}
       <div className="px-5"><Segmented value={tab} onChange={setTab} options={[{ value: 'tickets', label: '🎟️ Bus tickets' }, { value: 'airport', label: '✈️ Airport' }, { value: 'taxi', label: '🚕 Taxi' }]} /></div>
       {valid.length > 0 && <MyTickets tickets={valid} />}
       {tab === 'tickets' && <BusTickets />}
@@ -54,9 +60,22 @@ function MyTickets({ tickets }: { tickets: Ticket[] }) {
 }
 
 function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
-  const { set, addTx, toast } = useStore()
+  const { s, set, addTx, toast } = useStore()
+  const [code, setCode] = useState('')
+  const [left, setLeft] = useState(30)
+  // Live QR: changes every 30s and only exists inside the holder's app, so screenshots can't be resold.
+  useEffect(() => {
+    let alive = true
+    const tick = async () => { const c = await handshakeCode(tk.secret ?? tk.id, tk.id); if (alive) { setCode(c); setLeft(30 - (Math.floor(Date.now() / 1000) % 30)) } }
+    tick(); const id = setInterval(tick, 1000)
+    return () => { alive = false; clearInterval(id) }
+  }, [tk.id, tk.secret])
+  const departs = new Date(`${tk.date}T${tk.time}:00`).getTime()
+  const tooLate = departs - Date.now() < SAVER.noRefundMinutes * 60_000
+  const refundsLeft = SAVER.maxRefundsPerMonth - refundsThisMonth(s.tickets)
   const refund = () => {
-    set((p) => ({ ...p, tickets: p.tickets.map((x) => (x.id === tk.id ? { ...x, status: 'refunded' } : x)), balances: tk.paidWith === 'wallet' ? { ...p.balances, TRY: (p.balances.TRY ?? 0) + tk.total } : p.balances }))
+    if (tooLate) return toast({ title: `No refunds in the last ${SAVER.noRefundMinutes} minutes before departure`, emoji: '⛔' })
+    set((p) => ({ ...p, tickets: p.tickets.map((x) => (x.id === tk.id ? { ...x, status: 'refunded', refundedAt: Date.now() } : x)), balances: tk.paidWith === 'wallet' ? { ...p.balances, TRY: (p.balances.TRY ?? 0) + tk.total } : p.balances }))
     if (tk.paidWith === 'wallet') addTx({ type: 'bill', amount: tk.total, currency: 'TRY', label: `Refund · ${tk.operator} ${tk.from}→${tk.to}` })
     toast({ title: tk.paidWith === 'wallet' ? 'Refunded to your wallet' : 'Refund sent to your card (3–5 days)', emoji: '↩️' })
     onClose()
@@ -66,8 +85,11 @@ function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
       <div className="flex flex-col items-center gap-3 rounded-3xl bg-white p-5 text-ink-950">
         <p className="text-sm font-semibold">{tk.operator}</p>
         <p className="text-2xl font-extrabold">{tk.from} → {tk.to}</p>
-        <QRCodeSVG value={`luda://ticket/${tk.code}`} size={180} />
+        <p className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">👤 {tk.holder ?? s.name}{tk.pax > 1 ? ` + ${tk.pax - 1}` : ''} · personal ticket</p>
+        <QRCodeSVG value={`luda://ticket/${tk.code}/${code}`} size={180} />
         <p className="font-mono text-2xl font-black tracking-[0.3em]">{tk.code}</p>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-violet-500 transition-all" style={{ width: `${(left / 30) * 100}%` }} /></div>
+        <p className="text-[11px] text-slate-500">Live QR refreshes in {left}s · screenshots won't scan · driver may check your name</p>
         <div className="grid w-full grid-cols-3 gap-2 text-center text-xs">
           <div className="rounded-xl bg-slate-100 p-2"><p className="text-slate-500">Date</p><p className="font-bold">{new Date(tk.date + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</p></div>
           <div className="rounded-xl bg-slate-100 p-2"><p className="text-slate-500">Departs</p><p className="font-bold">{tk.time}</p></div>
@@ -76,7 +98,8 @@ function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
         {tk.returnDate && <p className="text-xs text-slate-600">Return: {new Date(tk.returnDate + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · {tk.returnTime}</p>}
         <p className="text-xs text-slate-500">Show this QR to the driver · paid {fmt(tk.total, 'TRY')} · saved {fmt(tk.saved, 'TRY')}</p>
       </div>
-      <button className="btn-ghost mt-3 w-full text-sm text-rose-300" onClick={refund}>Cancel & refund</button>
+      <button className="btn-ghost mt-3 w-full text-sm text-rose-300" disabled={tooLate} onClick={refund}>{tooLate ? `Refunds close ${SAVER.noRefundMinutes} min before departure` : 'Cancel & refund'}</button>
+      {!tooLate && tk.saved > 0 && <p className="mt-2 text-center text-[11px] text-slate-500">Refunded Saver tickets still count toward your limits. {Math.max(0, refundsLeft - 1)} refund{refundsLeft - 1 === 1 ? '' : 's'} left this month before Saver pauses.</p>}
     </Sheet>
   )
 }
@@ -92,20 +115,22 @@ function BusTickets() {
   const from = dir === 'gl' ? 'Girne' : 'Lefkoşa', to = dir === 'gl' ? 'Lefkoşa' : 'Girne'
   const others = useMemo(() => routesFrom(s.city).filter((r) => !(['girne', 'lefkosa'].includes(s.city) && ['girne', 'lefkosa'].includes(r.to.id))), [s.city])
   const city = CITIES.find((c) => c.id === s.city)!
+  const active = saverState(s).active
+  const price = (official: number, ret: boolean) => (active ? official - (ret ? TICKET_DISCOUNT.return : TICKET_DISCOUNT.single) : official)
 
   return (
     <div className="flex flex-col gap-3 px-5 pt-4">
       <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-violet-500 via-fuchsia-700 to-indigo-950 p-5 text-white">
         <div className="absolute -top-10 -right-10 size-40 rounded-full bg-white/10 blur-2xl" />
-        <p className="chip bg-white/15 text-white"><BadgePercent size={12} /> Cheaper in Luda</p>
+        <p className="chip bg-white/15 text-white"><BadgePercent size={12} /> {active ? 'Ride Saver prices' : 'Opt in to Ride Saver for Luda prices'}</p>
         <div className="mt-3 flex items-center gap-3">
           <p className="text-2xl font-extrabold">{from}</p>
           <button onClick={() => setDir(dir === 'gl' ? 'lg' : 'gl')} className="grid size-9 place-items-center rounded-full bg-white/20" aria-label="Swap direction"><ArrowLeftRight size={16} /></button>
           <p className="text-2xl font-extrabold">{to}</p>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-          <div className="rounded-2xl bg-black/20 p-3"><p className="text-xs text-white/70">One way</p><p><span className="text-xl font-extrabold">₺{appPrice(GIRNE_LEFKOSA.single, false)}</span> <span className="text-xs text-white/60 line-through">₺{GIRNE_LEFKOSA.single}</span></p></div>
-          <div className="rounded-2xl bg-black/20 p-3"><p className="text-xs text-white/70">Return</p><p><span className="text-xl font-extrabold">₺{appPrice(GIRNE_LEFKOSA.return, true)}</span> <span className="text-xs text-white/60 line-through">₺{GIRNE_LEFKOSA.return}</span></p></div>
+          <div className="rounded-2xl bg-black/20 p-3"><p className="text-xs text-white/70">One way</p><p><span className="text-xl font-extrabold">₺{price(GIRNE_LEFKOSA.single, false)}</span> {active ? <span className="text-xs text-white/60 line-through">₺{GIRNE_LEFKOSA.single}</span> : <span className="text-xs text-white/70">or ₺{GIRNE_LEFKOSA.single - TICKET_DISCOUNT.single} with Saver</span>}</p></div>
+          <div className="rounded-2xl bg-black/20 p-3"><p className="text-xs text-white/70">Return</p><p><span className="text-xl font-extrabold">₺{price(GIRNE_LEFKOSA.return, true)}</span> {active ? <span className="text-xs text-white/60 line-through">₺{GIRNE_LEFKOSA.return}</span> : <span className="text-xs text-white/70">or ₺{GIRNE_LEFKOSA.return - TICKET_DISCOUNT.return} with Saver</span>}</p></div>
         </div>
       </div>
       <p className="label">Choose your bus</p>
@@ -120,7 +145,7 @@ function BusTickets() {
       <p className="label mt-3">Other routes from {city.name}</p>
       {others.map((r) => (
         <button key={r.to.id} onClick={() => setTrip({ from: city.name, to: r.to.name, operator: 'Intercity bus', official: { single: r.fare, ret: r.fare * 2 - 20 }, every: r.every.includes('15') ? 30 : 60, estimated: true, kind: 'bus', first: '07:00', last: '19:00' })} className="card text-start">
-          <div className="flex items-center gap-2 font-semibold">{city.name} <ArrowRight size={14} className="text-slate-500 rtl:rotate-180" /> {r.to.name}<span className="ms-auto font-extrabold text-mint-300">₺{appPrice(r.fare, false)}</span></div>
+          <div className="flex items-center gap-2 font-semibold">{city.name} <ArrowRight size={14} className="text-slate-500 rtl:rotate-180" /> {r.to.name}<span className="ms-auto font-extrabold text-mint-300">₺{price(r.fare, false)}</span></div>
           <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-400"><span><Clock size={11} className="inline" /> ~{r.mins} min</span><span>{r.every}</span><span><MapPin size={11} className="inline" /> {r.from}</span></p>
         </button>
       ))}
@@ -150,9 +175,10 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const [err, setErr] = useState('')
   const [made, setMade] = useState<Ticket | null>(null)
 
-  const official = (ret ? trip.official.ret : trip.official.single) * pax
-  const total = appPrice(ret ? trip.official.ret : trip.official.single, ret) * pax
-  const saved = official - total
+  const st = saverState(s)
+  const q = quote(ret ? trip.official.ret : trip.official.single, ret, pax, st.active)
+  const official = q.full, total = q.total, saved = q.saved
+  const [saverOpen, setSaverOpen] = useState(false)
   const bal = s.balances.TRY ?? 0
   const cardOk = luhn(card.num) && /^\d{2}\/\d{2}$/.test(card.exp) && /^\d{3,4}$/.test(card.cvv)
   const canPay = !!(time || times[0]) && (!ret || !!(rtime || rtimes[0])) && (pay === 'wallet' ? bal >= total : cardOk)
@@ -161,17 +187,18 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
     const tk: Ticket = {
       id: uid(), code: ticketCode(), operator: trip.operator, from: trip.from, to: trip.to, date, time: time || times[0],
       returnDate: ret ? rd : undefined, returnTime: ret ? rtime || rtimes[0] : undefined, pax, total, saved, paidWith: pay, createdAt: Date.now(), status: 'valid', kind: trip.kind,
+      holder: s.name, secret: randomSecret(),
     }
     set((p) => ({ ...p, tickets: [tk, ...p.tickets], balances: pay === 'wallet' ? { ...p.balances, TRY: (p.balances.TRY ?? 0) - total } : p.balances }))
     addTx({ type: 'bill', amount: -total, currency: 'TRY', label: `${trip.operator} · ${trip.from}→${trip.to}`, meta: `${pay === 'card' ? 'card' : 'wallet'} · saved ₺${saved}` })
-    reward(s.quests.includes('ticket') ? 10 : 50, { quest: 'ticket', badge: 'traveller', title: `Saved ₺${saved} on your ticket` })
+    reward(s.quests.includes('ticket') ? 10 : 50, { quest: 'ticket', badge: 'traveller', title: saved ? `Saved ₺${saved} on your ticket` : 'Ticket booked' })
     setMade(tk); setStage('done')
   }
   const submit = () => { setErr(''); if (pay === 'wallet') setStage('pin'); else issue() }
 
   return (
     <Sheet open onClose={onClose} title={`${trip.operator}`}>
-      {stage === 'done' && made ? <Success title="Ticket booked 🎟️" sub={`${made.from} → ${made.to} · ${made.time}. Code ${made.code}. You saved ₺${made.saved}! Find it under "My tickets".`} onClose={onClose} /> :
+      {stage === 'done' && made ? <Success title="Ticket booked 🎟️" sub={`${made.from} → ${made.to} · ${made.time}. Code ${made.code}.${made.saved ? ` You saved ₺${made.saved}!` : ''} Find it under "My tickets".`} onClose={onClose} /> :
         stage === 'pin' ? (
           <div className="flex flex-col items-center gap-3"><p className="text-sm text-slate-300">Pay {fmt(total, 'TRY')} from your wallet</p>
             <PinPad error={err} onDone={async (pin) => ((await checkPin(pin)) ? issue() : setErr('Wrong PIN'))} /></div>
@@ -190,8 +217,10 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
               </div>
             </div>
             <div className="rounded-2xl bg-fg/[0.03] p-3 text-sm">
-              <div className="flex justify-between text-slate-400"><span>Official price</span><span className="line-through">{fmt(official, 'TRY')}</span></div>
-              <div className="flex justify-between text-mint-300"><span>Luda discount (₺{ret ? TICKET_DISCOUNT.return : TICKET_DISCOUNT.single} × {pax})</span><span>−{fmt(saved, 'TRY')}</span></div>
+              <div className="flex justify-between text-slate-400"><span>Official price</span><span className={saved ? 'line-through' : ''}>{fmt(official, 'TRY')}</span></div>
+              {saved > 0 && <div className="flex justify-between text-mint-300"><span>Ride Saver (₺{q.off} × {q.seats} seat{q.seats > 1 ? 's' : ''})</span><span>−{fmt(saved, 'TRY')}</span></div>}
+              {st.active && pax > q.seats && <p className="text-[11px] text-slate-500">Saver covers you + {SAVER.companions} companion. Other seats are normal price.</p>}
+              {!st.active && <button className="mt-1 text-start text-xs text-violet-300 underline" onClick={() => setSaverOpen(true)}>{st.message} {st.reason === 'not_member' ? `Save ₺${q.off}/seat →` : ''}</button>}
               <div className="mt-1 flex justify-between text-lg font-extrabold"><span>You pay</span><span>{fmt(total, 'TRY')}</span></div>
               {trip.estimated && <p className="mt-1 text-[11px] text-slate-500">Fare estimated for this route in the demo.</p>}
             </div>
@@ -211,6 +240,7 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
             </AnimatePresence>
             {pay === 'wallet' && bal < total && <p className="text-sm text-rose-300">Not enough TL in your wallet. <Link to="/wallet?a=deposit" className="underline">Top up</Link> or pay by card.</p>}
             <button className="btn-primary py-4" disabled={!canPay} onClick={submit}><TicketIcon size={18} /> Pay {fmt(total, 'TRY')}</button>
+            {saverOpen && <SaverSheet onClose={() => setSaverOpen(false)} />}
           </div>
         )}
     </Sheet>
@@ -247,6 +277,7 @@ function Airport() {
   const [toAirport, setToAirport] = useState(true)
   const [book, setBook] = useState<Trip | null>(null)
   const fare = KIBHAS_FARES[s.city] ?? 300
+  const active = saverState(s).active
   const d = Math.round(km(city, ERCAN))
   return (
     <div className="flex flex-col gap-3 px-5 pt-4">
@@ -255,7 +286,7 @@ function Airport() {
         <p className="chip bg-white/15 text-white">KIBHAS airport shuttle</p>
         <p className="mt-3 text-2xl font-extrabold">{toAirport ? `${city.name} → Ercan` : `Ercan → ${city.name}`}</p>
         <p className="text-sm text-cyan-50/80">~{d} km · seats bookable in Luda</p>
-        <p className="mt-2"><span className="text-3xl font-extrabold">₺{appPrice(fare, false)}</span> <span className="text-sm text-white/60 line-through">₺{fare}</span> <span className="text-xs text-white/70">per person</span></p>
+        <p className="mt-2"><span className="text-3xl font-extrabold">₺{active ? fare - TICKET_DISCOUNT.single : fare}</span> {active && <span className="text-sm text-white/60 line-through">₺{fare}</span>} <span className="text-xs text-white/70">per person{active ? '' : ` · ₺${fare - TICKET_DISCOUNT.single} with Ride Saver`}</span></p>
       </div>
       <Segmented value={toAirport ? 'to' : 'from'} onChange={(v) => setToAirport(v === 'to')} options={[{ value: 'to', label: '🛫 To the airport' }, { value: 'from', label: '🛬 From the airport' }]} />
       <button className="btn-primary py-4" onClick={() => setBook({ from: toAirport ? city.name : 'Ercan Airport', to: toAirport ? 'Ercan Airport' : city.name, operator: 'KIBHAS', official: { single: fare, ret: fare * 2 }, every: 60, kind: 'shuttle', first: toAirport ? '04:00' : '06:00', last: toAirport ? '22:00' : '23:59' })}>
@@ -265,7 +296,7 @@ function Airport() {
         <p className="mb-1 font-semibold text-slate-200">How it works</p>
         <p>• From the airport, buses wait for flights. Pick the time closest after your landing.</p>
         <p>• Show your Luda QR ticket to the driver. Luggage included.</p>
-        <p>• Luda price is ₺{TICKET_DISCOUNT.single} cheaper than the counter.</p>
+        <p>• Ride Saver members pay ₺{TICKET_DISCOUNT.single} less than the counter.</p>
       </div>
       <a href="https://kibhas.org" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1 text-xs text-sky-300 underline"><ExternalLink size={12} /> KIBHAS official website</a>
       <p className="text-center text-[11px] text-slate-500">Live seat booking needs a partnership with KIBHAS (their booking system connected to Luda). Fares shown are publicly reported and may change.</p>

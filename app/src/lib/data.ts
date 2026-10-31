@@ -103,6 +103,7 @@ export const BADGES: Record<string, { name: string; emoji: string; desc: string 
   traveller: { name: 'Road Tripper', emoji: '🎟️', desc: 'Bought a bus ticket in Luda' },
   flash_asker: { name: 'Flash', emoji: '⚡', desc: 'Posted a Flash help request' },
   handy_hero: { name: 'Handy Hero', emoji: '🛠️', desc: 'Completed a Flash job and got paid safely' },
+  saver: { name: 'Ride Saver', emoji: '🎟️', desc: 'Selected for Luda Ride Saver' },
   home_sweet: { name: 'Home Sweet Home', emoji: '🏡', desc: 'Booked a house viewing' },
   good_neighbour: { name: 'Good Neighbour', emoji: '🤝', desc: 'Posted a listing or found a roommate' },
 }

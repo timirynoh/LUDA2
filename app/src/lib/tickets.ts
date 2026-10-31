@@ -1,13 +1,9 @@
-import { TICKET_DISCOUNT } from '../config'
-
 export interface Ticket {
   id: string; code: string; operator: string; from: string; to: string; date: string; time: string
   returnDate?: string; returnTime?: string; pax: number; total: number; saved: number; paidWith: 'wallet' | 'card'
   createdAt: number; status: 'valid' | 'used' | 'refunded'; kind: 'bus' | 'shuttle'
+  holder: string; secret: string; refundedAt?: number
 }
-
-/** Luda price = official price minus the app discount (per passenger). */
-export const appPrice = (official: number, ret: boolean) => official - (ret ? TICKET_DISCOUNT.return : TICKET_DISCOUNT.single)
 
 export function departures(date: string, first = '06:30', last = '23:00', everyMin = 30) {
   const out: string[] = []

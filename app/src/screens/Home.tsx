@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Ring, Sheet } from '../components/ui'
 import { FlashBubbles, FlashPop } from '../components/FlashBubbles'
+import { SaverCard, SaverSheet } from '../components/RideSaver'
 import { ACTIONS, MAX_SHORTCUTS } from '../lib/actions'
 import { calendarFor, daysUntil, nextClass, UNIVERSITIES } from '../lib/uni'
 import { CITIES, COUNTRIES, CURRENCIES, QUESTS } from '../lib/data'
@@ -13,6 +14,7 @@ import { useStore } from '../lib/store'
 export default function Home() {
   const { s, set, t, level } = useStore()
   const [editing, setEditing] = useState(false)
+  const [saverOpen, setSaverOpen] = useState(false)
   const nc = useMemo(() => nextClass(s.classes), [s.classes])
   const uni = UNIVERSITIES.find((u) => u.id === s.university)
   const deadline = useMemo(() => (s.university ? calendarFor(s.university).find((i) => i.kind !== 'term' && daysUntil(i.end ?? i.start) >= 0) : undefined), [s.university])
@@ -72,6 +74,9 @@ export default function Home() {
           </div>
         </div>
       </motion.div>
+
+      {s.saver.status === 'none' && <SaverCard dismissible onOpen={() => setSaverOpen(true)} />}
+      {saverOpen && <SaverSheet onClose={() => setSaverOpen(false)} />}
 
       {activeTrade && (
         <Link to="/exchange?tab=p2p" className="card flex items-center gap-3 border-fuchsia-400/30 bg-fuchsia-500/10">

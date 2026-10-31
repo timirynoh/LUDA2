@@ -36,3 +36,15 @@ export const GIRNE_LEFKOSA = {
 
 /** KIBHAS airport shuttle fares to/from Ercan (TL, as publicly reported; confirm with KIBHAS). */
 export const KIBHAS_FARES: Record<string, number> = { lefkosa: 250, girne: 350, magusa: 300, guzelyurt: 350, lefke: 395, iskele: 300 }
+
+/**
+ * Ride Saver (ticket discount) anti-abuse rules. Members opt in and are selected
+ * automatically if their account passes the checks in lib/saver.ts.
+ */
+export const SAVER = {
+  perDay: 2, // discounted tickets per day
+  perMonth: 20, // discounted tickets per calendar month
+  companions: 1, // discounted seats besides the member's own, per ticket
+  maxRefundsPerMonth: 3, // more refunds than this pauses the discount for the month
+  noRefundMinutes: 30, // no refunds this close to departure
+}
