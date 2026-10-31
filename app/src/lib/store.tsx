@@ -83,7 +83,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<State>(load)
   const [toasts, setToasts] = useState<Toast[]>([])
 
-  useEffect(() => { localStorage.setItem(KEY, JSON.stringify(s)) }, [s])
+  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(s)) } catch { /* storage unavailable */ } }, [s])
 
   const rtl = !!LANGS.find((l) => l.code === s.lang)?.rtl
   useEffect(() => {
@@ -123,7 +123,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const checkPin = useCallback(async (pin: string) => (await hashPin(pin, s.salt)) === s.pinHash, [s.salt, s.pinHash])
 
-  const reset = useCallback(() => { localStorage.removeItem(KEY); setS({ ...initialState }) }, [])
+  const reset = useCallback(() => { try { localStorage.removeItem(KEY) } catch { /* ignore */ } setS({ ...initialState }) }, [])
 
   const level = useMemo(() => {
     let idx = 0

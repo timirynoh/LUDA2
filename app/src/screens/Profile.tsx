@@ -7,6 +7,7 @@ import { useStore } from '../lib/store'
 export default function Profile() {
   const { s, set, t, level, reward, reset } = useStore()
   const [kyc, setKyc] = useState<0 | 1 | 2 | 3 | 4>(0)
+  const [armed, setArmed] = useState(false)
   const country = COUNTRIES.find((c) => c.code === s.country)!
 
   const next = async (n: 2 | 3) => {
@@ -65,7 +66,7 @@ export default function Profile() {
           </label>
         </section>
 
-        <button className="btn-ghost text-rose-300" onClick={() => confirm('Reset all demo data?') && reset()}>{t('profile.reset')}</button>
+        <button className="btn-ghost text-rose-300" onClick={() => (armed ? reset() : setArmed(true))}>{armed ? 'Tap again to confirm reset' : t('profile.reset')}</button>
       </div>
 
       <Sheet open={kyc > 0} onClose={() => setKyc(0)} title={t('profile.verify')}>
