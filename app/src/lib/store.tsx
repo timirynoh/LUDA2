@@ -6,6 +6,7 @@ import type { Ev } from './community'
 import type { ClassItem } from './ocr'
 import type { Group, Msg } from './chat'
 import type { Ticket } from './tickets'
+import type { FlashReq, MyGig } from './flash'
 import { translate } from './i18n'
 import { hashPin } from './crypto'
 
@@ -40,7 +41,7 @@ export interface State {
   connections: string[]
   theme: 'dark' | 'light' | 'system'
   shortcuts: string[]
-  sections: { nextClass: boolean; rates: boolean; quests: boolean; deadline: boolean }
+  sections: { flash: boolean; nextClass: boolean; rates: boolean; quests: boolean; deadline: boolean }
   phoneVerified: boolean
   proofs: { housing?: 'resident' | 'owner' | 'agent' | 'photos'; business?: 'company' | 'individual'; org?: boolean }
   isAdmin: boolean
@@ -63,6 +64,8 @@ export interface State {
   chatStrikes: { count: number; until: number }
   tickets: Ticket[]
   reacts: Record<string, string>
+  flash: FlashReq[]
+  gigs: MyGig[]
 }
 
 const KEY = 'luda.v1'
@@ -76,12 +79,12 @@ export const initialState: State = {
   badges: [], quests: [], trades: [], savedBills: [], docs: [], permitExpiry: '', contacted: 0,
   savedHomes: [], viewings: [], myListings: [], connections: [],
   theme: 'dark', shortcuts: ['deposit', 'convert', 'p2p', 'bills'],
-  sections: { nextClass: true, rates: true, quests: true, deadline: true },
+  sections: { flash: true, nextClass: true, rates: true, quests: true, deadline: true },
   phoneVerified: false, proofs: {}, isAdmin: false, reports: [],
   myJobs: [], applications: [], myEvents: [], rsvps: [],
   university: '', classes: [], remind: { on: false, minutes: 15 }, paidFees: [],
   joinedGroups: ['g-help'], myGroups: [], chatMsgs: {}, lastRead: {}, mutedGroups: [], blockedUsers: [], hiddenMsgs: [],
-  chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {},
+  chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {}, flash: [], gigs: [],
 }
 
 function load(): State {
@@ -89,6 +92,7 @@ function load(): State {
     const raw = localStorage.getItem(KEY)
     if (!raw) return initialState
     const s = { ...initialState, ...JSON.parse(raw) } as State
+    s.sections = { ...initialState.sections, ...s.sections }
     // daily streak bookkeeping
     const t = today()
     if (s.lastDay !== t) {

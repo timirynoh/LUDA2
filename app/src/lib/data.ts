@@ -101,6 +101,8 @@ export const BADGES: Record<string, { name: string; emoji: string; desc: string 
   chatter: { name: 'Chatterbox', emoji: '💬', desc: 'Joined a group chat' },
   founder: { name: 'Founder', emoji: '🏗️', desc: 'Created a group' },
   traveller: { name: 'Road Tripper', emoji: '🎟️', desc: 'Bought a bus ticket in Luda' },
+  flash_asker: { name: 'Flash', emoji: '⚡', desc: 'Posted a Flash help request' },
+  handy_hero: { name: 'Handy Hero', emoji: '🛠️', desc: 'Completed a Flash job and got paid safely' },
   home_sweet: { name: 'Home Sweet Home', emoji: '🏡', desc: 'Booked a house viewing' },
   good_neighbour: { name: 'Good Neighbour', emoji: '🤝', desc: 'Posted a listing or found a roommate' },
 }
@@ -118,5 +120,6 @@ export const QUESTS = [
   { id: 'job', title: 'Apply for a job', xp: 60, to: '/jobs' },
   { id: 'event', title: 'RSVP to a community event', xp: 40, to: '/community' },
   { id: 'chat', title: 'Join a group chat', xp: 30, to: '/chats' },
+  { id: 'flash', title: 'Post a Flash help request', xp: 40, to: '/flash' },
   { id: 'ticket', title: 'Buy a bus ticket', xp: 50, to: '/transport' },
 ]

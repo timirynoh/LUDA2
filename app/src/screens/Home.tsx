@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, ChevronUp, Eye, EyeOff, Flame, GraduationCap
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Ring, Sheet } from '../components/ui'
+import { FlashBubbles, FlashPop } from '../components/FlashBubbles'
 import { ACTIONS, MAX_SHORTCUTS } from '../lib/actions'
 import { calendarFor, daysUntil, nextClass, UNIVERSITIES } from '../lib/uni'
 import { CITIES, COUNTRIES, CURRENCIES, QUESTS } from '../lib/data'
@@ -43,6 +44,8 @@ export default function Home() {
         </button>
         <Link to="/rewards" className="chip bg-orange-500/15 py-2 text-orange-300"><Flame size={14} /> {s.streak}</Link>
       </div>
+
+      {s.sections.flash && <FlashBubbles />}
 
       {/* balance card */}
       <motion.div initial={{ scale: 0.97 }} animate={{ scale: 1 }}
@@ -158,12 +161,13 @@ export default function Home() {
         </div>
       </section>}
       {editing && <Customize open onClose={() => setEditing(false)} />}
+      {s.sections.flash && <FlashPop />}
     </div>
   )
 }
 
 const SECTIONS: { key: keyof import('../lib/store').State['sections']; label: string }[] = [
-  { key: 'nextClass', label: '🎓 Next class' }, { key: 'deadline', label: '⏳ Next uni deadline' },
+  { key: 'flash', label: '⚡ Flash help bubbles' }, { key: 'nextClass', label: '🎓 Next class' }, { key: 'deadline', label: '⏳ Next uni deadline' },
   { key: 'rates', label: '💱 Live rates' }, { key: 'quests', label: '★ Daily quests' },
 ]
 

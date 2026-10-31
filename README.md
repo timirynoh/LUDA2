@@ -40,6 +40,7 @@ It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desk
 | **Group chats** | Discover / join / create groups, chat bubbles, replies, reactions, typing indicator, unread badges. Safety: on-device bad-word filter (EN, TR, FR, SW, AR + Pidgin, catches disguised spellings), scam-message blocker, 3 strikes = 10-min mute, flood control, report/block, group rules on join | ✅ demo members |
 | **Quick job post** | Type one line ("1 worker needed in Girne for construction"), app detects workers/area/type/pay, goes live instantly after phone check + filter | ✅ |
 | **Bus & shuttle tickets** | Girne ⇄ Lefkoşa (VirgoBus + second operator), other routes, KIBHAS airport shuttle. Luda price = official − ₺12 (single) / − ₺14 (return) per passenger; pay with wallet (PIN) or card; QR e-ticket; refund. Operators & fares in `config.ts` | ✅ payment simulated |
+| **Flash help** | Post a quick need ("washing machine broken") → animated bubbles on Home + pop-up alerts for people nearby → fixers send offers → pay via **escrow** (released only when you confirm the job is done) or cash with a clear "not protected" warning → rating. Anyone can also be the fixer and get paid through escrow | ✅ demo offers |
 | **Gamification** | XP, 5 levels (Newcomer → Legend), daily streaks, 7 quests, 9 badges, redeemable Luda Points and a community leaderboard by country, plus XP toasts and confetti | ✅ |
 | **Languages** | English, Türkçe, Français (DRC/Cameroon), Kiswahili (Kenya/Uganda/E. DRC), العربية (Sudan) with full RTL | ✅ |
 
@@ -67,5 +68,5 @@ app/src
 2. **KYC.** Plug a provider (Smile ID is strong for African IDs; Onfido or Sumsub also work) into `Profile.tsx`.
 3. **Escrow and SafeSwap.** Move escrow and handshake secrets to the server. The counterparty app scans the QR and the server verifies the code, then add ratings and dispute ops.
 4. **Bills.** Integrate with KIB-TEK, the municipalities and the telcos through an aggregator or direct agreements. The current amounts are deterministic mocks.
-5. **Residency portal.** Confirm `RESIDENCY_PORTAL_URL` in `config.ts` against the official Ministry of Interior / Immigration Department site. Government sites often block embedding inside other web pages. In a native build (Capacitor), the in-app browser plugin opens it inside the app. The user always logs in with the government directly; credentials are never scraped or stored.
+5. **Residency portal.** `RESIDENCY_PORTAL_URL` is set to `https://permissions.gov.ct.tr/login` (TRNC permits portal); re-check before launch. Government sites often block embedding inside other web pages. In a native build (Capacitor), the in-app browser plugin opens it inside the app. The user always logs in with the government directly; credentials are never scraped or stored.
 6. **Native apps.** Wrap with Capacitor for Play Store and App Store builds and push notifications (bill due, permit expiry, trade updates).

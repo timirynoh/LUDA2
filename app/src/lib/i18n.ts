@@ -3,6 +3,7 @@ import type { Lang } from './data'
 type Dict = Record<string, string>
 
 const en: Dict = {
+  'act.flash': 'Flash help',
   'nav.chats': 'Chats',
   'act.admin': 'Admin',
   'act.jobs': 'Jobs', 'act.community': 'Community', 'act.uni': 'University', 'act.transport': 'Transport',
@@ -34,6 +35,7 @@ const en: Dict = {
 }
 
 const tr: Dict = {
+  'act.flash': 'Hızlı yardım',
   'nav.chats': 'Sohbet',
   'act.admin': 'Yönetim',
   'act.jobs': 'İş ilanları', 'act.community': 'Topluluk', 'act.uni': 'Üniversite', 'act.transport': 'Ulaşım',
@@ -65,6 +67,7 @@ const tr: Dict = {
 }
 
 const fr: Dict = {
+  'act.flash': 'Aide flash',
   'nav.chats': 'Discussions',
   'act.admin': 'Admin',
   'act.jobs': 'Emplois', 'act.community': 'Communauté', 'act.uni': 'Université', 'act.transport': 'Transport',
@@ -96,6 +99,7 @@ const fr: Dict = {
 }
 
 const sw: Dict = {
+  'act.flash': 'Msaada haraka',
   'nav.chats': 'Gumzo',
   'act.admin': 'Msimamizi',
   'act.jobs': 'Kazi', 'act.community': 'Jamii', 'act.uni': 'Chuo', 'act.transport': 'Usafiri',
@@ -127,6 +131,7 @@ const sw: Dict = {
 }
 
 const ar: Dict = {
+  'act.flash': 'مساعدة سريعة',
   'nav.chats': 'الدردشة',
   'act.admin': 'الإدارة',
   'act.jobs': 'وظائف', 'act.community': 'المجتمع', 'act.uni': 'الجامعة', 'act.transport': 'المواصلات',

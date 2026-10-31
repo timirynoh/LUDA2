@@ -22,6 +22,8 @@ import Jobs from './screens/Jobs'
 import Transport from './screens/Transport'
 import Uni from './screens/Uni'
 import { useClassReminders } from './lib/reminders'
+import { useGigProgress } from './lib/gigs'
+import Flash from './screens/Flash'
 
 const TABS = [
   { to: '/', icon: HomeIcon, key: 'nav.home' },
@@ -35,6 +37,7 @@ export default function App() {
   const { s, t } = useStore()
   const loc = useLocation()
   useClassReminders()
+  useGigProgress()
   const inRoom = loc.pathname.startsWith('/chats/')
 
   return (
@@ -58,6 +61,7 @@ export default function App() {
                 <Route path="/uni" element={<Uni />} />
                 <Route path="/transport" element={<Transport />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/flash" element={<Flash />} />
                 <Route path="/chats" element={<Chats />} />
                 <Route path="/chats/:id" element={<ChatRoom />} />
                 <Route path="/residency" element={<Residency />} />

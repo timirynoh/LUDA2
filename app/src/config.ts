@@ -1,11 +1,10 @@
 /**
  * Central app configuration.
  *
- * IMPORTANT: confirm RESIDENCY_PORTAL_URL against the official TRNC Ministry of
- * Interior / Immigration Department (Muhaceret) website before launch. Government
- * portals change addresses and we never want to send users to a look-alike site.
+ * TRNC permits portal (student/residence permits). Login → "Online Transactions" →
+ * "Student Permits". Re-check this address before launch: government portals move.
  */
-export const RESIDENCY_PORTAL_URL = 'https://www.icisleri.gov.ct.tr'
+export const RESIDENCY_PORTAL_URL = 'https://permissions.gov.ct.tr/login'
 
 /** Live FX source (free, CORS-enabled). Falls back to indicative rates offline. */
 export const FX_API = 'https://open.er-api.com/v6/latest/USD'

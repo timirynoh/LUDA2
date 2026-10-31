@@ -6,7 +6,8 @@ import { RESIDENCY_PORTAL_URL } from '../config'
 import { useStore } from '../lib/store'
 
 const STEPS = [
-  ['📝', 'Fill in the online application', 'Register on the Ministry of Interior portal. Details must match your passport exactly.'],
+  ['🔐', 'Sign up or log in', 'Open permissions.gov.ct.tr. New here? Use "Sign up". Returning? Log in with your username and password.'],
+  ['📝', 'Fill in the online application', 'Go to Online Transactions → Student Permits (or the permit you need). Details must match your passport exactly.'],
   ['💬', 'SMS confirmation', 'You receive an SMS once your registration is accepted.'],
   ['🩺', 'Health insurance & medical check', 'Pay the health insurance premium online, then attend the required health checks.'],
   ['🏛️', 'Immigration (Muhaceret) review', 'The Immigration Department reviews your file and medical report.'],
@@ -39,8 +40,8 @@ export default function Residency() {
       <div className="flex flex-col gap-4 px-5">
         <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-teal-500 via-cyan-700 to-cyan-950 p-6 text-white">
           <div className="absolute -top-10 -right-10 size-40 rounded-full bg-fg/10 blur-2xl" />
-          <p className="text-sm text-cyan-100/80">TRNC Ministry of Interior</p>
-          <p className="mt-1 text-2xl font-extrabold">Residency portal</p>
+          <p className="text-sm text-cyan-100/80">TRNC permits portal · permissions.gov.ct.tr</p>
+          <p className="mt-1 text-2xl font-extrabold">Residence & student permits</p>
           <p className="mt-1 text-sm text-cyan-50/80">Log in, upload, track & print — without leaving Luda.</p>
           <button className="btn mt-4 w-full bg-white py-3.5 text-ink-950" onClick={() => setPortal(true)}><Lock size={16} /> {t('res.open')}</button>
         </div>
