@@ -29,6 +29,14 @@ It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desk
 | **Bills** | KIB-TEK electricity, municipality water (per city), LPG cylinder, Turkcell / Telsim top-up, home internet, rent. Saved accounts and 1% cashback in Luda Points. | ✅ mock biller |
 | **Around me** | Live city directory from **OpenStreetMap (Overpass API)**: food, *African taste*, groceries, pharmacies, clinics, banks/ATMs/exchange, hair & beauty, worship. One-tap Call / WhatsApp / Directions. | ✅ live data |
 | **Residency** | Opens the official portal in an in-app secure browser (Luda never sees the password), with a document checklist, permit-expiry countdown and step-by-step guide | ✅ |
+| **Housing & Roommates** | Listings per city, filters, verified landlords, reviews, viewings, roommate matching, report taken/fake | ✅ sample data |
+| **Jobs** | Verified employers, permit-support flag, apply & track, post a job | ✅ sample data |
+| **Community** | Church & mosque services, culture, sports, career and help events; RSVP; add to calendar | ✅ sample data |
+| **University hub** | Pick your school → only its deadlines & fees; pay tuition from wallet; **timetable screenshot reader that runs on the phone** (tesseract.js, image never uploaded) with review/edit; reminders only if the user turns them on; calendar export | ✅ OCR real, dates sample |
+| **Transport** | Intercity buses/dolmuş, Ercan airport ride-share pool, taxi fare estimate, share-my-trip safety | ✅ estimates |
+| **Posting safety** | Every poster: ID + phone OTP + legal declaration. Houses: title deed / KIB-TEK bill / agent licence / sublet permission + 3 live photos. Jobs: business registration or "Individual". All posts reviewed before going live, hidden after 7 days unless confirmed available, user reports, 1 active post for new posters | ✅ flow simulated |
+| **Admin console** | Owner reviews queue with red-flag checks, approves/rejects with reasons, posts as "Luda Official" | ✅ |
+| **Personalisation** | Night / Day / Auto theme; choose and order home shortcuts (max 8) and home sections | ✅ |
 | **Gamification** | XP, 5 levels (Newcomer → Legend), daily streaks, 7 quests, 9 badges, redeemable Luda Points and a community leaderboard by country, plus XP toasts and confetti | ✅ |
 | **Languages** | English, Türkçe, Français (DRC/Cameroon), Kiswahili (Kenya/Uganda/E. DRC), العربية (Sudan) with full RTL | ✅ |
 
