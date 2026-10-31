@@ -11,7 +11,7 @@ const COLOR = {
 export function TxList({ txs, empty }: { txs: Tx[]; empty: string }) {
   if (!txs.length) return <div className="card py-10 text-center text-sm text-slate-400">✨ {empty}</div>
   return (
-    <div className="card divide-y divide-white/5 p-2">
+    <div className="card divide-y divide-fg/5 p-2">
       {txs.map((x) => {
         const Icon = ICON[x.type]
         return (

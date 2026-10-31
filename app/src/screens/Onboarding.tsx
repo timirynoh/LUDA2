@@ -80,7 +80,7 @@ export default function Onboarding() {
   return (
     <div className="flex min-h-dvh flex-col px-5 pb-8 sm:min-h-[calc(100dvh-3rem)]">
       <div className="flex gap-1.5 pt-6">
-        {steps.map((_, i) => <div key={i} className={`h-1 flex-1 rounded-full transition ${i <= step ? 'bg-mint-400' : 'bg-white/10'}`} />)}
+        {steps.map((_, i) => <div key={i} className={`h-1 flex-1 rounded-full transition ${i <= step ? 'bg-mint-400' : 'bg-fg/10'}`} />)}
       </div>
       <div className="flex-1">
         <AnimatePresence mode="wait">

@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { BADGES, LANGS, LEVELS, type Lang } from './data'
 import type { Listing } from './housing'
+import type { Job } from './jobs'
+import type { Ev } from './community'
+import type { ClassItem } from './ocr'
 import { translate } from './i18n'
 import { hashPin } from './crypto'
 
@@ -33,6 +36,21 @@ export interface State {
   viewings: { id: string; listingId: string; title: string; date: string }[]
   myListings: Listing[]
   connections: string[]
+  theme: 'dark' | 'light' | 'system'
+  shortcuts: string[]
+  sections: { nextClass: boolean; rates: boolean; quests: boolean; deadline: boolean }
+  phoneVerified: boolean
+  proofs: { housing?: 'owner' | 'agent' | 'tenant'; business?: 'company' | 'individual'; org?: boolean }
+  isAdmin: boolean
+  reports: string[]
+  myJobs: Job[]
+  applications: { id: string; jobId: string; title: string; company: string; ts: number }[]
+  myEvents: Ev[]
+  rsvps: string[]
+  university: string
+  classes: ClassItem[]
+  remind: { on: boolean; minutes: number }
+  paidFees: string[]
 }
 
 const KEY = 'luda.v1'
@@ -45,6 +63,11 @@ export const initialState: State = {
   txs: [], xp: 0, points: 0, streak: 1, lastDay: today(),
   badges: [], quests: [], trades: [], savedBills: [], docs: [], permitExpiry: '', contacted: 0,
   savedHomes: [], viewings: [], myListings: [], connections: [],
+  theme: 'dark', shortcuts: ['deposit', 'convert', 'p2p', 'bills'],
+  sections: { nextClass: true, rates: true, quests: true, deadline: true },
+  phoneVerified: false, proofs: {}, isAdmin: false, reports: [],
+  myJobs: [], applications: [], myEvents: [], rsvps: [],
+  university: '', classes: [], remind: { on: false, minutes: 15 }, paidFees: [],
 }
 
 function load(): State {
@@ -92,6 +115,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(s)) } catch { /* storage unavailable */ } }, [s])
 
   const rtl = !!LANGS.find((l) => l.code === s.lang)?.rtl
+  useEffect(() => {
+    const mq = window.matchMedia?.('(prefers-color-scheme: light)')
+    const apply = () => document.documentElement.classList.toggle('light', s.theme === 'light' || (s.theme === 'system' && !!mq?.matches))
+    apply()
+    mq?.addEventListener?.('change', apply)
+    return () => mq?.removeEventListener?.('change', apply)
+  }, [s.theme])
+
   useEffect(() => {
     document.documentElement.lang = s.lang
     document.documentElement.dir = rtl ? 'rtl' : 'ltr'

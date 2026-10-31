@@ -37,8 +37,8 @@ export default function Residency() {
     <div>
       <Header back title={t('res.title')} sub="Residence permit (İkamet İzni)" />
       <div className="flex flex-col gap-4 px-5">
-        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-teal-500 via-cyan-700 to-ink-800 p-6">
-          <div className="absolute -top-10 -right-10 size-40 rounded-full bg-white/10 blur-2xl" />
+        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-teal-500 via-cyan-700 to-cyan-950 p-6 text-white">
+          <div className="absolute -top-10 -right-10 size-40 rounded-full bg-fg/10 blur-2xl" />
           <p className="text-sm text-cyan-100/80">TRNC Ministry of Interior</p>
           <p className="mt-1 text-2xl font-extrabold">Residency portal</p>
           <p className="mt-1 text-sm text-cyan-50/80">Log in, upload, track & print — without leaving Luda.</p>
@@ -49,7 +49,7 @@ export default function Residency() {
           <div className="grid size-12 place-items-center rounded-2xl bg-cyan-500/15 text-cyan-300"><CalendarClock /></div>
           <div className="flex-1">
             <p className="label">{t('res.expiry')}</p>
-            <input type="date" className="mt-1 bg-transparent text-sm font-semibold outline-none [color-scheme:dark]" value={s.permitExpiry}
+            <input type="date" className="mt-1 bg-transparent text-sm font-semibold outline-none" value={s.permitExpiry}
               onChange={(e) => set((p) => ({ ...p, permitExpiry: e.target.value }))} />
           </div>
           {days !== null && (
@@ -69,8 +69,8 @@ export default function Residency() {
             {DOCS.map((d) => {
               const on = s.docs.includes(d)
               return (
-                <button key={d} onClick={() => toggle(d)} className="flex items-center gap-3 rounded-xl px-2 py-2.5 text-start hover:bg-white/[0.03]">
-                  <span className={`grid size-6 place-items-center rounded-lg border transition ${on ? 'border-mint-400 bg-mint-400 text-ink-950' : 'border-white/20'}`}>{on && <Check size={14} strokeWidth={3} />}</span>
+                <button key={d} onClick={() => toggle(d)} className="flex items-center gap-3 rounded-xl px-2 py-2.5 text-start hover:bg-fg/[0.03]">
+                  <span className={`grid size-6 place-items-center rounded-lg border transition ${on ? 'border-mint-400 bg-mint-400 text-ink-950' : 'border-fg/20'}`}>{on && <Check size={14} strokeWidth={3} />}</span>
                   <span className={`text-sm ${on ? 'text-slate-500 line-through' : ''}`}>{d}</span>
                 </button>
               )
@@ -83,7 +83,7 @@ export default function Residency() {
           <div className="flex flex-col gap-2">
             {STEPS.map(([e, title, body], i) => (
               <div key={title} className="card flex gap-3">
-                <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/5 text-lg">{e}</div>
+                <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-fg/5 text-lg">{e}</div>
                 <div><p className="text-sm font-semibold"><span className="text-slate-500">{i + 1}.</span> {title}</p><p className="text-xs text-slate-400">{body}</p></div>
               </div>
             ))}
@@ -95,10 +95,10 @@ export default function Residency() {
       {/* In-app secure browser */}
       <AnimatePresence>
         {portal && (
-          <motion.div className="fixed inset-0 z-50 mx-auto flex max-w-md flex-col bg-ink-950" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 280 }}>
-            <div className="flex items-center gap-2 border-b border-white/10 px-3 pt-4 pb-3">
+          <motion.div className="fixed inset-0 z-50 mx-auto flex max-w-md flex-col bg-ink-900" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 280 }}>
+            <div className="flex items-center gap-2 border-b border-fg/10 px-3 pt-4 pb-3">
               <button onClick={() => setPortal(false)} className="glass grid size-9 place-items-center rounded-xl" aria-label="Close"><X size={18} /></button>
-              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-xs">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-fg/5 px-3 py-2 text-xs">
                 <Lock size={12} className="shrink-0 text-mint-400" /><span className="truncate text-slate-300">{RESIDENCY_PORTAL_URL.replace('https://', '')}</span>
               </div>
               <button onClick={() => setFrameKey(frameKey + 1)} className="glass grid size-9 place-items-center rounded-xl" aria-label="Reload"><RotateCw size={16} /></button>

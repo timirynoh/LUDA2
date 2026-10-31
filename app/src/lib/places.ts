@@ -14,6 +14,7 @@ export const CATEGORIES = [
   { id: 'money', label: 'Money', emoji: '🏦', q: 'nwr["amenity"~"^(bank|atm|bureau_de_change)$"]' },
   { id: 'beauty', label: 'Hair & beauty', emoji: '💇🏾', q: 'nwr["shop"~"^(hairdresser|beauty)$"]' },
   { id: 'worship', label: 'Worship', emoji: '⛪', q: 'nwr["amenity"="place_of_worship"]' },
+  { id: 'taxi', label: 'Taxi', emoji: '🚕', q: 'nwr["amenity"="taxi"]' },
 ]
 
 function km(a: number, b: number, c: number, d: number) {
@@ -59,7 +60,7 @@ export function samplePlaces(cat: string, lat: number, lon: number): Place[] {
     african: ['Mama Put Kitchen', 'Jollof Corner', 'Suya Spot'],
     grocery: ['City Market', 'Mini Market 24', 'Fresh Greens'],
     pharmacy: ['Central Pharmacy', 'Duty Pharmacy'], health: ['State Hospital', 'Family Clinic'],
-    money: ['Bank ATM', 'Exchange Office'], beauty: ['Braids & Locs Studio', 'Fade Masters Barber'], worship: ['Community Church', 'Central Mosque'],
+    money: ['Bank ATM', 'Exchange Office'], taxi: ['City Taxi Rank', 'Campus Taxi'], beauty: ['Braids & Locs Studio', 'Fade Masters Barber'], worship: ['Community Church', 'Central Mosque'],
   }
   return (names[cat] ?? []).map((n, i) => ({ id: `s${i}`, name: n, lat: lat + i * 0.002, lon: lon + i * 0.002, km: 0.4 + i * 0.6, kind: cat, sample: true }))
 }

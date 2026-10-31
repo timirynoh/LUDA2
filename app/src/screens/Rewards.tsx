@@ -40,7 +40,7 @@ export default function Rewards() {
 
         <div className="flex gap-1 overflow-x-auto">
           {LEVELS.map((l, i) => (
-            <div key={l.name} className={`flex min-w-[4.5rem] flex-1 flex-col items-center rounded-2xl p-2 text-center ${i < level.idx ? 'bg-mint-400/10' : 'bg-white/[0.03] opacity-50'}`}>
+            <div key={l.name} className={`flex min-w-[4.5rem] flex-1 flex-col items-center rounded-2xl p-2 text-center ${i < level.idx ? 'bg-mint-400/10' : 'bg-fg/[0.03] opacity-50'}`}>
               <span className="text-xl">{l.emoji}</span><span className="text-[10px] font-semibold">{l.name}</span>
             </div>
           ))}
@@ -50,7 +50,7 @@ export default function Rewards() {
           <div className="mb-3 flex items-center justify-between"><p className="font-bold">🪙 {t('rewards.points')}</p><p className="text-xl font-extrabold text-gold-300">{s.points}</p></div>
           <div className="flex flex-col gap-2">
             {REDEEM.map((r) => (
-              <div key={r.pts} className="flex items-center gap-3 rounded-2xl bg-white/[0.03] p-3">
+              <div key={r.pts} className="flex items-center gap-3 rounded-2xl bg-fg/[0.03] p-3">
                 <div className="flex-1"><p className="text-sm font-semibold">{r.label}</p><p className="text-xs text-slate-500">{r.pts} pts</p></div>
                 <button className="btn-gold px-3 py-2 text-xs" disabled={s.points < r.pts} onClick={() => redeem(r)}>Redeem</button>
               </div>
@@ -67,7 +67,7 @@ export default function Rewards() {
               return (
                 <motion.div key={id} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: i * 0.03 }}
                   className={`card flex flex-col items-center gap-1 p-3 text-center ${on ? 'border-gold-400/40 bg-gold-400/5' : ''}`}>
-                  <div className={`grid size-14 place-items-center rounded-full text-3xl ${on ? 'bg-gradient-to-br from-gold-300/30 to-amber-600/20 shadow-lg shadow-amber-500/20' : 'bg-white/5 grayscale'}`}>
+                  <div className={`grid size-14 place-items-center rounded-full text-3xl ${on ? 'bg-gradient-to-br from-gold-300/30 to-amber-600/20 shadow-lg shadow-amber-500/20' : 'bg-fg/5 grayscale'}`}>
                     {on ? b.emoji : <Lock size={18} className="text-slate-600" />}
                   </div>
                   <p className="text-xs font-semibold">{b.name}</p>
@@ -85,7 +85,7 @@ export default function Rewards() {
               const on = s.quests.includes(q.id)
               return (
                 <Link key={q.id} to={q.to} className={`card flex items-center gap-3 py-3 ${on ? 'opacity-60' : ''}`}>
-                  <span className={`grid size-7 place-items-center rounded-lg ${on ? 'bg-mint-400 text-ink-950' : 'bg-white/5 text-gold-300'}`}>{on ? <Check size={14} /> : '★'}</span>
+                  <span className={`grid size-7 place-items-center rounded-lg ${on ? 'bg-mint-400 text-ink-950' : 'bg-fg/5 text-gold-300'}`}>{on ? <Check size={14} /> : '★'}</span>
                   <span className={`flex-1 text-sm font-semibold ${on ? 'line-through' : ''}`}>{q.title}</span>
                   <span className="chip bg-gold-400/10 text-gold-300">+{q.xp}</span>
                 </Link>

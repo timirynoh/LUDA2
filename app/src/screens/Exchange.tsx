@@ -85,8 +85,8 @@ function Convert() {
           </select>
         </div>
       </div>
-      <div className="flex items-center justify-between rounded-2xl bg-white/[0.03] px-4 py-3 text-sm">
-        <span className="text-slate-400">{t('fx.rate')} <span className={`chip ms-1 ${live ? 'bg-mint-400/15 text-mint-300' : 'bg-white/5 text-slate-400'}`}>{live ? t('fx.live') : t('fx.indicative')}</span></span>
+      <div className="flex items-center justify-between rounded-2xl bg-fg/[0.03] px-4 py-3 text-sm">
+        <span className="text-slate-400">{t('fx.rate')} <span className={`chip ms-1 ${live ? 'bg-mint-400/15 text-mint-300' : 'bg-fg/5 text-slate-400'}`}>{live ? t('fx.live') : t('fx.indicative')}</span></span>
         <span className="font-semibold">1 {from} = {convert(rates, 1, from, to).toLocaleString(undefined, { maximumSignificantDigits: 5 })} {to}</span>
       </div>
       <p className="text-center text-xs text-slate-500">Transparent {SPREAD * 100}% spread · no hidden fees</p>
@@ -202,8 +202,8 @@ function P2P() {
             {i === 0 && <span className="chip bg-mint-400/15 text-mint-300">Best rate</span>}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-            <div className="rounded-xl bg-white/[0.03] p-2.5"><p className="text-xs text-slate-500">You pay per ₺1,000</p><p className="font-bold">{fmt(o.rate * 1000, hc)}</p></div>
-            <div className="rounded-xl bg-white/[0.03] p-2.5"><p className="text-xs text-slate-500">Cash limit</p><p className="font-bold">₺{o.min.toLocaleString()}–{o.max.toLocaleString()}</p></div>
+            <div className="rounded-xl bg-fg/[0.03] p-2.5"><p className="text-xs text-slate-500">You pay per ₺1,000</p><p className="font-bold">{fmt(o.rate * 1000, hc)}</p></div>
+            <div className="rounded-xl bg-fg/[0.03] p-2.5"><p className="text-xs text-slate-500">Cash limit</p><p className="font-bold">₺{o.min.toLocaleString()}–{o.max.toLocaleString()}</p></div>
           </div>
           <div className="mt-3 flex items-center justify-between">
             <p className="flex items-center gap-1 text-xs text-slate-400"><MapPin size={12} />{o.spot} · <Clock size={12} />~{o.mins}m reply</p>
@@ -228,9 +228,9 @@ function P2P() {
               ))}</div>
             </div>
             <div className="flex gap-2">{['Within 1 hour', 'This evening', 'Tomorrow'].map((w) => (
-              <button key={w} onClick={() => setWhen(w)} className={`chip py-2 ${when === w ? 'bg-mint-400 text-ink-950' : 'bg-white/5 text-slate-300'}`}>{w}</button>
+              <button key={w} onClick={() => setWhen(w)} className={`chip py-2 ${when === w ? 'bg-mint-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{w}</button>
             ))}</div>
-            <div className="rounded-2xl bg-white/[0.03] p-3 text-sm">
+            <div className="rounded-2xl bg-fg/[0.03] p-3 text-sm">
               <div className="flex justify-between text-slate-400"><span>Rate</span><span>{fmt(offer.rate * 1000, hc)} / ₺1k</span></div>
               <div className="flex justify-between text-slate-400"><span>Escrow fee ({P2P_FEE * 100}%)</span><span>{fmt(tlAmt * offer.rate * P2P_FEE, hc)}</span></div>
               <div className="mt-1 flex justify-between font-bold"><span>Locked in escrow</span><span>{fmt(pay, hc)}</span></div>
@@ -302,11 +302,11 @@ function TradeSheet({ trade, onClose }: { trade: Trade | null; onClose: () => vo
       {done ? <Success title="Swap complete 🎉" sub={`Enjoy your ${fmt(cur.get, 'TRY')}. Rate ${cur.trader} to help the community.`} onClose={onClose} /> : (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className="rounded-2xl bg-white/[0.04] p-3"><p className="text-xs text-slate-500">In escrow</p><p className="font-bold">{fmt(cur.give, cur.giveCur)}</p></div>
-            <div className="rounded-2xl bg-white/[0.04] p-3"><p className="text-xs text-slate-500">Cash to receive</p><p className="font-bold text-mint-300">{fmt(cur.get, 'TRY')}</p></div>
+            <div className="rounded-2xl bg-fg/[0.04] p-3"><p className="text-xs text-slate-500">In escrow</p><p className="font-bold">{fmt(cur.give, cur.giveCur)}</p></div>
+            <div className="rounded-2xl bg-fg/[0.04] p-3"><p className="text-xs text-slate-500">Cash to receive</p><p className="font-bold text-mint-300">{fmt(cur.get, 'TRY')}</p></div>
           </div>
           <ol className="relative grid gap-3 ps-6">
-            <div className="absolute start-[9px] top-2 bottom-2 w-0.5 bg-white/10" />
+            <div className="absolute start-[9px] top-2 bottom-2 w-0.5 bg-fg/10" />
             {steps.map((x) => (
               <li key={x.k} className="relative flex items-center gap-2 text-sm">
                 <CheckCircle2 size={20} className={`absolute -start-6 rounded-full bg-ink-900 ${x.ok ? 'text-mint-400' : 'text-slate-600'}`} />

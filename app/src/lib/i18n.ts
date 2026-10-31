@@ -3,6 +3,8 @@ import type { Lang } from './data'
 type Dict = Record<string, string>
 
 const en: Dict = {
+  'act.admin': 'Admin',
+  'act.jobs': 'Jobs', 'act.community': 'Community', 'act.uni': 'University', 'act.transport': 'Transport',
   'act.housing': 'Housing',
   'nav.home': 'Home', 'nav.wallet': 'Wallet', 'nav.exchange': 'Exchange', 'nav.nearby': 'Nearby', 'nav.more': 'More',
   'home.hello': 'Hey', 'home.balance': 'Total balance', 'home.quick': 'Quick actions', 'home.quests': 'Daily quests',
@@ -31,6 +33,8 @@ const en: Dict = {
 }
 
 const tr: Dict = {
+  'act.admin': 'Yönetim',
+  'act.jobs': 'İş ilanları', 'act.community': 'Topluluk', 'act.uni': 'Üniversite', 'act.transport': 'Ulaşım',
   'act.housing': 'Konut',
   'nav.home': 'Ana sayfa', 'nav.wallet': 'Cüzdan', 'nav.exchange': 'Döviz', 'nav.nearby': 'Yakında', 'nav.more': 'Daha',
   'home.hello': 'Selam', 'home.balance': 'Toplam bakiye', 'home.quick': 'Hızlı işlemler', 'home.quests': 'Günlük görevler',
@@ -59,6 +63,8 @@ const tr: Dict = {
 }
 
 const fr: Dict = {
+  'act.admin': 'Admin',
+  'act.jobs': 'Emplois', 'act.community': 'Communauté', 'act.uni': 'Université', 'act.transport': 'Transport',
   'act.housing': 'Logement',
   'nav.home': 'Accueil', 'nav.wallet': 'Portefeuille', 'nav.exchange': 'Change', 'nav.nearby': 'Autour', 'nav.more': 'Plus',
   'home.hello': 'Salut', 'home.balance': 'Solde total', 'home.quick': 'Actions rapides', 'home.quests': 'Quêtes du jour',
@@ -87,6 +93,8 @@ const fr: Dict = {
 }
 
 const sw: Dict = {
+  'act.admin': 'Msimamizi',
+  'act.jobs': 'Kazi', 'act.community': 'Jamii', 'act.uni': 'Chuo', 'act.transport': 'Usafiri',
   'act.housing': 'Makazi',
   'nav.home': 'Nyumbani', 'nav.wallet': 'Pochi', 'nav.exchange': 'Badilisha', 'nav.nearby': 'Karibu', 'nav.more': 'Zaidi',
   'home.hello': 'Habari', 'home.balance': 'Salio lote', 'home.quick': 'Vitendo vya haraka', 'home.quests': 'Changamoto za leo',
@@ -115,6 +123,8 @@ const sw: Dict = {
 }
 
 const ar: Dict = {
+  'act.admin': 'الإدارة',
+  'act.jobs': 'وظائف', 'act.community': 'المجتمع', 'act.uni': 'الجامعة', 'act.transport': 'المواصلات',
   'act.housing': 'السكن',
   'nav.home': 'الرئيسية', 'nav.wallet': 'المحفظة', 'nav.exchange': 'الصرف', 'nav.nearby': 'بالقرب', 'nav.more': 'المزيد',
   'home.hello': 'أهلاً', 'home.balance': 'الرصيد الإجمالي', 'home.quick': 'إجراءات سريعة', 'home.quests': 'مهام اليوم',

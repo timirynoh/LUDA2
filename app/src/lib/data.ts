@@ -92,6 +92,12 @@ export const BADGES: Record<string, { name: string; emoji: string; desc: string 
   paperwork: { name: 'Paperwork Pro', emoji: '📑', desc: 'Ticked off every residency document' },
   verified: { name: 'Verified', emoji: '✅', desc: 'Completed identity verification' },
   streak7: { name: 'On Fire', emoji: '🔥', desc: '7-day streak' },
+  scholar: { name: 'Scholar', emoji: '🎓', desc: 'Added your class timetable' },
+  hustler: { name: 'Hustler', emoji: '💼', desc: 'Applied for a job' },
+  social: { name: 'Social Butterfly', emoji: '🎉', desc: 'RSVPed to a community event' },
+  guardian: { name: 'Guardian', emoji: '🛡️', desc: 'Reported a suspicious post' },
+  stylist: { name: 'Made It Mine', emoji: '🎨', desc: 'Customised your home screen' },
+  trusted_poster: { name: 'Trusted Poster', emoji: '📮', desc: 'Passed poster verification' },
   home_sweet: { name: 'Home Sweet Home', emoji: '🏡', desc: 'Booked a house viewing' },
   good_neighbour: { name: 'Good Neighbour', emoji: '🤝', desc: 'Posted a listing or found a roommate' },
 }
@@ -105,4 +111,7 @@ export const QUESTS = [
   { id: 'explore', title: 'Contact 3 places nearby', xp: 60, to: '/nearby' },
   { id: 'residency', title: 'Complete residency checklist', xp: 120, to: '/residency' },
   { id: 'housing', title: 'Book a house viewing', xp: 70, to: '/housing' },
+  { id: 'uni', title: 'Add your class timetable', xp: 100, to: '/uni' },
+  { id: 'job', title: 'Apply for a job', xp: 60, to: '/jobs' },
+  { id: 'event', title: 'RSVP to a community event', xp: 40, to: '/community' },
 ]

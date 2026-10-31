@@ -1,34 +1,26 @@
 import { motion } from 'framer-motion'
-import { Building2, Gift, Handshake, House, MapPin, Siren, User, Zap } from 'lucide-react'
+import { Siren, User } from 'lucide-react'
+import { ACTIONS } from '../lib/actions'
 import { Link } from 'react-router-dom'
 import { Header } from '../components/ui'
 import { useStore } from '../lib/store'
 
 const SOON = [
-['💼', 'Part-time jobs'], ['🎓', 'Uni fees & deadlines'], ['🚌', 'Bus & taxi'],
-  ['🧑🏾‍🤝‍🧑🏾', 'Community events'], ['⚖️', 'Legal help'],
+  ['⚖️', 'Legal help'], ['🩺', 'Health & insurance'], ['🛒', 'Buy & sell'], ['📦', 'Send packages home'], ['💬', 'Group chats'], ['🎓', 'Scholarships'],
 ]
 
 export default function More() {
-  const { t } = useStore()
-  const items = [
-    { to: '/housing', icon: House, label: t('act.housing'), c: 'from-amber-400 to-orange-600' },
-    { to: '/bills', icon: Zap, label: t('act.bills'), c: 'from-orange-400 to-rose-500' },
-    { to: '/residency', icon: Building2, label: t('act.residency'), c: 'from-teal-300 to-cyan-600' },
-    { to: '/exchange?tab=p2p', icon: Handshake, label: t('act.p2p'), c: 'from-fuchsia-400 to-purple-600' },
-    { to: '/nearby', icon: MapPin, label: t('nav.nearby'), c: 'from-rose-400 to-pink-600' },
-    { to: '/rewards', icon: Gift, label: t('act.rewards'), c: 'from-violet-400 to-indigo-600' },
-    { to: '/profile', icon: User, label: t('profile.title'), c: 'from-slate-400 to-slate-600' },
-  ]
+  const { s, t } = useStore()
+  const items = ACTIONS.filter((a) => !['deposit', 'withdraw', 'convert'].includes(a.id) && (!a.admin || s.isAdmin))
   return (
     <div>
       <Header title={t('more.title')} />
       <div className="grid grid-cols-2 gap-3 px-5">
-        {items.map(({ to, icon: Icon, label, c }, i) => (
-          <motion.div key={to} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
+        {[...items, { id: 'profile', to: '/profile', icon: User, key: 'profile.title', c: 'from-slate-400 to-slate-600' }].map(({ id, to, icon: Icon, key, c }, i) => (
+          <motion.div key={id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
             <Link to={to} className="card flex h-full flex-col gap-3">
               <div className={`grid size-12 place-items-center rounded-2xl bg-gradient-to-br ${c} text-white shadow-lg`}><Icon size={22} /></div>
-              <p className="font-semibold">{label}</p>
+              <p className="font-semibold">{t(key)}</p>
             </Link>
           </motion.div>
         ))}

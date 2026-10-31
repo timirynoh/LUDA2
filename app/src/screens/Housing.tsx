@@ -1,7 +1,10 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Bath, BadgeCheck, BedDouble, CalendarCheck, GraduationCap, Heart, MapPin, MessageCircle, Plus, ShieldAlert, Star, Trash2, UserPlus } from 'lucide-react'
+import { Bath, BadgeCheck, BedDouble, CalendarCheck, Camera, Flag, GraduationCap, Heart, MapPin, MessageCircle, Plus, ShieldAlert, Star, Trash2, UserPlus } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { PostGate } from '../components/PostGate'
 import { DemoNote, Header, Segmented, Sheet, Success } from '../components/ui'
+import { isVisible } from '../lib/posting'
+import { StatusChip } from './Jobs'
 import { AREAS, listingsFor, REVIEWS, roommatesFor, type HomeType, type Listing } from '../lib/housing'
 import { CITIES } from '../lib/data'
 import { convert, fmt, useRates } from '../lib/fx'
@@ -47,7 +50,7 @@ function Price({ gbp, big }: { gbp: number; big?: boolean }) {
 
 function useAllListings() {
   const { s } = useStore()
-  return useMemo(() => [...s.myListings.filter((l) => l.city === s.city), ...listingsFor(s.city)], [s.city, s.myListings])
+  return useMemo(() => [...s.myListings.filter((l) => l.city === s.city && isVisible(l)), ...listingsFor(s.city)].filter((l) => !s.reports.includes(l.id)), [s.city, s.myListings, s.reports])
 }
 
 function Homes() {
@@ -76,8 +79,8 @@ function Homes() {
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={() => setFurnished(!furnished)} className={`chip py-1.5 ${furnished ? 'bg-mint-400/20 text-mint-200' : 'bg-white/5 text-slate-400'}`}>🛋️ Furnished</button>
-        <button onClick={() => setBills(!bills)} className={`chip py-1.5 ${bills ? 'bg-mint-400/20 text-mint-200' : 'bg-white/5 text-slate-400'}`}>💡 Bills included</button>
+        <button onClick={() => setFurnished(!furnished)} className={`chip py-1.5 ${furnished ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/5 text-slate-400'}`}>🛋️ Furnished</button>
+        <button onClick={() => setBills(!bills)} className={`chip py-1.5 ${bills ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/5 text-slate-400'}`}>💡 Bills included</button>
         <label className="ms-auto flex items-center gap-2 text-xs text-slate-400">≤ £{max}
           <input type="range" min={120} max={700} step={10} value={max} onChange={(e) => setMax(+e.target.value)} className="w-24 accent-emerald-400" />
         </label>
@@ -101,8 +104,8 @@ function Homes() {
               </div>
               <p className="mt-1 flex items-center gap-1 text-xs text-slate-400"><MapPin size={12} /> {l.area} · <BedDouble size={12} /> {l.beds} · <Bath size={12} /> {l.baths}</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {l.furnished && <span className="chip bg-white/5 text-slate-300">Furnished</span>}
-                {l.bills && <span className="chip bg-white/5 text-slate-300">Bills incl.</span>}
+                {l.furnished && <span className="chip bg-fg/5 text-slate-300">Furnished</span>}
+                {l.bills && <span className="chip bg-fg/5 text-slate-300">Bills incl.</span>}
                 {l.uni && <span className="chip bg-sky-400/10 text-sky-200"><GraduationCap size={11} /> Near campus</span>}
               </div>
             </div>
@@ -111,7 +114,7 @@ function Homes() {
             <p className="flex items-center gap-1 text-xs text-slate-400">
               {l.verified && <BadgeCheck size={14} className="text-mint-400" />}{l.landlord} · <Star size={11} className="fill-gold-400 text-gold-400" /> {l.rating}
             </p>
-            <button onClick={() => toggleSave(l.id)} aria-label="Save" className="grid size-9 place-items-center rounded-xl bg-white/5">
+            <button onClick={() => toggleSave(l.id)} aria-label="Save" className="grid size-9 place-items-center rounded-xl bg-fg/5">
               <Heart size={18} className={s.savedHomes.includes(l.id) ? 'fill-rose-500 text-rose-500' : 'text-slate-400'} />
             </button>
           </div>
@@ -135,6 +138,14 @@ function ListingSheet({ listing: l, onClose }: { listing: Listing; onClose: () =
   const [day, setDay] = useState(0)
   const [time, setTime] = useState('17:00')
   const [booked, setBooked] = useState(false)
+  const [reporting, setReporting] = useState(false)
+  const confirmedDays = l.mine ? Math.floor((Date.now() - (l.confirmedAt ?? Date.now())) / 86_400_000) : l.posted % 7
+  const report = (why: string) => {
+    set((p) => ({ ...p, reports: [...p.reports, l.id] }))
+    reward(10, { badge: 'guardian', title: `Reported: ${why}` })
+    toast({ title: 'Hidden for you. Luda will check it', emoji: '🛡️' })
+    onClose()
+  }
 
   const book = () => {
     const date = `${days[day].toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} · ${time}`
@@ -150,12 +161,13 @@ function ListingSheet({ listing: l, onClose }: { listing: Listing; onClose: () =
           <div className={`grid h-40 place-items-center rounded-3xl bg-gradient-to-br ${l.tone}`}><span className="text-7xl">{l.emoji}</span></div>
           <div className="flex items-end justify-between">
             <div><p className="flex items-center gap-1 text-sm text-slate-400"><MapPin size={14} /> {l.area}</p><Price gbp={l.price} big /></div>
-            <span className="chip bg-white/5 text-slate-300">{l.deposit} month deposit</span>
+            <span className="chip bg-fg/5 text-slate-300">{l.deposit} month deposit</span>
           </div>
+          <p className="-mt-2 flex items-center gap-1 text-xs text-mint-300">● Availability confirmed {confirmedDays === 0 ? 'today' : `${confirmedDays} day${confirmedDays > 1 ? 's' : ''} ago`}{l.official ? ' · Luda Official' : ''}</p>
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="rounded-2xl bg-white/[0.04] p-3"><BedDouble size={18} className="mx-auto mb-1 text-slate-300" />{l.beds} bed</div>
-            <div className="rounded-2xl bg-white/[0.04] p-3"><Bath size={18} className="mx-auto mb-1 text-slate-300" />{l.baths} bath</div>
-            <div className="rounded-2xl bg-white/[0.04] p-3"><span className="mb-1 block text-lg leading-none">{l.bills ? '💡' : '🧾'}</span>{l.bills ? 'Bills incl.' : 'Bills extra'}</div>
+            <div className="rounded-2xl bg-fg/[0.04] p-3"><BedDouble size={18} className="mx-auto mb-1 text-slate-300" />{l.beds} bed</div>
+            <div className="rounded-2xl bg-fg/[0.04] p-3"><Bath size={18} className="mx-auto mb-1 text-slate-300" />{l.baths} bath</div>
+            <div className="rounded-2xl bg-fg/[0.04] p-3"><span className="mb-1 block text-lg leading-none">{l.bills ? '💡' : '🧾'}</span>{l.bills ? 'Bills incl.' : 'Bills extra'}</div>
           </div>
           {l.uni && <p className="flex items-center gap-2 rounded-2xl bg-sky-400/10 p-3 text-sm text-sky-100"><GraduationCap size={18} /> Close to {l.uni}</p>}
 
@@ -169,7 +181,7 @@ function ListingSheet({ listing: l, onClose }: { listing: Listing; onClose: () =
           {!l.mine && (
             <div className="flex flex-col gap-2">
               {REVIEWS.slice(0, 2).map(([who, stars, txt]) => (
-                <div key={who} className="rounded-2xl bg-white/[0.03] p-3 text-sm">
+                <div key={who} className="rounded-2xl bg-fg/[0.03] p-3 text-sm">
                   <p className="text-xs text-slate-400">{who} · {'★'.repeat(stars)}</p><p className="mt-1 text-slate-200">{txt}</p>
                 </div>
               ))}
@@ -187,7 +199,7 @@ function ListingSheet({ listing: l, onClose }: { listing: Listing; onClose: () =
             </div>
             <div className="mt-2 flex gap-2">
               {['10:00', '13:00', '17:00', '19:00'].map((x) => (
-                <button key={x} onClick={() => setTime(x)} className={`chip py-2 ${time === x ? 'bg-mint-400 text-ink-950' : 'bg-white/5 text-slate-300'}`}>{x}</button>
+                <button key={x} onClick={() => setTime(x)} className={`chip py-2 ${time === x ? 'bg-mint-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{x}</button>
               ))}
             </div>
           </div>
@@ -196,6 +208,11 @@ function ListingSheet({ listing: l, onClose }: { listing: Listing; onClose: () =
             <button className="btn-primary py-4" disabled={l.mine} onClick={book}><CalendarCheck size={18} /> Book viewing</button>
           </div>
           <p className="text-center text-[11px] text-slate-500">🔒 Coming soon: pay your deposit into Luda escrow. It's released to the landlord only after you get the keys.</p>
+          {!l.mine && (reporting ? (
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              {['Already taken', 'Fake / scam', 'Wrong info'].map((w) => <button key={w} className="btn bg-rose-500/10 py-2 text-rose-300" onClick={() => report(w)}>{w}</button>)}
+            </div>
+          ) : <button className="flex items-center justify-center gap-1 text-xs text-slate-500 underline" onClick={() => setReporting(true)}><Flag size={12} /> Report this listing</button>)}
         </div>
       )}
     </Sheet>
@@ -205,28 +222,31 @@ function ListingSheet({ listing: l, onClose }: { listing: Listing; onClose: () =
 function PostSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { s, set, reward } = useStore()
   const areas = AREAS[s.city] ?? AREAS.lefkosa
-  const [f, setF] = useState({ type: 'Room' as HomeType, area: areas[0], price: '200', furnished: true, bills: false, note: '' })
+  const [f, setF] = useState({ type: 'Room' as HomeType, area: areas[0], price: '200', furnished: true, bills: false, note: '', address: '', photos: 0 })
   const [done, setDone] = useState(false)
 
   const submit = () => {
+    const now = Date.now()
     const l: Listing = {
+      status: s.isAdmin ? 'live' : 'pending', official: s.isAdmin, createdAt: now, confirmedAt: now, photos: f.photos,
       id: `mine-${uid()}`, title: f.note.trim() || `${f.type === 'Room' ? 'Room in my flat' : f.type + ' for rent'}`, type: f.type, city: s.city, area: f.area,
       price: +f.price || 0, deposit: 1, furnished: f.furnished, bills: f.bills, beds: f.type === '2+1' ? 2 : 1, baths: 1,
-      landlord: s.name, verified: s.verified, rating: 5, reviews: 0, posted: 0, emoji: '✨', tone: 'from-gold-400 to-amber-700', mine: true,
+      landlord: s.isAdmin ? 'Luda Official' : s.name, verified: s.verified || s.isAdmin, rating: 5, reviews: 0, posted: 0, emoji: '✨', tone: 'from-gold-400 to-amber-700', mine: true,
     }
     set((p) => ({ ...p, myListings: [l, ...p.myListings] }))
-    reward(30, { badge: 'good_neighbour', title: 'Listing posted' })
+    reward(30, { badge: 'good_neighbour', title: s.isAdmin ? 'Listing published' : 'Submitted for review' })
     setDone(true)
   }
   const close = () => { setDone(false); onClose() }
 
   return (
     <Sheet open={open} onClose={close} title="List a room or flat">
-      {done ? <Success title="You're live! ✨" sub="Your listing is now visible to people in your city." onClose={close} /> : (
+      {done ? <Success title={s.isAdmin ? "It's live ✨" : 'Under review ⏳'} sub={s.isAdmin ? 'Published as Luda Official.' : 'Luda checks your documents and photos, usually within 24 hours. Track it under "Mine".'} onClose={close} /> : (
+        <PostGate kind="housing">
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-2">
             {(['Room', 'Studio', '1+1', '2+1'] as HomeType[]).map((x) => (
-              <button key={x} onClick={() => setF({ ...f, type: x })} className={`chip py-2 ${f.type === x ? 'bg-mint-400 text-ink-950' : 'bg-white/5 text-slate-300'}`}>{x}</button>
+              <button key={x} onClick={() => setF({ ...f, type: x })} className={`chip py-2 ${f.type === x ? 'bg-mint-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{x}</button>
             ))}
           </div>
           <input className="input" placeholder="Short title, e.g. Room near NEU, own bathroom" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} maxLength={50} />
@@ -236,12 +256,19 @@ function PostSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
               <input inputMode="numeric" className="input ps-8" value={f.price} onChange={(e) => setF({ ...f, price: e.target.value.replace(/\D/g, '') })} /></div>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setF({ ...f, furnished: !f.furnished })} className={`chip py-2 ${f.furnished ? 'bg-mint-400/20 text-mint-200' : 'bg-white/5 text-slate-400'}`}>🛋️ Furnished</button>
-            <button onClick={() => setF({ ...f, bills: !f.bills })} className={`chip py-2 ${f.bills ? 'bg-mint-400/20 text-mint-200' : 'bg-white/5 text-slate-400'}`}>💡 Bills included</button>
+            <button onClick={() => setF({ ...f, furnished: !f.furnished })} className={`chip py-2 ${f.furnished ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/5 text-slate-400'}`}>🛋️ Furnished</button>
+            <button onClick={() => setF({ ...f, bills: !f.bills })} className={`chip py-2 ${f.bills ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/5 text-slate-400'}`}>💡 Bills included</button>
           </div>
-          {!s.verified && <p className="text-xs text-gold-200">Tip: verify your identity in Profile to get the verified badge on your listing.</p>}
-          <button className="btn-primary py-4" disabled={!+f.price} onClick={submit}>Post listing · +30 XP</button>
+          <input className="input" placeholder="Exact address (only shown after a viewing is booked)" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} />
+          <label className={`glass flex cursor-pointer items-center gap-3 rounded-2xl p-3 ${f.photos >= 3 ? 'border-mint-400/40' : ''}`}>
+            <Camera size={20} className={f.photos >= 3 ? 'text-mint-300' : 'text-slate-400'} />
+            <span className="flex-1 text-sm"><b>Live photos</b> ({f.photos}/3 minimum)<span className="block text-xs text-slate-400">Taken now with your camera, so we know the place is real and current</span></span>
+            <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={(e) => setF({ ...f, photos: f.photos + (e.target.files?.length ?? 0) })} />
+          </label>
+          <p className="text-[11px] text-slate-500">You'll be asked every {7} days to confirm it's still available, or it's hidden automatically.</p>
+          <button className="btn-primary py-4" disabled={!+f.price || (!s.isAdmin && (f.photos < 3 || f.address.length < 5))} onClick={submit}>{s.isAdmin ? 'Publish' : 'Submit for review'} · +30 XP</button>
         </div>
+        </PostGate>
       )}
     </Sheet>
   )
@@ -271,7 +298,7 @@ function Roommates() {
               <div className={`text-end ${p.match >= 85 ? 'text-mint-300' : 'text-gold-300'}`}><p className="text-xl font-extrabold">{p.match}%</p><p className="text-[10px]">match</p></div>
             </div>
             <p className="mt-2 text-sm text-slate-300">{p.bio}</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">{p.tags.map((x) => <span key={x} className="chip bg-white/5 text-slate-300">{x}</span>)}</div>
+            <div className="mt-2 flex flex-wrap gap-1.5">{p.tags.map((x) => <span key={x} className="chip bg-fg/5 text-slate-300">{x}</span>)}</div>
             <button onClick={() => connect(p.id, p.name)} disabled={sent} className={`mt-3 w-full ${sent ? 'btn-ghost' : 'btn-primary'} py-2.5 text-sm`}>
               {sent ? '✓ Request sent' : <><UserPlus size={16} /> Connect</>}
             </button>
@@ -311,10 +338,20 @@ function Mine() {
       <section>
         <p className="label mb-2">My listings</p>
         {s.myListings.length ? s.myListings.map((l) => (
-          <div key={l.id} className="card mb-2 flex items-center gap-3">
-            <div className="grid size-10 place-items-center rounded-xl bg-gold-400/20">✨</div>
-            <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{l.title}</p><p className="text-xs text-slate-400">{l.area} · £{l.price}/mo · {3 + (l.price % 7)} views</p></div>
-            <button aria-label="Remove listing" onClick={() => set((p) => ({ ...p, myListings: p.myListings.filter((x) => x.id !== l.id) }))} className="text-slate-500"><Trash2 size={16} /></button>
+          <div key={l.id} className="card mb-2">
+            <div className="flex items-center gap-3">
+              <div className="grid size-10 place-items-center rounded-xl bg-gold-400/20">✨</div>
+              <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{l.title}</p><p className="text-xs text-slate-400">{l.area} · £{l.price}/mo{l.status === 'live' ? ` · ${3 + (l.price % 7)} views` : ''}</p></div>
+              <button aria-label="Remove listing" onClick={() => set((p) => ({ ...p, myListings: p.myListings.filter((x) => x.id !== l.id) }))} className="text-slate-500"><Trash2 size={16} /></button>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <StatusChip m={l} />
+              {l.status === 'live' && <div className="flex gap-2">
+                <button className="chip bg-mint-400/15 py-1.5 text-mint-300" onClick={() => set((p) => ({ ...p, myListings: p.myListings.map((x) => (x.id === l.id ? { ...x, confirmedAt: Date.now() } : x)) }))}>✓ Still available</button>
+                <button className="chip bg-fg/5 py-1.5 text-slate-300" onClick={() => set((p) => ({ ...p, myListings: p.myListings.filter((x) => x.id !== l.id) }))}>Taken</button>
+              </div>}
+              {l.status === 'rejected' && l.rejectReason && <p className="w-full text-xs text-rose-300">Reason: {l.rejectReason}</p>}
+            </div>
           </div>
         )) : <p className="card text-center text-sm text-slate-400">Have a spare room? Use "List a room" on the Homes tab.</p>}
       </section>

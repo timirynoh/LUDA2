@@ -1,4 +1,5 @@
-import { BadgeCheck, Camera, IdCard, Loader2, ShieldCheck } from 'lucide-react'
+import { BadgeCheck, Camera, IdCard, Loader2, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { Header, Sheet, Success } from '../components/ui'
 import { CITIES, COUNTRIES, LANGS } from '../lib/data'
@@ -42,11 +43,23 @@ export default function Profile() {
         )}
 
         <section className="card">
+          <p className="label mb-3">Theme</p>
+          <div className="grid grid-cols-3 gap-2">
+            {([['dark', 'Night', Moon], ['light', 'Day', Sun], ['system', 'Auto', Monitor]] as const).map(([v, label, Icon]) => (
+              <button key={v} onClick={() => set((p) => ({ ...p, theme: v }))}
+                className={`flex flex-col items-center gap-1 rounded-2xl p-3 text-xs font-semibold ${s.theme === v ? 'bg-mint-400/15 text-mint-200 ring-1 ring-mint-400/50' : 'bg-fg/[0.03] text-slate-400'}`}>
+                <Icon size={20} />{label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="card">
           <p className="label mb-3">{t('profile.lang')}</p>
           <div className="grid grid-cols-5 gap-2">
             {LANGS.map((l) => (
               <button key={l.code} onClick={() => set((p) => ({ ...p, lang: l.code }))}
-                className={`flex flex-col items-center gap-1 rounded-2xl p-2 text-[11px] font-semibold ${s.lang === l.code ? 'bg-mint-400/15 text-mint-200 ring-1 ring-mint-400/50' : 'bg-white/[0.03] text-slate-400'}`}>
+                className={`flex flex-col items-center gap-1 rounded-2xl p-2 text-[11px] font-semibold ${s.lang === l.code ? 'bg-mint-400/15 text-mint-200 ring-1 ring-mint-400/50' : 'bg-fg/[0.03] text-slate-400'}`}>
                 <span className="text-xl">{l.flag}</span>{l.native}
               </button>
             ))}
@@ -66,13 +79,26 @@ export default function Profile() {
           </label>
         </section>
 
+        <section className="card">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className={s.isAdmin ? 'text-mint-300' : 'text-slate-500'} />
+            <div className="flex-1"><p className="font-semibold">Admin mode (app owner)</p><p className="text-xs text-slate-400">Review posts & post as Luda Official. In the live app this is a role on your account, not a switch.</p></div>
+            <button onClick={() => set((p) => ({ ...p, isAdmin: !p.isAdmin, shortcuts: !p.isAdmin && !p.shortcuts.includes('admin') ? [...p.shortcuts.slice(0, 7), 'admin'] : p.shortcuts.filter((x) => x !== 'admin') }))}
+              className={`relative h-7 w-12 shrink-0 rounded-full transition ${s.isAdmin ? 'bg-mint-400' : 'bg-fg/15'}`} aria-label="Toggle admin">
+              <span className={`absolute top-1 size-5 rounded-full bg-white shadow transition-all ${s.isAdmin ? 'start-6' : 'start-1'}`} />
+            </button>
+          </div>
+          {s.isAdmin && <Link to="/admin" className="btn-primary mt-3 w-full py-2.5 text-sm">Open admin console</Link>}
+          <p className="mt-2 text-xs text-slate-500">Phone: {s.phoneVerified ? '✅ verified' : 'not verified'} · Poster docs: {s.proofs.housing || s.proofs.business ? '✅ on file' : 'none yet'}</p>
+        </section>
+
         <button className="btn-ghost text-rose-300" onClick={() => (armed ? reset() : setArmed(true))}>{armed ? 'Tap again to confirm reset' : t('profile.reset')}</button>
       </div>
 
       <Sheet open={kyc > 0} onClose={() => setKyc(0)} title={t('profile.verify')}>
         {kyc === 1 && (
           <div className="flex flex-col gap-4 text-center">
-            <div className="mx-auto grid size-20 place-items-center rounded-3xl bg-white/5"><IdCard size={36} className="text-mint-300" /></div>
+            <div className="mx-auto grid size-20 place-items-center rounded-3xl bg-fg/5"><IdCard size={36} className="text-mint-300" /></div>
             <p className="font-semibold">Scan your passport or residence card</p>
             <p className="text-sm text-slate-400">We check the document's security features and expiry. Your data is encrypted and only used for verification.</p>
             <label className="btn-primary cursor-pointer py-4"><Camera size={18} /> Take photo / upload

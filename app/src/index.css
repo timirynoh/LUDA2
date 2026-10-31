@@ -12,7 +12,50 @@
   --color-mint-500: #10b981;
   --color-gold-300: #fcd34d;
   --color-gold-400: #fbbf24;
+  --color-gold-200: #fde68a;
+  --color-gold-100: #fef3c7;
+  --color-mint-200: #a7f3d0;
+  --color-fg: #ffffff;
 }
+
+/* ---------- Day (light) theme: same components, re-tinted surfaces & text ---------- */
+html { color-scheme: dark; }
+html.light {
+  color-scheme: light;
+  --color-ink-900: #ffffff;
+  --color-ink-800: #f1f4f9;
+  --color-ink-700: #e6eaf1;
+  --color-ink-600: #d6dce6;
+  --color-fg: #0b1220;
+  --color-slate-100: #0f172a;
+  --color-slate-200: #1e293b;
+  --color-slate-300: #334155;
+  --color-slate-400: #556274;
+  --color-slate-500: #6b7686;
+  --color-slate-600: #98a2b3;
+  --color-mint-200: #047857;
+  --color-mint-300: #059669;
+  --color-gold-100: #92400e;
+  --color-gold-200: #b45309;
+  --color-gold-300: #d97706;
+  --color-fuchsia-200: #a21caf;
+  --color-fuchsia-300: #c026d3;
+  --color-sky-100: #075985;
+  --color-sky-200: #0369a1;
+  --color-sky-300: #0284c7;
+  --color-rose-200: #be123c;
+  --color-rose-300: #e11d48;
+  --color-orange-300: #ea580c;
+  --color-violet-300: #7c3aed;
+  --color-cyan-300: #0891b2;
+}
+html.light body {
+  background-color: #f3f5f9;
+  background-image:
+    radial-gradient(60rem 40rem at 10% -10%, rgba(16,185,129,.10), transparent 60%),
+    radial-gradient(50rem 40rem at 110% 10%, rgba(251,191,36,.10), transparent 60%);
+}
+html.light .glass { box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.10); }
 
 html, body, #root { height: 100%; }
 body {
@@ -25,7 +68,7 @@ body {
 ::-webkit-scrollbar { width: 0; height: 0; }
 
 @utility glass {
-  @apply bg-white/[0.04] border border-white/[0.07] backdrop-blur-xl;
+  @apply bg-fg/[0.04] border border-fg/[0.07] backdrop-blur-xl;
 }
 @utility card { @apply glass rounded-3xl p-4; }
 @utility btn {
@@ -33,9 +76,9 @@ body {
 }
 @utility btn-primary { @apply btn bg-gradient-to-r from-mint-400 to-emerald-500 text-ink-950 shadow-lg shadow-emerald-500/20; }
 @utility btn-gold { @apply btn bg-gradient-to-r from-gold-300 to-amber-500 text-ink-950 shadow-lg shadow-amber-500/20; }
-@utility btn-ghost { @apply btn glass text-slate-100 hover:bg-white/[0.08]; }
+@utility btn-ghost { @apply btn glass text-slate-100 hover:bg-fg/[0.08]; }
 @utility input {
-  @apply w-full rounded-2xl bg-ink-800/80 border border-white/[0.08] px-4 py-3 text-slate-100 placeholder:text-slate-500 outline-none focus:border-mint-400/60 focus:ring-4 focus:ring-mint-400/10 transition;
+  @apply w-full rounded-2xl bg-ink-800/80 border border-fg/[0.08] px-4 py-3 text-slate-100 placeholder:text-slate-500 outline-none focus:border-mint-400/60 focus:ring-4 focus:ring-mint-400/10 transition;
 }
 @utility chip { @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold; }
 @utility label { @apply text-xs font-semibold uppercase tracking-wider text-slate-400; }

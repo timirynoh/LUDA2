@@ -1,14 +1,21 @@
 import { motion } from 'framer-motion'
-import { ArrowDownLeft, ArrowUpRight, Building2, ChevronRight, Eye, EyeOff, Flame, Handshake, House, Repeat, UtensilsCrossed, Zap } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronDown, ChevronRight, ChevronUp, Eye, EyeOff, Flame, GraduationCap, Handshake, Minus, Moon, Pencil, Plus, Sun } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Ring } from '../components/ui'
+import { Ring, Sheet } from '../components/ui'
+import { ACTIONS, MAX_SHORTCUTS } from '../lib/actions'
+import { calendarFor, daysUntil, nextClass, UNIVERSITIES } from '../lib/uni'
 import { CITIES, COUNTRIES, CURRENCIES, QUESTS } from '../lib/data'
 import { convert, fmt, useRates } from '../lib/fx'
 import { useStore } from '../lib/store'
 
 export default function Home() {
-  const { s, t, level } = useStore()
+  const { s, set, t, level } = useStore()
+  const [editing, setEditing] = useState(false)
+  const nc = useMemo(() => nextClass(s.classes), [s.classes])
+  const uni = UNIVERSITIES.find((u) => u.id === s.university)
+  const deadline = useMemo(() => (s.university ? calendarFor(s.university).find((i) => i.kind !== 'term' && daysUntil(i.end ?? i.start) >= 0) : undefined), [s.university])
+  const isLight = s.theme === 'light' || (s.theme === 'system' && !!window.matchMedia?.('(prefers-color-scheme: light)').matches)
   const { rates, live } = useRates()
   const [hide, setHide] = useState(false)
   const home = COUNTRIES.find((c) => c.code === s.country)!
@@ -16,16 +23,7 @@ export default function Home() {
   const total = Object.entries(s.balances).reduce((a, [c, v]) => a + convert(rates, v, c, 'TRY'), 0)
   const activeTrade = s.trades.find((x) => x.status === 'escrow' || x.status === 'meeting')
 
-  const actions = [
-    { to: '/wallet?a=deposit', icon: ArrowDownLeft, label: t('act.deposit'), c: 'from-mint-400 to-emerald-600' },
-    { to: '/wallet?a=withdraw', icon: ArrowUpRight, label: t('act.withdraw'), c: 'from-sky-400 to-indigo-500' },
-    { to: '/exchange', icon: Repeat, label: t('act.convert'), c: 'from-gold-300 to-amber-500' },
-    { to: '/exchange?tab=p2p', icon: Handshake, label: t('act.p2p'), c: 'from-fuchsia-400 to-purple-600' },
-    { to: '/bills', icon: Zap, label: t('act.bills'), c: 'from-orange-400 to-rose-500' },
-    { to: '/nearby', icon: UtensilsCrossed, label: t('act.food'), c: 'from-rose-400 to-pink-600' },
-    { to: '/residency', icon: Building2, label: t('act.residency'), c: 'from-teal-300 to-cyan-600' },
-    { to: '/housing', icon: House, label: t('act.housing'), c: 'from-amber-400 to-orange-600' },
-  ]
+  const actions = s.shortcuts.map((id) => ACTIONS.find((a) => a.id === id)).filter((a) => a && (!a.admin || s.isAdmin)) as typeof ACTIONS
 
   return (
     <div className="flex flex-col gap-5 px-5 pt-6">
@@ -40,12 +38,15 @@ export default function Home() {
           <p className="text-sm text-slate-400">{t('home.hello')} {home.flag} · {city.name}</p>
           <p className="truncate text-lg font-bold">{s.name} <span className="text-sm font-medium text-slate-400">· {level.emoji} {level.name}</span></p>
         </div>
+        <button onClick={() => set((p) => ({ ...p, theme: isLight ? 'dark' : 'light' }))} className="glass grid size-10 place-items-center rounded-2xl" aria-label="Toggle day / night">
+          {isLight ? <Moon size={18} className="text-indigo-500" /> : <Sun size={18} className="text-gold-300" />}
+        </button>
         <Link to="/rewards" className="chip bg-orange-500/15 py-2 text-orange-300"><Flame size={14} /> {s.streak}</Link>
       </div>
 
       {/* balance card */}
       <motion.div initial={{ scale: 0.97 }} animate={{ scale: 1 }}
-        className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-500 via-emerald-700 to-ink-800 p-6 shadow-2xl shadow-emerald-900/40">
+        className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-500 via-emerald-700 to-emerald-950 p-6 text-white shadow-2xl shadow-emerald-900/40">
         <div className="absolute -top-16 -right-10 size-56 rounded-full bg-gold-300/25 blur-3xl" />
         <div className="absolute -bottom-20 -left-10 size-48 rounded-full bg-mint-300/20 blur-3xl" />
         <div className="relative">
@@ -80,43 +81,67 @@ export default function Home() {
         </Link>
       )}
 
-      {/* quick actions */}
+      {s.sections.nextClass && nc && (
+        <Link to="/uni" className="card flex items-center gap-3 border-indigo-400/30 bg-indigo-500/10">
+          <div className="grid size-11 place-items-center rounded-2xl bg-indigo-500/20 text-indigo-300"><GraduationCap /></div>
+          <div className="flex-1"><p className="text-xs text-slate-400">Next class · {nc.at.toLocaleDateString(undefined, { weekday: 'short' })} {nc.c.start}</p><p className="font-semibold">{nc.c.course}{nc.c.room ? ` · ${nc.c.room}` : ''}</p></div>
+          {s.remind.on && <span className="chip bg-mint-400/15 text-mint-300">🔔 {s.remind.minutes}m</span>}
+        </Link>
+      )}
+      {s.sections.deadline && deadline && uni && (
+        <Link to="/uni" className="card flex items-center gap-3 py-3">
+          <span className="text-xl">{deadline.kind === 'exam' ? '📝' : deadline.kind === 'fee' ? '💳' : '⏰'}</span>
+          <div className="min-w-0 flex-1"><p className="text-xs text-slate-400">{uni.short} · next deadline</p><p className="truncate text-sm font-semibold">{deadline.title}</p></div>
+          <span className={`text-sm font-extrabold ${daysUntil(deadline.start) <= 7 ? 'text-rose-300' : 'text-gold-300'}`}>{Math.max(0, daysUntil(deadline.start))}d</span>
+        </Link>
+      )}
+
+      {/* quick actions: user-chosen */}
       <section>
-        <p className="label mb-3">{t('home.quick')}</p>
+        <div className="mb-3 flex items-center justify-between">
+          <p className="label">{t('home.quick')}</p>
+          <button onClick={() => setEditing(true)} className="chip bg-fg/5 py-1.5 text-slate-300"><Pencil size={12} /> Edit</button>
+        </div>
         <div className="grid grid-cols-4 gap-3">
-          {actions.map(({ to, icon: Icon, label, c }, i) => (
-            <motion.div key={to} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
+          {actions.map(({ id, to, icon: Icon, key, c }, i) => (
+            <motion.div key={id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
               <Link to={to} className="flex flex-col items-center gap-2 text-center">
                 <div className={`grid size-14 place-items-center rounded-2xl bg-gradient-to-br ${c} text-white shadow-lg transition active:scale-90`}>
                   <Icon size={22} strokeWidth={2.2} />
                 </div>
-                <span className="text-[11px] leading-tight font-medium text-slate-300">{label}</span>
+                <span className="text-[11px] leading-tight font-medium text-slate-300">{t(key)}</span>
               </Link>
             </motion.div>
           ))}
+          {actions.length < MAX_SHORTCUTS && (
+            <button onClick={() => setEditing(true)} className="flex flex-col items-center gap-2 text-center">
+              <div className="grid size-14 place-items-center rounded-2xl border-2 border-dashed border-fg/15 text-slate-500"><Plus size={22} /></div>
+              <span className="text-[11px] font-medium text-slate-500">Add</span>
+            </button>
+          )}
         </div>
       </section>
 
       {/* rates */}
-      <section className="card">
+      {s.sections.rates && <section className="card">
         <div className="mb-3 flex items-center justify-between">
           <p className="label">{t('home.rates')}</p>
-          <span className={`chip ${live ? 'bg-mint-400/15 text-mint-300' : 'bg-white/5 text-slate-400'}`}>
+          <span className={`chip ${live ? 'bg-mint-400/15 text-mint-300' : 'bg-fg/5 text-slate-400'}`}>
             <span className={`size-1.5 rounded-full ${live ? 'animate-pulse bg-mint-400' : 'bg-slate-500'}`} /> {live ? t('fx.live') : t('fx.indicative')}
           </span>
         </div>
         <div className="grid grid-cols-3 gap-2">
           {[home.currency === 'USD' ? 'NGN' : home.currency, 'USD', 'EUR'].map((c) => (
-            <div key={c} className="rounded-2xl bg-white/[0.03] p-3">
+            <div key={c} className="rounded-2xl bg-fg/[0.03] p-3">
               <p className="text-xs text-slate-400">{CURRENCIES[c]?.flag} 1 {c === 'NGN' || c === 'XAF' || c === 'CDF' ? '000 ' : ''}{c}</p>
               <p className="mt-1 font-bold">{fmt(convert(rates, ['NGN', 'XAF', 'CDF'].includes(c) ? 1000 : 1, c, 'TRY'), 'TRY')}</p>
             </div>
           ))}
         </div>
-      </section>
+      </section>}
 
       {/* quests */}
-      <section>
+      {s.sections.quests && <section>
         <div className="mb-3 flex items-center justify-between">
           <p className="label">{t('home.quests')}</p>
           <span className="text-xs text-slate-400">{s.quests.length}/{QUESTS.length}</span>
@@ -131,7 +156,72 @@ export default function Home() {
           ))}
           {s.quests.length === QUESTS.length && <div className="card text-center text-sm text-slate-300">🏆 All quests done. You're a legend.</div>}
         </div>
-      </section>
+      </section>}
+      {editing && <Customize open onClose={() => setEditing(false)} />}
     </div>
+  )
+}
+
+const SECTIONS: { key: keyof import('../lib/store').State['sections']; label: string }[] = [
+  { key: 'nextClass', label: '🎓 Next class' }, { key: 'deadline', label: '⏳ Next uni deadline' },
+  { key: 'rates', label: '💱 Live rates' }, { key: 'quests', label: '★ Daily quests' },
+]
+
+function Customize({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { s, set, t, reward } = useStore()
+  const [list, setList] = useState(s.shortcuts)
+  const [sections, setSections] = useState(s.sections)
+  const available = ACTIONS.filter((a) => !list.includes(a.id) && (!a.admin || s.isAdmin))
+  const move = (i: number, d: -1 | 1) => { const l = [...list]; [l[i], l[i + d]] = [l[i + d], l[i]]; setList(l) }
+  const save = () => {
+    set((p) => ({ ...p, shortcuts: list, sections }))
+    if (!s.badges.includes('stylist')) reward(20, { badge: 'stylist', title: 'Home screen customised' })
+    onClose()
+  }
+  return (
+    <Sheet open={open} onClose={onClose} title="Customise your home">
+      <div className="flex flex-col gap-5">
+        <section>
+          <p className="label mb-2">Your shortcuts · {list.length}/{MAX_SHORTCUTS}</p>
+          <div className="flex flex-col gap-1.5">
+            {list.map((id, i) => {
+              const a = ACTIONS.find((x) => x.id === id)!
+              return (
+                <div key={id} className="glass flex items-center gap-3 rounded-2xl p-2">
+                  <div className={`grid size-9 place-items-center rounded-xl bg-gradient-to-br ${a.c} text-white`}><a.icon size={16} /></div>
+                  <span className="flex-1 text-sm font-semibold">{t(a.key)}</span>
+                  <button disabled={i === 0} onClick={() => move(i, -1)} className="p-1 text-slate-400 disabled:opacity-20" aria-label="Move up"><ChevronUp size={18} /></button>
+                  <button disabled={i === list.length - 1} onClick={() => move(i, 1)} className="p-1 text-slate-400 disabled:opacity-20" aria-label="Move down"><ChevronDown size={18} /></button>
+                  <button onClick={() => setList(list.filter((x) => x !== id))} className="grid size-7 place-items-center rounded-full bg-rose-500/15 text-rose-300" aria-label="Remove"><Minus size={14} /></button>
+                </div>
+              )
+            })}
+            {!list.length && <p className="text-center text-xs text-slate-500">No shortcuts: a clean home screen ✨</p>}
+          </div>
+        </section>
+        <section>
+          <p className="label mb-2">Add</p>
+          <div className="grid grid-cols-4 gap-3">
+            {available.map((a) => (
+              <button key={a.id} disabled={list.length >= MAX_SHORTCUTS} onClick={() => setList([...list, a.id])} className="flex flex-col items-center gap-1 text-center disabled:opacity-30">
+                <div className={`relative grid size-12 place-items-center rounded-2xl bg-gradient-to-br ${a.c} text-white`}><a.icon size={18} />
+                  <span className="absolute -end-1 -top-1 grid size-5 place-items-center rounded-full bg-mint-400 text-ink-950"><Plus size={12} /></span></div>
+                <span className="text-[10px] leading-tight text-slate-400">{t(a.key)}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+        <section>
+          <p className="label mb-2">Home sections</p>
+          <div className="grid grid-cols-2 gap-2">
+            {SECTIONS.map((x) => (
+              <button key={x.key} onClick={() => setSections({ ...sections, [x.key]: !sections[x.key] })}
+                className={`rounded-2xl p-3 text-start text-sm font-semibold ${sections[x.key] ? 'bg-mint-400/15 text-mint-200 ring-1 ring-mint-400/40' : 'bg-fg/5 text-slate-400'}`}>{x.label}</button>
+            ))}
+          </div>
+        </section>
+        <button className="btn-primary py-4" onClick={save}>Save my home</button>
+      </div>
+    </Sheet>
   )
 }

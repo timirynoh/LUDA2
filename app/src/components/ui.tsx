@@ -29,10 +29,10 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
         <motion.div className="fixed inset-0 z-50 flex items-end justify-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
           <motion.div
-            className="relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-[2rem] border-t border-white/10 bg-ink-900 px-5 pt-3 pb-8 shadow-2xl"
+            className="relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-[2rem] border-t border-fg/10 bg-ink-900 px-5 pt-3 pb-8 shadow-2xl"
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           >
-            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-white/15" />
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-fg/15" />
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold">{title}</h2>
               <button onClick={onClose} className="glass grid size-9 place-items-center rounded-xl" aria-label="Close"><X size={18} /></button>
@@ -61,7 +61,7 @@ export function PinPad({ onDone, error }: { onDone: (pin: string) => void; error
     <div className="flex flex-col items-center gap-6">
       <motion.div className="flex gap-4" animate={error ? { x: [0, -10, 10, -6, 6, 0] } : {}} key={error}>
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className={`size-4 rounded-full transition ${i < pin.length ? 'scale-110 bg-mint-400 shadow-[0_0_12px] shadow-mint-400' : 'bg-white/15'}`} />
+          <div key={i} className={`size-4 rounded-full transition ${i < pin.length ? 'scale-110 bg-mint-400 shadow-[0_0_12px] shadow-mint-400' : 'bg-fg/15'}`} />
         ))}
       </motion.div>
       {error && <p className="-mt-3 text-sm text-rose-400">{error}</p>}
@@ -69,7 +69,7 @@ export function PinPad({ onDone, error }: { onDone: (pin: string) => void; error
         {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k) =>
           k === '' ? <div key="e" /> : (
             <button key={k} onClick={() => (k === '⌫' ? setPin((p) => p.slice(0, -1)) : press(k))}
-              className="glass grid h-14 place-items-center rounded-2xl text-xl font-semibold active:scale-95 active:bg-white/10">
+              className="glass grid h-14 place-items-center rounded-2xl text-xl font-semibold active:scale-95 active:bg-fg/10">
               {k === '⌫' ? <Delete size={20} /> : k}
             </button>
           ))}
@@ -85,7 +85,7 @@ export function Toasts() {
       <AnimatePresence>
         {toasts.map((x) => (
           <motion.div key={x.id} initial={{ y: -40, opacity: 0, scale: 0.9 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: -20, opacity: 0 }}
-            className="flex items-center gap-3 rounded-2xl border border-white/10 bg-ink-800/95 px-4 py-3 shadow-2xl backdrop-blur-xl">
+            className="flex items-center gap-3 rounded-2xl border border-fg/10 bg-ink-800/95 px-4 py-3 shadow-2xl backdrop-blur-xl">
             <span className="text-xl">{x.emoji ?? '✨'}</span>
             <span className="text-sm font-semibold">{x.title}</span>
             {x.xp ? <span className="chip bg-gold-400/15 text-gold-300">+{x.xp} XP</span> : null}
@@ -153,8 +153,8 @@ export function Segmented<T extends string>({ value, onChange, options }: { valu
     <div className="glass relative flex rounded-2xl p-1">
       {options.map((o) => (
         <button key={o.value} onClick={() => onChange(o.value)} className="relative z-10 flex-1 py-2.5 text-sm font-semibold">
-          {value === o.value && <motion.div layoutId={`seg-${options.map((x) => x.value).join()}`} className="absolute inset-0 -z-10 rounded-xl bg-white/10" />}
-          <span className={value === o.value ? 'text-white' : 'text-slate-400'}>{o.label}</span>
+          {value === o.value && <motion.div layoutId={`seg-${options.map((x) => x.value).join()}`} className="absolute inset-0 -z-10 rounded-xl bg-fg/10" />}
+          <span className={value === o.value ? 'text-slate-100' : 'text-slate-400'}>{o.label}</span>
         </button>
       ))}
     </div>

@@ -96,7 +96,7 @@ export default function Wallet() {
           <div className="flex flex-col gap-4">
             <div className="flex gap-2 overflow-x-auto">
               {currencies.map((c) => (
-                <button key={c} onClick={() => setCur(c)} className={`chip shrink-0 py-2 ${cur === c ? 'bg-mint-400 text-ink-950' : 'bg-white/5 text-slate-300'}`}>{CURRENCIES[c]?.flag} {c}</button>
+                <button key={c} onClick={() => setCur(c)} className={`chip shrink-0 py-2 ${cur === c ? 'bg-mint-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{CURRENCIES[c]?.flag} {c}</button>
               ))}
             </div>
             <div>
@@ -108,7 +108,7 @@ export default function Wallet() {
               </div>
               {mode === 'withdraw' && <p className="mt-2 text-xs text-slate-400">Available: {fmt(s.balances[cur] ?? 0, cur)}</p>}
               <div className="mt-2 flex gap-2">
-                {[100, 500, 1000, 5000].map((v) => <button key={v} onClick={() => setAmount(String(v))} className="chip bg-white/5 py-1.5 text-slate-300">{v.toLocaleString()}</button>)}
+                {[100, 500, 1000, 5000].map((v) => <button key={v} onClick={() => setAmount(String(v))} className="chip bg-fg/5 py-1.5 text-slate-300">{v.toLocaleString()}</button>)}
               </div>
             </div>
             <div>
@@ -117,7 +117,7 @@ export default function Wallet() {
                 {METHODS[mode].map(({ id, icon: Icon, name, sub, fee }) => (
                   <button key={id} onClick={() => setMethod(id)}
                     className={`glass flex items-center gap-3 rounded-2xl p-3 text-start ${method === id ? 'border-mint-400/60 bg-mint-400/10' : ''}`}>
-                    <div className="grid size-10 place-items-center rounded-xl bg-white/5"><Icon size={18} /></div>
+                    <div className="grid size-10 place-items-center rounded-xl bg-fg/5"><Icon size={18} /></div>
                     <div className="flex-1"><p className="text-sm font-semibold">{name}</p><p className="text-xs text-slate-500">{sub}</p></div>
                     <span className="text-xs text-slate-400">{fee ? `${(fee * 100).toFixed(1)}%` : 'Free'}</span>
                   </button>
@@ -125,7 +125,7 @@ export default function Wallet() {
               </div>
             </div>
             {amt > 0 && (
-              <div className="rounded-2xl bg-white/[0.03] p-3 text-sm">
+              <div className="rounded-2xl bg-fg/[0.03] p-3 text-sm">
                 <div className="flex justify-between text-slate-400"><span>Fee</span><span>{fmt(fee, cur)}</span></div>
                 <div className="mt-1 flex justify-between font-semibold"><span>{mode === 'deposit' ? 'You receive' : 'Total debited'}</span><span>{fmt(mode === 'deposit' ? amt - fee : amt + fee, cur)}</span></div>
               </div>

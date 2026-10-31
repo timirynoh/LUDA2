@@ -1,11 +1,13 @@
 /** Demo housing data. Prices are illustrative monthly rents in GBP (common in North Cyprus). */
+import type { PostMeta } from './posting'
+
 export type HomeType = 'Room' | 'Studio' | '1+1' | '2+1' | 'Dorm'
 
-export interface Listing {
+export interface Listing extends PostMeta {
   id: string; title: string; type: HomeType; city: string; area: string
   price: number; deposit: number; furnished: boolean; bills: boolean; uni?: string
   beds: number; baths: number; landlord: string; verified: boolean; rating: number; reviews: number
-  posted: number; emoji: string; tone: string; mine?: boolean
+  posted: number; emoji: string; tone: string; mine?: boolean; photos?: number
 }
 
 export interface Roommate {
