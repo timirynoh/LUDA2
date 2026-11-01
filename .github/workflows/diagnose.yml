@@ -1,9 +1,12 @@
-# Read-only health check of the live payment database (run by hand from the Actions tab).
+# Read-only health check (also runs when this file changes) of the live payment database (run by hand from the Actions tab).
 # Prints the latest top-ups, their processing history and wallet totals, with no emails and shortened references.
 name: Check payments (read-only)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [claude/cyprus-expat-app-mlnvuc]
+    paths: ['.github/workflows/diagnose.yml']
 
 jobs:
   check:
