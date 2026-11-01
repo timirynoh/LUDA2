@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { handshakeCode, randomSecret, verifyHandshake } from '../lib/crypto'
 import { fmt } from '../lib/fx'
 import { useStore, type Trade } from '../lib/store'
+import { ConfirmSheet } from './Confirm'
 
 export type HandoverMode = NonNullable<Trade['handover']>
 
@@ -123,6 +124,7 @@ export function DelegatePanel({ t, onReady }: { t: Trade; onReady: () => void })
   const { notify, toast } = useStore()
   const patch = useTradePatch(t)
   const [f, setF] = useState({ name: '', phone: '+90 5', plate: '' })
+  const [ask, setAsk] = useState(false)
   const [, tick] = useState(0)
   useEffect(() => { const i = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(i) }, [])
   const d = t.delegate
@@ -172,11 +174,15 @@ export function DelegatePanel({ t, onReady }: { t: Trade; onReady: () => void })
           <p className="text-sm">📞 Call <b>{d.name}</b> ({d.phone}) and confirm they counted {fmt(t.get, 'TRY')} before you release.</p>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <a href={`tel:${d.phone}`} className="btn-ghost py-2.5 text-sm"><Phone size={14} /> Call</a>
-            <button className="btn-primary py-2.5 text-sm" onClick={() => { patch({ delegate: { ...d, receivedAt: Date.now() } }); onReady() }}>They have the cash</button>
+            <button className="btn-primary py-2.5 text-sm" onClick={() => setAsk(true)}>They have the cash</button>
           </div>
         </div>
       )}
       {!d.receivedAt && <button className="text-xs text-slate-500 underline" onClick={() => patch({ delegate: undefined })}>Cancel this pickup code</button>}
+      {ask && <ConfirmSheet title={`Did ${d.name} get the cash?`} confirmLabel="Yes, they have it" onClose={() => setAsk(false)} onConfirm={() => { setAsk(false); patch({ delegate: { ...d, receivedAt: Date.now() } }); onReady() }}
+        warning={`Only confirm after speaking to ${d.name} yourself. Messages can be faked; a phone call is safer.`}
+        summary={[['Collected by', `${d.name} · ${d.phone}`], ['Cash amount', fmt(t.get, 'TRY')], ['From', t.trader]]}
+        checks={[`I called ${d.name} myself on ${d.phone}`, `${d.name} counted ${fmt(t.get, 'TRY')} and it is all there`, `${d.name} is now away from the meeting point with the cash`]} />}
     </div>
   )
 }

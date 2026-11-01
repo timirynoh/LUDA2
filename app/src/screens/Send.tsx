@@ -7,6 +7,7 @@ import { CURRENCIES } from '../lib/data'
 import { convert, fmt, useRates } from '../lib/fx'
 import { checkText } from '../lib/moderation'
 import { DIRECTORY, personOf, usernameOf } from '../lib/social'
+import { ConfirmSheet } from '../components/Confirm'
 import { uid, useStore } from '../lib/store'
 
 /** Instant, free Luda-to-Luda transfers by @username or QR. */
@@ -73,6 +74,7 @@ function SendSheet({ to, onClose }: { to: string; onClose: () => void }) {
   const [note, setNote] = useState('')
   const [stage, setStage] = useState<'form' | 'pin' | 'done'>('form')
   const [err, setErr] = useState('')
+  const [ask, setAsk] = useState(false)
   const amt = +amount || 0
   const bal = s.balances[cur] ?? 0
   const next = () => {
@@ -81,8 +83,7 @@ function SendSheet({ to, onClose }: { to: string; onClose: () => void }) {
     if (note && !checkText(note).ok) return setErr('Please keep the note respectful')
     const outToday = [...s.sent].filter((x) => new Date(x.ts).toDateString() === new Date().toDateString()).reduce((a, x) => a + convert(rates, x.amount, x.cur, 'TRY'), 0)
     if (outToday + convert(rates, amt, cur, 'TRY') > s.security.dailyWithdraw) return setErr(`Daily sending limit is ${fmt(s.security.dailyWithdraw, 'TRY')}. Change it in Security Center.`)
-    if (!allow('send')) return
-    setStage('pin')
+    setAsk(true)
   }
   const sendNow = async (pin: string) => {
     if (!(await checkPin(pin))) return setErr('Wrong PIN')
@@ -105,6 +106,10 @@ function SendSheet({ to, onClose }: { to: string; onClose: () => void }) {
           {err && <p className="text-sm text-rose-300">{err}</p>}
           <button className="btn-primary py-4" disabled={!amt || amt > bal} onClick={next}>{amt > bal ? 'Not enough balance' : `Send ${amt ? fmt(amt, cur) : ''}`}</button>
           <p className="text-center text-[11px] text-slate-500">Transfers are instant and can't be reversed. Only send to people you know.</p>
+          {ask && <ConfirmSheet title="Check before sending" confirmLabel={`Send ${fmt(amt, cur)}`} onClose={() => setAsk(false)} onConfirm={() => { setAsk(false); if (allow('send')) setStage('pin') }}
+            warning="Money sent can't be pulled back. Scammers often pretend to be friends or family. Call them first if unsure."
+            summary={[['To', `${p.flag} ${to} · @${p.username}`], ['Amount', fmt(amt, cur)], ['Note', note || '(none)']]}
+            checks={[`@${p.username} is the right person`, `The amount ${fmt(amt, cur)} is correct`]} />}
         </div>
       )}
     </Sheet>

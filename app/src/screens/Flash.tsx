@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { TradeChat } from '../components/TradeChat'
 import { OpenDispute } from './Disputes'
+import { ConfirmSheet } from '../components/Confirm'
 import { PhoneVerify } from '../components/PhoneVerify'
 import { DemoNote, Header, PinPad, Segmented, Sheet, Success } from '../components/ui'
 import { CITIES } from '../lib/data'
@@ -180,6 +181,7 @@ function MyRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
   const [err, setErr] = useState('')
   const [rated, setRated] = useState(f.rating ?? 0)
   const [appeal, setAppeal] = useState(false)
+  const [askRelease, setAskRelease] = useState(false)
   useEffect(() => { const t = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(t) }, [])
   const offers = f.offers.filter((o) => o.at <= Date.now())
   const pending = f.offers.length - offers.length
@@ -248,12 +250,16 @@ function MyRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
           <TradeChat threadKey={`flash-${f.id}`} name={acc.fixer} flag={acc.flag} onAppeal={f.status === 'escrow' ? () => setAppeal(true) : undefined}
             intro={f.status === 'cash' ? 'Cash deal: Luda can’t refund cash payments.' : undefined} />
         )}
+        {askRelease && acc && <ConfirmSheet danger title="Pay the fixer?" confirmLabel={`Release ₺${acc.price}`} onClose={() => setAskRelease(false)} onConfirm={() => { setAskRelease(false); setPin('release'); setErr('') }}
+          warning={`Releasing pays ${acc.fixer} ₺${acc.price}. Only continue if the job is really finished. This can't be undone.`}
+          summary={[['Job', f.text], ['Fixer', acc.fixer], ['Amount', fmt(acc.price, 'TRY')]]}
+          checks={['I checked the work myself and it is done properly', 'Nothing was damaged', 'I am paying the right person']} typeToConfirm={String(acc.price)} />}
         {appeal && acc && <OpenDispute kind="flash" refId={f.id} title={`Flash job: ${f.text.slice(0, 40)}`} counterparty={acc.fixer} amount={acc.price} cur="TRY" onClose={() => setAppeal(false)} onOpened={() => update({ status: 'disputed' })} />}
         {f.status === 'escrow' && (
           <>
             <div className="flex items-center gap-3 rounded-2xl bg-fuchsia-500/10 p-3 text-sm"><Lock size={18} className="text-fuchsia-300" /> {fmt(acc!.price, 'TRY')} is safe in escrow. Release it only when the job is really done.</div>
             {pin === 'release' ? <div className="flex flex-col items-center gap-2"><p className="text-sm text-slate-300">Enter PIN to pay {acc!.fixer}</p><PinPad error={err} onDone={release} /></div> : <>
-              <button className="btn-primary py-4" onClick={() => { setPin('release'); setErr('') }}>✅ Job done: release ₺{acc!.price}</button>
+              <button className="btn-primary py-4" onClick={() => setAskRelease(true)}>✅ Job done: release ₺{acc!.price}</button>
               <button className="btn bg-rose-500/10 text-sm text-rose-300" onClick={() => setAppeal(true)}><AlertTriangle size={16} /> Problem with the job: appeal</button>
             </>}
           </>

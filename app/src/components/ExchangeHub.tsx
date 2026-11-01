@@ -7,6 +7,7 @@ import { AD_LIMITS as LIMITS, EXCHANGER_BOND, PAY_METHODS, type Ad, type AdMode 
 import { convert, fmt, useRates } from '../lib/fx'
 import { uid, useStore } from '../lib/store'
 import { Segmented, Sheet } from './ui'
+import { ConfirmSheet, CrossCheck } from './Confirm'
 
 /** Exchange tab inside Chats: your trades, your ads, and becoming a verified exchanger. */
 export function ExchangeHub() {
@@ -32,6 +33,7 @@ export function ExchangeHub() {
         <p className="mt-1 text-sm text-white/80">Naira, Cedi, CFA ⇄ Lira with verified traders. Every trade has escrow, private chat and appeals.</p>
         <Link to="/exchange?tab=p2p" className="btn mt-3 bg-white px-4 py-2 text-sm text-ink-950">Browse offers <ChevronRight size={16} className="rtl:rotate-180" /></Link>
       </div>
+      <CrossCheck />
 
       {live.length > 0 && (
         <section>
@@ -105,6 +107,7 @@ function ApplySheet({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState(`${s.name}'s Exchange`)
   const [curs, setCurs] = useState<string[]>([home.currency === 'USD' ? 'NGN' : home.currency])
   const [agree, setAgree] = useState(false)
+  const [ask, setAsk] = useState(false)
   const bal = s.balances.TRY ?? 0
   const checks: [string, boolean][] = [['KYC verified', s.kyc.status === 'verified'], ['Phone verified', s.phoneVerified], [`${fmt(EXCHANGER_BOND, 'TRY')} in your Lira wallet for the deposit`, bal >= EXCHANGER_BOND]]
   const ok = checks.every(([, v]) => v) && agree && name.trim().length >= 3 && curs.length > 0
@@ -126,7 +129,10 @@ function ApplySheet({ onClose }: { onClose: () => void }) {
           ))}</div></div>
         <label className="flex items-start gap-2 rounded-2xl bg-fg/[0.03] p-3 text-xs text-slate-300"><input type="checkbox" className="mt-0.5 size-4 accent-emerald-500" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
           I'll honour my posted rates, only trade through Luda escrow, meet at Safe Spots, and accept that scams lose the deposit and the account.</label>
-        <button className="btn-gold py-4" disabled={!ok} onClick={submit}>Pay {fmt(EXCHANGER_BOND, 'TRY')} deposit & apply</button>
+        <button className="btn-gold py-4" disabled={!ok} onClick={() => setAsk(true)}>Pay {fmt(EXCHANGER_BOND, 'TRY')} deposit & apply</button>
+        {ask && <ConfirmSheet title="Confirm your application" confirmLabel={`Pay ${fmt(EXCHANGER_BOND, 'TRY')} deposit`} onClose={() => setAsk(false)} onConfirm={() => { setAsk(false); submit() }}
+          summary={[['Exchange name', name], ['Safety deposit (refundable)', fmt(EXCHANGER_BOND, 'TRY')], ['Currencies', curs.join(', ')]]}
+          checks={['I will honour the rates I post', 'I will only trade through Luda escrow and meet at Safe Spots', 'I understand scams lose the deposit and the account']} />}
         <p className="text-center text-[11px] text-slate-500">The deposit is fully refundable when you close your exchanger account.</p>
       </div>
     </Sheet>
@@ -140,6 +146,7 @@ function CreateAd({ onClose }: { onClose: () => void }) {
   const hc = home.currency === 'USD' || home.currency === 'TRY' ? 'NGN' : home.currency
   const market = convert(rates, 1, 'TRY', hc)
   const spots = SAFE_SPOTS[s.city] ?? SAFE_SPOTS.lefkosa
+  const [ask, setAsk] = useState(false)
   const [f, setF] = useState({ side: 'sell' as Ad['side'], rate: (market * 1000).toFixed(0), total: '5000', min: '500', max: '2000', mode: 'cash' as AdMode, spot: spots[0], methods: ['Cash in person', 'Bank transfer (home country)'] })
   const rate = (+f.rate || 0) / 1000
   const diff = market ? ((rate - market) / market) * 100 : 0
@@ -171,7 +178,11 @@ function CreateAd({ onClose }: { onClose: () => void }) {
         <div className="flex flex-wrap gap-2">{PAY_METHODS.map((m) => (
           <button key={m} onClick={() => setF({ ...f, methods: f.methods.includes(m) ? f.methods.filter((x) => x !== m) : [...f.methods, m] })} className={`chip py-1.5 ${f.methods.includes(m) ? 'bg-mint-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{m}</button>
         ))}</div>
-        <motion.button whileTap={{ scale: 0.97 }} className="btn-primary py-4" disabled={!valid} onClick={publish}>Publish ad</motion.button>
+        <motion.button whileTap={{ scale: 0.97 }} className="btn-primary py-4" disabled={!valid} onClick={() => setAsk(true)}>Publish ad</motion.button>
+        {ask && <ConfirmSheet title="Check your ad" confirmLabel="Publish ad" onClose={() => setAsk(false)} onConfirm={() => { setAsk(false); publish() }}
+          warning="People will trade at exactly this rate. Make sure it's right; you must honour it."
+          summary={[['Type', f.side === 'sell' ? `I sell ₺ for ${hc}` : `I buy ₺ with ${hc}`], ['Rate', `${fmt(rate * 1000, hc)} per ₺1,000 (${diff >= 0 ? '+' : ''}${diff.toFixed(1)}% vs market)`], ['Limits', `₺${(+f.min).toLocaleString()} – ₺${(+f.max).toLocaleString()}`], ['Total', fmt(+f.total, 'TRY')], ['Locked from wallet', lockNeeded ? fmt(lockNeeded, 'TRY') : 'nothing (cash ad)']]}
+          checks={['The rate and limits are correct', 'I have this money available for the whole ad', 'I will reply quickly and meet only at Safe Spots']} />}
       </div>
     </Sheet>
   )

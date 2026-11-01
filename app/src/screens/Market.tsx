@@ -14,6 +14,7 @@ import { personOf } from '../lib/social'
 import { uid, useStore } from '../lib/store'
 import { thumb } from '../lib/threads'
 import { OpenDispute } from './Disputes'
+import { ConfirmSheet } from '../components/Confirm'
 
 const CATS: ('All' | ItemCat)[] = ['All', 'Furniture', 'Electronics', 'Books', 'Clothes', 'Kitchen', 'Other']
 
@@ -132,6 +133,7 @@ function OrderSheet({ id, onClose }: { id: string; onClose: () => void }) {
   const [err, setErr] = useState('')
   const [appeal, setAppeal] = useState(false)
   const [review, setReview] = useState(false)
+  const [askRelease, setAskRelease] = useState(false)
   if (!o) return null
   const release = async (p: string) => {
     if (!(await checkPin(p))) return setErr('Wrong PIN')
@@ -143,7 +145,11 @@ function OrderSheet({ id, onClose }: { id: string; onClose: () => void }) {
         <div className="flex items-center gap-3"><span className="text-4xl">{o.emoji}</span><div><p className="font-bold">{fmt(o.price, 'TRY')}</p><p className="flex items-center gap-1 text-xs text-slate-400"><MapPin size={11} /> {o.spot}</p></div></div>
         {o.status === 'escrow' && <p className="rounded-2xl bg-fuchsia-500/10 p-3 text-sm">🔒 Your money is in escrow. Meet {o.seller}, check the item, then release.</p>}
         {o.status !== 'cancelled' && <TradeChat threadKey={`order-${o.id}`} name={o.seller} flag={personOf(o.seller).flag} onAppeal={o.status === 'escrow' ? () => setAppeal(true) : undefined} />}
-        {o.status === 'escrow' && (pin ? <div className="flex flex-col items-center gap-2"><PinPad error={err} onDone={release} /></div> : <button className="btn-primary py-4" onClick={() => setPin(true)}>✅ I got the item: release {fmt(o.price, 'TRY')}</button>)}
+        {o.status === 'escrow' && (pin ? <div className="flex flex-col items-center gap-2"><PinPad error={err} onDone={release} /></div> : <button className="btn-primary py-4" onClick={() => setAskRelease(true)}>✅ I got the item: release {fmt(o.price, 'TRY')}</button>)}
+        {askRelease && <ConfirmSheet danger title="Pay the seller?" confirmLabel={`Release ${fmt(o.price, 'TRY')}`} onClose={() => setAskRelease(false)} onConfirm={() => { setAskRelease(false); setPin(true) }}
+          warning={`Releasing pays ${o.seller}. Only continue if you have the item and you checked it.`}
+          summary={[['Item', o.title], ['Seller', o.seller], ['Amount', fmt(o.price, 'TRY')]]}
+          checks={['I have the item in my hands', 'It works / matches the description', 'I understand this cannot be undone']} typeToConfirm={String(o.price)} />}
         {o.status === 'done' && <button className="btn-gold py-3.5" onClick={() => setReview(true)}>⭐ Rate {o.seller}</button>}
         {o.status === 'disputed' && <Link to="/disputes" className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-200">Appeal open: escrow frozen · View case</Link>}
         {o.status === 'cancelled' && <p className="rounded-2xl bg-fg/5 p-3 text-sm text-slate-400">Cancelled & refunded.</p>}

@@ -6,6 +6,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { TradeChat } from '../components/TradeChat'
 import { RateAlerts } from '../components/RateAlerts'
 import { CourierPanel, DelegatePanel, HandoverPicker } from '../components/Handover'
+import { ConfirmSheet, CrossCheck } from '../components/Confirm'
 import { ReviewSheet } from '../components/Review'
 import { OpenDispute } from './Disputes'
 import { DemoNote, Header, PinPad, Segmented, Sheet, Success } from '../components/ui'
@@ -52,6 +53,7 @@ function Convert() {
   const [to, setTo] = useState('TRY')
   const [amount, setAmount] = useState('')
   const [done, setDone] = useState(false)
+  const [ask, setAsk] = useState(false)
   const amt = parseFloat(amount) || 0
   const out = convert(rates, amt, from, to) * (1 - SPREAD)
   const bal = s.balances[from] ?? 0
@@ -96,9 +98,13 @@ function Convert() {
         <span className="font-semibold">1 {from} = {convert(rates, 1, from, to).toLocaleString(undefined, { maximumSignificantDigits: 5 })} {to}</span>
       </div>
       <p className="text-center text-xs text-slate-500">Transparent {SPREAD * 100}% spread · no hidden fees</p>
-      <button className="btn-gold py-4" disabled={!amt || amt > bal || from === to} onClick={go}>
+      <CrossCheck text="Check the currencies and the amount before converting. The rate is locked when you confirm." />
+      <button className="btn-gold py-4" disabled={!amt || amt > bal || from === to} onClick={() => setAsk(true)}>
         {amt > bal ? t('wallet.insufficient') : `${t('fx.convert')} ${from} → ${to}`}
       </button>
+      {ask && <ConfirmSheet title="Confirm conversion" confirmLabel={`Convert ${from} → ${to}`} onClose={() => setAsk(false)} onConfirm={() => { setAsk(false); go() }}
+        summary={[['You pay', fmt(amt, from)], ['You get', fmt(out, to)], ['Rate', `1 ${from} = ${convert(rates, 1, from, to).toLocaleString(undefined, { maximumSignificantDigits: 5 })} ${to}`], ['Fee (spread)', `${SPREAD * 100}%`]]}
+        checks={[`I want to convert ${fmt(amt, from)} into ${to}`, 'I checked the rate and the amount I will receive']} />}
       <RateAlerts />
       <Sheet open={done} onClose={() => { setDone(false); setAmount('') }} title={t('fx.convert')}>
         <Success title={t('wallet.success')} sub={`You received ${fmt(out, to)}`} onClose={() => { setDone(false); setAmount('') }} />
@@ -133,7 +139,7 @@ function P2P() {
   const [tl, setTl] = useState('1000')
   const [spot, setSpot] = useState(spots[0])
   const [when, setWhen] = useState('Within 1 hour')
-  const [stage, setStage] = useState<'form' | 'pin' | 'locked'>('form')
+  const [stage, setStage] = useState<'form' | 'confirm' | 'pin' | 'locked'>('form')
   const [err, setErr] = useState('')
   const [active, setActive] = useState<Trade | null>(null)
 
@@ -155,6 +161,7 @@ function P2P() {
 
   return (
     <div className="flex flex-col gap-4 px-5 pt-5">
+      <CrossCheck />
       {/* protocol explainer */}
       <div className="card overflow-hidden bg-gradient-to-br from-fuchsia-500/10 to-transparent">
         <div className="flex items-center gap-2"><ShieldCheck className="text-fuchsia-300" size={20} /><p className="font-bold">Luda SafeSwap protocol</p></div>
@@ -243,8 +250,13 @@ function P2P() {
               <div className="mt-1 flex justify-between font-bold"><span>Locked in escrow</span><span>{fmt(pay, hc)}</span></div>
             </div>
             {pay > bal && <p className="text-sm text-rose-400">{t('wallet.insufficient')} — top up {hc} first.</p>}
-            <button className="btn-primary py-4" disabled={tlAmt < offer.min || tlAmt > offer.max || pay > bal} onClick={() => setStage('pin')}><Lock size={18} /> {t('fx.start')}</button>
+            <button className="btn-primary py-4" disabled={tlAmt < offer.min || tlAmt > offer.max || pay > bal} onClick={() => setStage('confirm')}><Lock size={18} /> {t('fx.start')}</button>
           </div>
+        )}
+        {stage === 'confirm' && offer && (
+          <ConfirmSheet title="Before you lock your money" confirmLabel={`Lock ${fmt(pay, hc)} in escrow`} onClose={() => setStage('form')} onConfirm={() => setStage('pin')}
+            summary={[['Trader', `${offer.flag} ${offer.name}`], ['You lock in escrow', fmt(pay, hc)], ['You receive (cash)', fmt(tlAmt, 'TRY')], ['Rate', `${fmt(offer.rate * 1000, hc)} per ₺1,000`], ['Meeting', `${spot} · ${when}`]]}
+            checks={[`The amount (${fmt(tlAmt, 'TRY')}) and rate are what I agreed`, `I will only meet at ${spot.split('·')[0].trim()} (a public Safe Spot)`, 'I will NOT release my money until I have counted the cash myself', 'I will keep all talk & payment inside Luda']} />
         )}
         {stage === 'pin' && (
           <div className="flex flex-col items-center gap-4"><p className="text-slate-300">{t('wallet.pin')}</p>
@@ -268,6 +280,8 @@ function TradeSheet({ trade, onClose }: { trade: Trade | null; onClose: () => vo
   const [done, setDone] = useState(false)
   const [appeal, setAppeal] = useState(false)
   const [rate, setRate] = useState(false)
+  const [askRelease, setAskRelease] = useState(false)
+  const [askCancel, setAskCancel] = useState(false)
   const cur = trade ? s.trades.find((x) => x.id === trade.id) ?? trade : null
 
   useEffect(() => {
@@ -370,15 +384,24 @@ function TradeSheet({ trade, onClose }: { trade: Trade | null; onClose: () => vo
               <div className="rounded-2xl bg-mint-400/10 p-3 text-sm text-mint-100">{mode === 'courier' && cur.courier ? `✅ Courier ${cur.courier.name} (${cur.courier.plate}) verified. Count the cash in front of them, then release. The money goes to ${cur.trader}, not the courier.`
                 : mode === 'delegate' && cur.delegate ? `✅ ${cur.delegate.name} confirmed they have the cash. Releasing pays ${cur.trader}.`
                 : `✅ Identity matched: ${cur.trader} is the verified trader you booked. Count the cash before releasing.`}</div>
-              <button className="btn-primary py-4" onClick={() => setReleasing(true)}>I received {fmt(cur.get, 'TRY')} — release escrow</button>
+              <button className="btn-primary py-4" onClick={() => setAskRelease(true)}>I received {fmt(cur.get, 'TRY')}: release escrow</button>
             </>
           ))}
 
           <div className="grid grid-cols-2 gap-2">
-            {cur.status === 'escrow' ? <button className="btn-ghost text-sm" onClick={cancel}>Cancel & refund</button>
+            {cur.status === 'escrow' ? <button className="btn-ghost text-sm" onClick={() => setAskCancel(true)}>Cancel & refund</button>
               : <button className="btn-ghost text-sm" disabled={cur.status === 'disputed'} onClick={() => setAppeal(true)}><ShieldAlert size={16} /> Appeal</button>}
             <a href="tel:155" className="btn bg-rose-500/15 text-sm text-rose-300"><Siren size={16} /> SOS · 155</a>
           </div>
+          {askRelease && <ConfirmSheet danger title="Release escrow?" confirmLabel={`Release ${fmt(cur.give, cur.giveCur)}`} onClose={() => setAskRelease(false)} onConfirm={() => { setAskRelease(false); setReleasing(true) }}
+            warning={`Releasing sends ${fmt(cur.give, cur.giveCur)} to ${cur.trader}. This can NOT be undone, so only continue if you have the cash in your hand.`}
+            summary={[['Cash you should have', <span key="cash" className="text-mint-300">{fmt(cur.get, 'TRY')}</span>], ['You release', fmt(cur.give, cur.giveCur)], ['Paid to', `${cur.traderFlag} ${cur.trader}`], ['Handover', mode === 'courier' ? `Courier ${cur.courier?.name ?? ''} (${cur.courier?.plate ?? ''})` : mode === 'delegate' ? `Collected by ${cur.delegate?.name ?? ''}` : 'In person']]}
+            checks={[mode === 'delegate' ? `${cur.delegate?.name ?? 'My person'} told me on the phone they counted ${fmt(cur.get, 'TRY')}` : `I have counted ${fmt(cur.get, 'TRY')} myself, note by note`, 'The notes look genuine (not fake, torn or foreign)', mode === 'courier' ? 'The courier’s code matched in the app' : 'I am releasing to the right person', 'I understand this cannot be reversed']}
+            typeToConfirm={String(Math.round(cur.get))} />}
+          {askCancel && <ConfirmSheet title="Cancel this trade?" confirmLabel="Cancel & refund" onClose={() => setAskCancel(false)} onConfirm={() => { setAskCancel(false); cancel() }}
+            warning="Only cancel if you have NOT received any cash. Your escrow comes back to your wallet."
+            summary={[['Refund to you', fmt(cur.give, cur.giveCur)], ['Trader', cur.trader]]}
+            checks={['I have not received any cash for this trade', `I told ${cur.trader} in the chat that I’m cancelling`]} />}
           {appeal && <OpenDispute kind="swap" refId={cur.id} title={`SafeSwap with ${cur.trader}`} counterparty={cur.trader} amount={cur.give} cur={cur.giveCur} onClose={() => setAppeal(false)} onOpened={() => update('disputed')} />}
         </div>
       )}
