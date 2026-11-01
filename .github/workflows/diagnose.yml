@@ -1,0 +1,25 @@
+# Read-only health check of the live payment database (run by hand from the Actions tab).
+# Prints the latest top-ups, their processing history and wallet totals, with no emails and shortened references.
+name: Check payments (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Query
+        run: |
+          q() {
+            echo; echo "=== $1"
+            jq -n --arg q "$2" '{query: $q}' | curl -sS -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @- | jq -c '.[]? // .'
+          }
+          q "Latest top-ups" "select '…'||right(reference,8) as ref, provider, status, amount_minor/100.0 as charged, currency, credit_minor/100.0 as credit, credit_currency, created_at, paid_at from payments order by created_at desc limit 10"
+          q "Processing history (latest 25 events)" "select '…'||right(reference,8) as ref, kind, at, left(coalesce(payload::text,''), 220) as detail from payment_events order by id desc limit 25"
+          q "Wallet totals" "select currency, count(*) as wallets, sum(balance_minor)/100.0 as total from wallets group by currency"
+          q "Accounts" "select count(*) as profiles, count(*) filter (where pin_hash is not null) as with_pin from profiles"
