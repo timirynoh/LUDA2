@@ -7,6 +7,8 @@ import { FlashBubbles, FlashPop } from '../components/FlashBubbles'
 import { SaverCard, SaverSheet } from '../components/RideSaver'
 import { UnlockCard, WelcomeTour } from '../components/Verify'
 import { Avatar } from '../components/Avatar'
+import { CheckinCard, NewsPreview } from './Engage'
+import { WELCOME_STEPS } from '../lib/growth'
 import { ACTION_TIER, tierOf } from '../lib/access'
 import { Bell, Lock, Search as SearchIcon } from 'lucide-react'
 import { ACTIONS, MAX_SHORTCUTS } from '../lib/actions'
@@ -82,7 +84,16 @@ export default function Home() {
         </div>
       </motion.div>
 
+      {s.sections.checkin && <CheckinCard />}
       <UnlockCard />
+      {s.sections.welcome && Date.now() - s.createdAt < 30 * 86_400_000 && s.welcomeDone.length < WELCOME_STEPS.length && (
+        <Link to="/welcome" className="card flex items-center gap-3">
+          <span className="text-2xl">🧳</span>
+          <div className="flex-1"><p className="text-sm font-semibold">New in North Cyprus? Your welcome pack</p>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-fg/10"><div className="h-full bg-gradient-to-r from-teal-300 to-mint-400" style={{ width: `${(s.welcomeDone.length / WELCOME_STEPS.length) * 100}%` }} /></div></div>
+          <span className="text-xs text-slate-400">{s.welcomeDone.length}/{WELCOME_STEPS.length}</span>
+        </Link>
+      )}
       <WelcomeTour />
 
       {s.saver.status === 'none' && tierOf(s) >= 2 && <SaverCard dismissible onOpen={() => setSaverOpen(true)} />}
@@ -141,6 +152,8 @@ export default function Home() {
         </div>
       </section>
 
+      {s.sections.news && <NewsPreview />}
+
       {/* rates */}
       {s.sections.rates && <section className="card">
         <div className="mb-3 flex items-center justify-between">
@@ -183,6 +196,7 @@ export default function Home() {
 }
 
 const SECTIONS: { key: keyof import('../lib/store').State['sections']; label: string }[] = [
+  { key: 'checkin', label: '🎡 Daily spin' }, { key: 'welcome', label: '🧳 Welcome pack' }, { key: 'news', label: '📰 News' },
   { key: 'flash', label: '⚡ Flash help bubbles' }, { key: 'nextClass', label: '🎓 Next class' }, { key: 'deadline', label: '⏳ Next uni deadline' },
   { key: 'rates', label: '💱 Live rates' }, { key: 'quests', label: '★ Daily quests' },
 ]

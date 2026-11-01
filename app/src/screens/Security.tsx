@@ -5,6 +5,7 @@ import { checkLogin, makeAccount, passwordStrength } from '../lib/auth'
 import { hashPin, randomSecret } from '../lib/crypto'
 import { fmt } from '../lib/fx'
 import { useStore } from '../lib/store'
+import { NotificationSettings } from './Engage'
 
 function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
@@ -75,6 +76,8 @@ export default function Security() {
           <Row icon={<KeyRound size={18} />} title="Change PIN"><button className="chip bg-fg/5 py-2 text-slate-300" onClick={() => setSheet('pin')}>Change</button></Row>
           {s.account && <Row icon={<KeyRound size={18} />} title="Change password"><button className="chip bg-fg/5 py-2 text-slate-300" onClick={() => setSheet('password')}>Change</button></Row>}
         </section>
+
+        <NotificationSettings />
 
         <section className="card">
           <p className="label mb-2 flex items-center gap-1"><History size={12} /> Recent sign-ins</p>

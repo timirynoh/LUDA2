@@ -19,6 +19,8 @@ const EXTRA = [
   { label: 'Appeals & support cases', to: '/disputes', emoji: '🛡️', kw: 'dispute appeal case refund complaint' },
   { label: 'Become an exchanger / my ads', to: '/chats?tab=exchange', emoji: '🏪', kw: 'exchanger merchant ad exchange p2p' },
   { label: 'Saved cards', to: '/wallet', emoji: '💳', kw: 'card bank visa mastercard' },
+  { label: 'Notification settings', to: '/security', emoji: '🔔', kw: 'notification push alert' },
+  { label: 'Daily spin', to: '/', emoji: '🎡', kw: 'spin wheel check-in daily reward' },
 ]
 
 /** One search box for features, houses, jobs, events and groups. */

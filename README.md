@@ -32,7 +32,7 @@ It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desk
 | **Housing & Roommates** | Listings per city, filters, verified landlords, reviews, viewings, roommate matching, report taken/fake | ✅ sample data |
 | **Jobs** | Verified employers, permit-support flag, apply & track, post a job | ✅ sample data |
 | **Community** | Church & mosque services, culture, sports, career and help events; RSVP; add to calendar | ✅ sample data |
-| **University hub** | Pick your school → only its deadlines & fees; pay tuition from wallet; **timetable screenshot reader that runs on the phone** (tesseract.js, image never uploaded) with review/edit; reminders only if the user turns them on; calendar export | ✅ OCR real, dates sample |
+| **University hub** | Pick your school → only its deadlines & fees; pay tuition from wallet; **timetable screenshot reader that runs on the phone** (grids with/without time column, times inside cells, lists & cards, AM/PM, dark mode, Turkish days, course names without codes, OCR look-alike fixes) (tesseract.js, image never uploaded) with review/edit; reminders only if the user turns them on; calendar export | ✅ OCR real, dates sample |
 | **Transport** | Taxi fare estimate and share-my-trip safety (tickets above) | ✅ estimates |
 | **Posting safety** | Every poster: phone OTP + legal declaration (ID optional = ✓ badge). Houses: a resident's KIB-TEK/water bill, deed or agent licence → live instantly; photos only → admin approval. Jobs: business registration or "Individual". All posts reviewed before going live, hidden after 7 days unless confirmed available, user reports, 1 active post for new posters | ✅ flow simulated |
 | **Admin console** | Owner reviews queue with red-flag checks, approves/rejects with reasons, posts as "Luda Official" | ✅ |
@@ -60,6 +60,14 @@ It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desk
 | **More languages** | Nigerian Pidgin (full), Yorùbá and Hausa (core screens; have a native speaker review) | ✅ |
 | **Profile & completeness** | Profile photo (auto square-crop, shown on Home, Profile & lock screen), display name & bio, completeness meter (photo, bio, phone, KYC, account, security) with All-Star badge at 100% | ✅ |
 | **Fits every device** | Phones full-width (tested 320 → 430 px: iPhone SE, 8, 15, 15 Pro Max, Galaxy), tablets get a wider layout with more columns (iPad), desktop shows a phone frame; iPhone notch/home-bar safe areas; no input zoom on iOS; automated overflow check on 20 screens × 7 devices | ✅ |
+| **Invite & earn** | Referral code + WhatsApp invite; ₺50 for both when the friend completes KYC + first top-up; funnel tracking; enter-a-code for new users; anti-fraud caps (20/month, same phone/device/ID never counts twice) | ✅ demo friends |
+| **Campus ambassadors** | Per-university programme, leaderboard, Bronze/Silver/Gold rewards from verified referrals | ✅ |
+| **Luda Deals** | Merchant discounts near campus (food, barbers, groceries, taxi, phone repair), pay with Luda at the counter, savings tracker | ✅ sample merchants |
+| **Welcome pack** | First-weeks checklist for new arrivals (SIM, community group, verify, residency, housing, uni, buses, emergency) with reward | ✅ |
+| **Daily check-in spin** | Once-a-day prize wheel (XP, points, small cash), double prizes on 7-day streaks | ✅ |
+| **News & alerts** | Pinned scam alerts, utilities, residency, university, transport, events; like/save/share; admin can publish announcements; preview on Home | ✅ sample stories |
+| **Monthly challenges** | Personal goals (pay 3 bills, save ₺1,000, 2 SafeSwaps) with prizes + Country savings cup leaderboard | ✅ |
+| **Notifications** | Phone/browser notifications with per-category settings (money, security, chats, classes, rates, deals, news); full background push needs the live server | ✅ in-app + browser |
 | **Gamification** | XP, 5 levels (Newcomer → Legend), daily streaks, 7 quests, 9 badges, redeemable Luda Points and a community leaderboard by country, plus XP toasts and confetti | ✅ |
 | **Languages** | English, Türkçe, Français, Kiswahili, العربية (RTL), Naija Pidgin, Yorùbá, Hausa | ✅ |
 

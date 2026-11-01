@@ -47,6 +47,10 @@ export default function Rewards() {
         </div>
 
         <InviteCard />
+        <div className="grid grid-cols-2 gap-2">
+          <Link to="/invite" className="card flex items-center gap-2 py-3 text-sm font-semibold">🎁 Invite & earn ₺50</Link>
+          <Link to="/challenges" className="card flex items-center gap-2 py-3 text-sm font-semibold">🏆 Monthly challenges</Link>
+        </div>
 
         <section className="card">
           <div className="mb-3 flex items-center justify-between"><p className="font-bold">🪙 {t('rewards.points')}</p><p className="text-xl font-extrabold text-gold-300">{s.points}</p></div>

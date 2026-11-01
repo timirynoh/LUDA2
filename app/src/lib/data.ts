@@ -113,6 +113,12 @@ export const BADGES: Record<string, { name: string; emoji: string; desc: string 
   trader: { name: 'Market Trader', emoji: '🛒', desc: 'Bought or sold on the marketplace' },
   critic: { name: 'Helpful Reviewer', emoji: '⭐', desc: 'Left a review' },
   allstar: { name: 'All-Star', emoji: '🌟', desc: 'Completed your profile 100%' },
+  recruiter: { name: 'Recruiter', emoji: '🤝', desc: 'A friend you invited got verified' },
+  ambassador: { name: 'Campus Ambassador', emoji: '🎓', desc: 'Joined the ambassador programme' },
+  deal_hunter: { name: 'Deal Hunter', emoji: '🎁', desc: 'Used a Luda Deal' },
+  newcomer_pro: { name: 'Settled In', emoji: '🧳', desc: 'Finished the welcome pack' },
+  lucky: { name: 'Lucky Spin', emoji: '🎡', desc: 'Won cash on the daily spin' },
+  challenger: { name: 'Challenger', emoji: '🏆', desc: 'Completed a monthly challenge' },
   home_sweet: { name: 'Home Sweet Home', emoji: '🏡', desc: 'Booked a house viewing' },
   good_neighbour: { name: 'Good Neighbour', emoji: '🤝', desc: 'Posted a listing or found a roommate' },
 }

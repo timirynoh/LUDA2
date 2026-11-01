@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { BADGES, LANGS, LEVELS, type Lang } from './data'
 import type { Listing } from './housing'
 import type { Job } from './jobs'
@@ -19,6 +19,7 @@ import type { SavedCard } from './cards'
 import type { Review } from './social'
 import type { Item, Order } from './market'
 import type { Pot, RateAlert } from './savings'
+import type { News, NotifCat, Referral } from './growth'
 
 export type TxType = 'deposit' | 'withdraw' | 'convert' | 'bill' | 'p2p' | 'reward'
 export interface Tx { id: string; type: TxType; amount: number; currency: string; label: string; ts: number; meta?: string }
@@ -51,7 +52,7 @@ export interface State {
   connections: string[]
   theme: 'dark' | 'light' | 'system'
   shortcuts: string[]
-  sections: { flash: boolean; nextClass: boolean; rates: boolean; quests: boolean; deadline: boolean }
+  sections: { flash: boolean; nextClass: boolean; rates: boolean; quests: boolean; deadline: boolean; checkin: boolean; welcome: boolean; news: boolean }
   phoneVerified: boolean
   proofs: { housing?: 'resident' | 'owner' | 'agent' | 'photos'; business?: 'company' | 'individual'; org?: boolean }
   isAdmin: boolean
@@ -99,6 +100,19 @@ export interface State {
   myItems: Item[]
   orders: Order[]
   avatar?: string
+  referrals: Referral[]
+  invitedBy?: string
+  ambassador: { status: 'none' | 'active'; uni?: string }
+  dealsUsed: { id: string; merchant: string; saved: number; ts: number }[]
+  welcomeDone: string[]
+  spin: { last?: string; total: number }
+  newsSaved: string[]
+  newsLiked: string[]
+  challenges: string[]
+  notifPrefs: Record<NotifCat, boolean>
+  pushOn: boolean
+  myNews: News[]
+  invitePaid?: boolean
   bio?: string
   sent: { id: string; to: string; amount: number; cur: string; note: string; ts: number }[]
   recentPosts: { f: string; t: number }[]
@@ -117,13 +131,15 @@ export const initialState: State = {
   badges: [], quests: [], trades: [], savedBills: [], docs: [], permitExpiry: '', contacted: 0,
   savedHomes: [], viewings: [], myListings: [], connections: [],
   theme: 'dark', shortcuts: ['deposit', 'convert', 'p2p', 'bills'],
-  sections: { flash: true, nextClass: true, rates: true, quests: true, deadline: true },
+  sections: { flash: true, nextClass: true, rates: true, quests: true, deadline: true, checkin: true, welcome: true, news: true },
   phoneVerified: false, proofs: {}, isAdmin: false, reports: [],
   myJobs: [], applications: [], myEvents: [], rsvps: [],
   university: '', classes: [], remind: { on: false, minutes: 15 }, paidFees: [],
   joinedGroups: ['g-help'], myGroups: [], chatMsgs: {}, lastRead: {}, mutedGroups: [], blockedUsers: [], hiddenMsgs: [],
   chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {}, flash: [], gigs: [], saver: { status: 'none' }, createdAt: Date.now(), toured: false, account: null, signedIn: false, lockOnOpen: true,
-  security: { frozen: false, twoStep: false, hideBalances: false, dailyWithdraw: 20000, autoLockMin: 3 }, logins: [], inbox: [], referral: '', kyc: { status: 'none' }, threads: {}, disputes: [], exchanger: { status: 'none' }, ads: [], cards: [], flashPop: true, reviews: [], alerts: [], pots: [], myItems: [], orders: [], sent: [], activity: {}, recentPosts: [], deposits: 0,
+  security: { frozen: false, twoStep: false, hideBalances: false, dailyWithdraw: 20000, autoLockMin: 3 }, logins: [], inbox: [], referral: '', kyc: { status: 'none' }, threads: {}, disputes: [], exchanger: { status: 'none' }, ads: [], cards: [], flashPop: true, reviews: [], alerts: [], pots: [], myItems: [], orders: [], sent: [],
+  referrals: [], ambassador: { status: 'none' }, dealsUsed: [], welcomeDone: [], spin: { total: 0 }, newsSaved: [], newsLiked: [], challenges: [],
+  notifPrefs: { money: true, chats: true, classes: true, rates: true, deals: false, news: true, security: true }, pushOn: false, myNews: [], activity: {}, recentPosts: [], deposits: 0,
 }
 
 function load(): State {
@@ -222,8 +238,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setTimeout(() => { if (unlocked) toast({ title: `Badge unlocked: ${BADGES[unlocked].name}`, emoji: BADGES[unlocked].emoji, xp: 25 }) }, 400)
   }, [toast])
 
+  const sRef = useRef(s)
+  useEffect(() => { sRef.current = s }, [s])
   const notify = useCallback<Ctx['notify']>((emoji, title, to) => {
     setS((p) => ({ ...p, inbox: [{ id: uid(), ts: Date.now(), emoji, title, read: false, to }, ...p.inbox].slice(0, 100) }))
+    pushIfAllowed(sRef.current, emoji, title, to)
   }, [])
   const addTx = useCallback<Ctx['addTx']>((tx) => {
     setS((p) => ({
@@ -274,4 +293,25 @@ export function useStore() {
   const c = useContext(C)
   if (!c) throw new Error('StoreProvider missing')
   return c
+}
+
+/** Category of a notification, from where it links to. */
+function categoryOf(to?: string, emoji?: string): NotifCat {
+  if (!to) return emoji === '🔐' ? 'security' : 'news'
+  if (to.startsWith('/security')) return 'security'
+  if (to.startsWith('/wallet') || to.startsWith('/disputes') || to.startsWith('/invite') || to.startsWith('/send')) return 'money'
+  if (to.startsWith('/chats') || to.startsWith('/flash')) return 'chats'
+  if (to.startsWith('/exchange')) return 'rates'
+  if (to.startsWith('/uni')) return 'classes'
+  if (to.startsWith('/deals')) return 'deals'
+  return 'news'
+}
+
+/** Shows a phone/system notification when the user allowed it for that category. */
+function pushIfAllowed(s: State, emoji: string, title: string, to?: string) {
+  try {
+    if (!s.pushOn || !('Notification' in window) || Notification.permission !== 'granted') return
+    if (!s.notifPrefs[categoryOf(to, emoji)]) return
+    new Notification(`${emoji} Luda`, { body: title, tag: `${Date.now()}`, icon: './icon-192.png' })
+  } catch { /* not supported here */ }
 }
