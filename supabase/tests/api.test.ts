@@ -177,6 +177,22 @@ test('withdraw to own bank account only; failed payout refunds once; success set
   assert.ok(me.withdrawals.every((x: any) => x.account_number.startsWith('••••') && !x.recipient_code), 'account numbers masked')
 })
 
+test('top up in Ghana cedi via Flutterwave → Lira wallet (fee on top)', async () => {
+  const before = (await bal(ada)).TRY
+  assert.match((await call('POST', 'deposit', { provider: 'paystack', currency: 'GHS', amountMinor: 100_00 }, ada)).j.error, /Flutterwave/)
+  assert.match((await call('POST', 'deposit', { provider: 'flutterwave', currency: 'CDF', amountMinor: 100_00 }, ada)).j.error, /not available/)
+  assert.match((await call('POST', 'deposit', { provider: 'flutterwave', currency: 'GHS', amountMinor: 10_00 }, ada)).j.error, /Minimum/)
+  const r = await call('POST', 'deposit', { provider: 'flutterwave', currency: 'GHS', amountMinor: 100_00 }, ada)
+  assert.equal(r.status, 200, JSON.stringify(r.j))
+  assert.equal(r.j.creditCurrency, 'TRY'); assert.equal(r.j.creditMinor, 247_50) // GH₵100 at 0.4/₺ = ₺250, minus 1% margin
+  assert.equal(r.j.feeMinor, 3_96); assert.equal(world.inits.get(r.j.reference), 103_96, 'Flutterwave charged GH₵103.96')
+  world.charges.set(r.j.reference, { status: 'success', currency: 'GHS' })
+  assert.equal((await call('GET', `deposit?ref=${r.j.reference}`, undefined, ada)).j.status, 'paid')
+  assert.equal((await bal(ada)).TRY, before + 247_50)
+  const cfg = (await call('GET', 'config')).j; assert.deepEqual(cfg.foreign, ['USD', 'GHS', 'KES', 'UGX', 'ZMW', 'XAF'])
+  assert.deepEqual((await call('GET', 'config', undefined, undefined, { ...ENV, FOREIGN_CURRENCIES: 'ghs, usd' })).j.foreign, ['USD', 'GHS'])
+})
+
 test('PIN locks after 5 wrong tries; frozen accounts cannot spend', async () => {
   for (let i = 0; i < 5; i++) await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, pin: '0000' }, bola)
   assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, pin: '4826' }, bola)).status, 429)

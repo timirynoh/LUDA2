@@ -74,7 +74,7 @@ export default function LiveWallet() {
 
 function Row({ h }: { h: LedgerRow }) {
   const m = h.meta ?? {}
-  const sub = h.kind === 'send' ? `to @${m.to}` : h.kind === 'receive' ? `from @${m.from}` : h.kind === 'ticket' ? `${m.label ?? ''} · ${m.code ?? ''}` : h.kind === 'withdraw' ? `${m.bank ?? 'Bank'} ••${m.account ?? ''}` : h.kind === 'deposit' ? `via ${m.provider === 'flutterwave' ? 'Flutterwave' : 'Paystack'}` : ''
+  const sub = h.kind === 'send' ? `to @${m.to}` : h.kind === 'receive' ? `from @${m.from}` : h.kind === 'ticket' ? `${m.label ?? ''} · ${m.code ?? ''}` : h.kind === 'withdraw' ? `${m.bank ?? 'Bank'} ••${m.account ?? ''}` : h.kind === 'deposit' ? `via ${m.provider === 'flutterwave' ? 'Flutterwave' : 'Paystack'}${m.charged_currency && m.charged_currency !== h.currency ? ` · paid ${money(Number(m.charged), m.charged_currency)}` : ''}` : ''
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${h.amount_minor > 0 ? 'bg-mint-400/15 text-mint-300' : 'bg-fg/5 text-slate-300'}`}>{h.amount_minor > 0 ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}</span>

@@ -10,7 +10,7 @@ export interface Keys {
   FLW_SECRET_HASH?: string // the "secret hash" you set in the Flutterwave dashboard (webhooks)
 }
 
-export interface InitArgs { reference: string; amountMinor: number; currency: string; email: string; callbackUrl: string; title: string; meta: Record<string, unknown> }
+export interface InitArgs { reference: string; amountMinor: number; currency: string; email: string; callbackUrl: string; title: string; meta: Record<string, unknown>; paymentOptions?: string }
 export interface Verified { ok: boolean; status: string; amountMinor: number; currency: string; reference: string; providerTxId: string }
 
 const PAYSTACK = 'https://api.paystack.co'
@@ -48,6 +48,7 @@ export async function initCheckout(p: Provider, a: InitArgs, k: Keys, f: Fetch =
     body: {
       tx_ref: a.reference, amount: a.amountMinor / 100, currency: a.currency, redirect_url: a.callbackUrl,
       customer: { email: a.email }, customizations: { title: a.title }, meta: a.meta,
+      ...(a.paymentOptions ? { payment_options: a.paymentOptions } : {}),
     },
   })
   if (!j.data?.link) throw new Error('Flutterwave did not return a checkout link')

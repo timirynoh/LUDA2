@@ -1,7 +1,9 @@
 # Going live: the real Luda wallet
 
 **How money works in Luda (live):**
-- **In:** students **top up** their Naira wallet with **Paystack or Flutterwave** (card, bank transfer, USSD). They pay the provider's fee on top, so the full amount lands in their wallet.
+- **In:** students **top up** with **Paystack or Flutterwave** (card, bank transfer, USSD). They pay the provider's fee on top, so the full amount lands in their wallet.
+  - **Naira** goes into the **Naira wallet** (Paystack or Flutterwave).
+  - **Other currencies** go through **Flutterwave** and are converted into the **Lira wallet** at today's rate, minus your margin: US dollar by card, Ghana cedi, Kenyan and Ugandan shilling, Zambian kwacha, Cameroon CFA (card or mobile money).
 - **Inside Luda:** they **convert** Naira ⇄ Lira, **buy bus and airport tickets** from the wallet, and **send money** to other Luda users. No card is involved.
 - **Out:** they **withdraw** Naira to **their own Nigerian bank account** through **Paystack**. Each withdrawal has a ₦50 fee. Withdrawals and sending need identity verification (NIN or BVN, checked automatically by **Dojah**).
 
@@ -55,6 +57,8 @@ GitHub → `timirynoh/luda2` → **Settings → Secrets and variables → Action
 - Sign up at <https://dojah.io>, then **fund your Dojah wallet**. Each NIN or BVN lookup costs a small fee.
 - Copy your **App ID** and **Secret Key** (production).
 
+**Flutterwave: switch on the other currencies.** In Flutterwave → Settings → **Business preferences / Payment methods**, make sure **USD, GHS, KES, UGX, ZMW and XAF** collections and their mobile-money methods are enabled. Some need a request to Flutterwave support. A currency that isn't enabled fails at checkout, the student isn't charged, and nothing is credited. To show only some currencies in the app, set the secret `FOREIGN_CURRENCIES` (e.g. `GHS,USD`).
+
 ## Step 4: Put the keys into Supabase (10 min)
 Supabase → **Edge Functions → Secrets** → add:
 
@@ -76,7 +80,10 @@ Optional (defaults in brackets):
 | `FX_MARGIN` | your margin on Naira ⇄ Lira and on Naira-paid tickets (`0.01` = 1%) |
 | `FX_FIXED_RATE` | use your own fixed rate instead of the live one |
 | `WITHDRAW_FEE` | Naira per withdrawal (`50`) |
-| `DEPOSIT_FEE_PCT` / `DEPOSIT_FEE_FLAT` / `DEPOSIT_FEE_FLAT_WAIVE_BELOW` / `DEPOSIT_FEE_CAP` | top-up fee passed to the user (`1.5` / `100` / `2500` / `2000`, matching Paystack's local card fee) |
+| `DEPOSIT_FEE_PCT` / `DEPOSIT_FEE_FLAT` / `DEPOSIT_FEE_FLAT_WAIVE_BELOW` / `DEPOSIT_FEE_CAP` | Naira top-up fee passed to the user (`1.5` / `100` / `2500` / `2000`, matching Paystack's local card fee) |
+| `FOREIGN_CURRENCIES` | which other currencies to offer, e.g. `GHS,USD` (all six) |
+| `FOREIGN_FEE_PCT` | fee passed to the user on other-currency top-ups (`3.8`) |
+| `FX_TRY_RATES` | your own rates instead of live ones, as units per ₺1, e.g. `{"USD":0.029,"GHS":0.35}` |
 
 ## Step 5: Install the server (2 min)
 GitHub → **Actions** → **Deploy payment server** → **Run workflow**.
@@ -129,9 +136,9 @@ If something fails, check Supabase → Edge Functions → `api` → **Logs**, an
 - Every payment from the wallet needs the user's PIN, checked on the server. 5 wrong PINs lock it for 15 minutes.
 - Withdrawals go only to a bank account whose name matches the verified NIN/BVN name.
 - Daily limits:
-  - **Unverified:** top up ₦100,000 a day and hold up to ₦200,000; no withdrawing or sending.
+  - **Unverified:** top up ₦100,000 a day and hold up to ₦200,000; other currencies up to ₺3,000 a day and ₺6,000 in the Lira wallet; no withdrawing or sending.
   - **Verified:** top up ₦2,000,000 a day; withdraw ₦1,000,000 a day; send ₦500,000 or ₺20,000 a day.
 - Only the last 4 digits of a NIN or BVN are stored.
 
 ## Still demo in live mode (switched off with "Coming soon")
-Exchange (P2P), Bills, Flash help, Savings pots, Marketplace. They'll be connected to the real wallet one by one. **Ride Saver** discounts aren't applied to real-money tickets yet. **Phone (SMS) verification** isn't real yet: it needs an SMS provider (e.g. Termii).
+Exchange (P2P), Bills, Flash help, Savings pots, Marketplace. They'll be connected to the real wallet one by one. **Ride Saver** discounts aren't applied to real-money tickets yet. **Phone (SMS) verification** isn't real yet: it needs an SMS provider (e.g. Termii). **Identity checks are Nigeria-only (NIN/BVN)**, so students from other countries can top up and spend but can't withdraw or send yet.

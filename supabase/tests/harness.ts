@@ -24,9 +24,9 @@ export async function makeDb() {
   const n = (x: any) => (x == null ? x : Number(x))
   const db: Db = {
     async insert(r) {
-      await q(`insert into payments (reference,provider,purpose,status,amount_minor,currency,base_amount,base_currency,fx_rate,email,item,user_id,fee_minor,credit_minor)
-               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-        [r.reference, r.provider, r.purpose, r.status, r.amount_minor, r.currency, r.base_amount, r.base_currency, r.fx_rate, r.email, r.item, r.user_id ?? null, r.fee_minor ?? 0, r.credit_minor ?? null])
+      await q(`insert into payments (reference,provider,purpose,status,amount_minor,currency,base_amount,base_currency,fx_rate,email,item,user_id,fee_minor,credit_minor,credit_currency)
+               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        [r.reference, r.provider, r.purpose, r.status, r.amount_minor, r.currency, r.base_amount, r.base_currency, r.fx_rate, r.email, r.item, r.user_id ?? null, r.fee_minor ?? 0, r.credit_minor ?? null, r.credit_currency ?? 'NGN'])
     },
     async get(ref) { const r = (await q(`select * from payments where reference=$1`, [ref]))[0]; return r ? { ...r, amount_minor: n(r.amount_minor), credit_minor: n(r.credit_minor), fee_minor: n(r.fee_minor) } : null },
     async settle(ref, st, tx) { return (await q(`update payments set status=$2, provider_tx_id=$3 where reference=$1 and status='pending' returning 1`, [ref, st, tx ?? null])).length > 0 },
@@ -47,7 +47,7 @@ export async function makeDb() {
     async tickets(id, l) { return q(`select * from tickets where user_id=$1 order by created_at desc limit ${l}`, [id]) },
     async withdrawal(ref) { const r = (await q(`select * from withdrawals where reference=$1`, [ref]))[0]; return r ? { ...r, amount_minor: n(r.amount_minor), fee_minor: n(r.fee_minor) } : null },
     async withdrawals(id, l) { return q(`select * from withdrawals where user_id=$1 order by created_at desc limit ${l}`, [id]) },
-    async depositedSince(id, since) { return Number((await q(`select coalesce(sum(credit_minor),0) s from payments where user_id=$1 and purpose='deposit' and status in ('pending','paid') and created_at >= $2`, [id, since]))[0].s) },
+    async depositedSince(id, since, cc) { return Number((await q(`select coalesce(sum(credit_minor),0) s from payments where user_id=$1 and purpose='deposit' and credit_currency=$3 and status in ('pending','paid') and created_at >= $2`, [id, since, cc]))[0].s) },
     async post(entries: Entry[]) { return money(async () => (await q(`select luda_post($1::jsonb) r`, [JSON.stringify(entries)]))[0].r) },
     async depositPaid(ref, tx) { await money(() => q(`select luda_deposit_paid($1,$2)`, [ref, tx])) },
     async buyTicket(u, cur, amt, base, code, item) { return money(async () => (await q(`select luda_buy_ticket($1,$2,$3,$4,$5,$6::jsonb) r`, [u, cur, amt, base, code, JSON.stringify(item)]))[0].r.ticket) },
@@ -65,6 +65,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     tokens: new Map<string, string>(), // token -> user id
     charges: new Map<string, { status: string; amount?: number; currency?: string }>(), // ref -> what the provider reports
     inits: new Map<string, number>(), // ref -> amount sent at init (kobo)
+    initCur: new Map<string, string>(), // ref -> currency sent at init
     accounts: new Map<string, string>([['058:0123456789', 'OKAFOR ADA CHIOMA'], ['058:0999999999', 'JOHN STRANGER']]),
     transfers: new Map<string, string>(), // ref -> paystack status
     transferReply: 'pending',
@@ -103,10 +104,10 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     }
     // Paystack
     if (url.host === 'api.paystack.co') {
-      if (url.pathname === '/transaction/initialize') { world.inits.set(body.reference, body.amount); return ok({ status: true, data: { authorization_url: `https://checkout.paystack.com/${body.reference}` } }) }
+      if (url.pathname === '/transaction/initialize') { world.inits.set(body.reference, body.amount); world.initCur.set(body.reference, body.currency); return ok({ status: true, data: { authorization_url: `https://checkout.paystack.com/${body.reference}` } }) }
       if (url.pathname.startsWith('/transaction/verify/')) {
         const ref = decodeURIComponent(url.pathname.split('/').pop()!), c = world.charges.get(ref) ?? { status: 'abandoned' }
-        return ok({ status: true, data: { status: c.status, amount: c.amount ?? world.inits.get(ref), currency: c.currency ?? 'NGN', reference: ref, id: 4242 } })
+        return ok({ status: true, data: { status: c.status, amount: c.amount ?? world.inits.get(ref), currency: c.currency ?? world.initCur.get(ref) ?? 'NGN', reference: ref, id: 4242 } })
       }
       if (url.pathname === '/bank') return ok({ status: true, data: [{ code: '058', name: 'Guaranty Trust Bank', active: true }, { code: '044', name: 'Access Bank', active: true }] })
       if (url.pathname === '/bank/resolve') {
@@ -122,10 +123,10 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     }
     // Flutterwave
     if (url.host === 'api.flutterwave.com') {
-      if (url.pathname === '/v3/payments') { world.inits.set(body.tx_ref, Math.round(body.amount * 100)); return ok({ status: 'success', data: { link: `https://checkout.flutterwave.com/${body.tx_ref}` } }) }
+      if (url.pathname === '/v3/payments') { world.inits.set(body.tx_ref, Math.round(body.amount * 100)); world.initCur.set(body.tx_ref, body.currency); return ok({ status: 'success', data: { link: `https://checkout.flutterwave.com/${body.tx_ref}` } }) }
       if (url.pathname.endsWith('verify_by_reference')) {
         const ref = url.searchParams.get('tx_ref')!, c = world.charges.get(ref) ?? { status: 'pending' }
-        return ok({ status: 'success', data: { status: c.status === 'success' ? 'successful' : c.status, amount: (c.amount ?? world.inits.get(ref)!) / 100, currency: c.currency ?? 'NGN', tx_ref: ref, id: 777 } })
+        return ok({ status: 'success', data: { status: c.status === 'success' ? 'successful' : c.status, amount: (c.amount ?? world.inits.get(ref)!) / 100, currency: c.currency ?? world.initCur.get(ref) ?? 'NGN', tx_ref: ref, id: 777 } })
       }
     }
     // Dojah
@@ -142,7 +143,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
 export const ENV: Env = {
   APP_URL: 'https://luda.test', SUPABASE_URL: 'https://proj.supabase.co', AUTH_KEY: 'anon',
   PAYSTACK_SECRET_KEY: 'sk_live_test', FLW_SECRET_KEY: 'FLWSECK-x', FLW_SECRET_HASH: 'flwhash',
-  FX_FIXED_RATE: '40', FX_MARGIN: '0.01', DOJAH_APP_ID: 'app', DOJAH_SECRET_KEY: 'sec',
+  FX_FIXED_RATE: '40', FX_MARGIN: '0.01', FX_TRY_RATES: '{"GHS":0.4,"USD":0.025,"KES":3.2}', DOJAH_APP_ID: 'app', DOJAH_SECRET_KEY: 'sec',
 }
 
 export const sign = {

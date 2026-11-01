@@ -5,7 +5,7 @@
 import { hashPin, randomHex, recover, refresh, setPassword, signIn, signUp, userFromToken, type AuthEnv } from './auth.ts'
 import { MoneyError, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
 import { accountMatchesName, idMatchesName, kycEnabled, lookupId, normDate, type KycEnv } from './kyc.ts'
-import { CURRENCIES, LIMITS, convertOut, costIn, depositFee, margin, ngnPerTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
+import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, depositFee, foreignEnabled, foreignFee, margin, ngnPerTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
 import { checkTransfer, createRecipient, listBanks, resolveAccount, sendTransfer } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
 import { checkWebhook, initCheckout, verifyPayment, webhookEvent, type Fetch, type Keys, type Provider } from './providers.ts'
@@ -16,6 +16,7 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv {
   SUPABASE_URL: string
   AUTH_KEY: string // key used to talk to Supabase Auth
   SELL_OPERATORS?: string
+  FOREIGN_CURRENCIES?: string; FOREIGN_FEE_PCT?: string; FX_TRY_RATES?: string
 }
 export interface Deps { db: Db; fetch?: Fetch; now?: () => Date }
 
@@ -129,7 +130,7 @@ type Route = (ctx: { req: Request; env: Env; d: Deps; body: Body; url: URL }) =>
 
 const routes: Record<string, Route> = {
   /* ---- public ---- */
-  'GET config': async ({ env }) => ({ providers: providers(env), payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env) } }),
+  'GET config': async ({ env }) => ({ providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env) } }),
 
   'GET username': async ({ d, url }) => {
     const u = (url.searchParams.get('u') ?? '').toLowerCase()
@@ -199,27 +200,46 @@ const routes: Record<string, Route> = {
 
   'GET rate': async ({ env, d }) => { const mid = await ngnPerTry(env, d.fetch); return { ngnPerTry: mid, margin: margin(env) } },
 
-  // Top up: Naira via Paystack / Flutterwave checkout. The user pays the provider fee on top.
+  // Top up: Naira (Paystack / Flutterwave) → Naira wallet; other currencies (Flutterwave) → Lira wallet.
+  // The user always pays the provider fee on top, so the quoted amount lands in full.
   'POST deposit': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
     const provider = body.provider as Provider
     if (!providers(env).includes(provider)) throw new Fail('That payment method is not available')
-    const credit = int(body.amountMinor)
-    if (!(credit >= LIMITS.minDeposit) || credit > LIMITS.maxDepositOnce || credit % 100) throw new Fail(`Enter a whole amount between ${naira(LIMITS.minDeposit)} and ${naira(LIMITS.maxDepositOnce)}`)
+    const cur = String(body.currency ?? 'NGN').toUpperCase()
+    const amount = int(body.amountMinor)
     const now = d.now?.() ?? new Date(), dayAgo = new Date(now.getTime() - 864e5).toISOString()
-    const lim = p.kyc_status === 'verified' ? LIMITS.verified : LIMITS.unverified
+    const verified = p.kyc_status === 'verified', more = verified ? '' : '. Verify your identity to raise it.'
     if ((await d.db.recentByEmail(p.email, new Date(now.getTime() - 3600e3).toISOString())) >= 10) throw new Fail('Too many top-up attempts. Try again in an hour.', 429)
-    if ((await d.db.depositedSince(p.user_id, dayAgo)) + credit > lim.depositDay) throw new Fail(`Daily top-up limit is ${naira(lim.depositDay)}${p.kyc_status === 'verified' ? '' : '. Verify your identity to raise it.'}`)
-    if ((await d.db.balances(p.user_id)).NGN + credit > lim.maxBalanceNGN) throw new Fail(`Your Naira wallet can hold up to ${naira(lim.maxBalanceNGN)}${p.kyc_status === 'verified' ? '' : '. Verify your identity to raise it.'}`)
-    const fee = depositFee(credit, env), reference = newRef('dep')
+    let credit: number, creditCur: Cur, fee: number, rate = 1, paymentOptions: string | undefined
+    if (cur === 'NGN') {
+      if (!(amount >= LIMITS.minDeposit) || amount > LIMITS.maxDepositOnce || amount % 100) throw new Fail(`Enter a whole amount between ${naira(LIMITS.minDeposit)} and ${naira(LIMITS.maxDepositOnce)}`)
+      const lim = verified ? LIMITS.verified : LIMITS.unverified
+      if ((await d.db.depositedSince(p.user_id, dayAgo, 'NGN')) + amount > lim.depositDay) throw new Fail(`Daily top-up limit is ${naira(lim.depositDay)}${more}`)
+      if ((await d.db.balances(p.user_id)).NGN + amount > lim.maxBalanceNGN) throw new Fail(`Your Naira wallet can hold up to ${naira(lim.maxBalanceNGN)}${more}`)
+      credit = amount; creditCur = 'NGN'; fee = depositFee(amount, env)
+    } else {
+      if (!FOREIGN[cur] || !foreignEnabled(env).includes(cur)) throw new Fail('Top-ups in that currency are not available')
+      if (provider !== 'flutterwave') throw new Fail(`${FOREIGN[cur].name} top-ups go through Flutterwave`)
+      if (!(amount > 0) || amount % 100) throw new Fail('Enter a whole amount')
+      rate = await perTry(cur, env, d.fetch) // units of cur per ₺1
+      credit = Math.floor((amount / rate) * (1 - margin(env))); creditCur = 'TRY'
+      const lim = verified ? LIMITS.foreign.verified : LIMITS.foreign.unverified
+      const lira = (k: number) => `₺${(k / 100).toLocaleString('en-GB')}`
+      if (credit < LIMITS.foreign.minCreditTRY) throw new Fail(`Minimum top-up is about ${lira(LIMITS.foreign.minCreditTRY)}`)
+      if ((await d.db.depositedSince(p.user_id, dayAgo, 'TRY')) + credit > lim.depositDayTRY) throw new Fail(`Daily top-up limit is ${lira(lim.depositDayTRY)}${more}`)
+      if ((await d.db.balances(p.user_id)).TRY + credit > lim.maxBalanceTRY) throw new Fail(`Your Lira wallet can hold up to ${lira(lim.maxBalanceTRY)}${more}`)
+      fee = foreignFee(amount, env); paymentOptions = FOREIGN[cur].options
+    }
+    const reference = newRef('dep')
     await d.db.insert({
-      reference, provider, purpose: 'deposit', status: 'pending', amount_minor: credit + fee, currency: 'NGN', base_amount: credit / 100, base_currency: 'NGN', fx_rate: 1,
-      email: p.email, item: { type: 'deposit' }, user_id: p.user_id, fee_minor: fee, credit_minor: credit,
+      reference, provider, purpose: 'deposit', status: 'pending', amount_minor: amount + fee, currency: cur, base_amount: amount / 100, base_currency: cur, fx_rate: rate,
+      email: p.email, item: { type: 'deposit' }, user_id: p.user_id, fee_minor: fee, credit_minor: credit, credit_currency: creditCur,
     })
     const callbackUrl = `${env.APP_URL.replace(/\/$/, '')}/pay/return?provider=${provider}&ref=${reference}`
-    const checkoutUrl = await initCheckout(provider, { reference, amountMinor: credit + fee, currency: 'NGN', email: p.email, callbackUrl, title: 'Luda wallet top-up', meta: { purpose: 'deposit', username: p.username } }, env, d.fetch)
-    await d.db.log(reference, 'init', { provider, credit, fee })
-    return { reference, checkoutUrl, creditMinor: credit, feeMinor: fee, chargeMinor: credit + fee }
+    const checkoutUrl = await initCheckout(provider, { reference, amountMinor: amount + fee, currency: cur, email: p.email, callbackUrl, title: 'Luda wallet top-up', meta: { purpose: 'deposit', username: p.username }, paymentOptions }, env, d.fetch)
+    await d.db.log(reference, 'init', { provider, cur, amount, fee, credit, creditCur })
+    return { reference, checkoutUrl, currency: cur, amountMinor: amount, feeMinor: fee, chargeMinor: amount + fee, creditMinor: credit, creditCurrency: creditCur }
   },
 
   'GET deposit': async ({ req, env, d, url }) => {
@@ -228,7 +248,7 @@ const routes: Record<string, Route> = {
     const row = await d.db.get(ref)
     if (!row || row.user_id !== p.user_id) throw new Fail('Unknown payment', 404)
     const done = await finalizeDeposit(ref, env, d, 'verify')
-    return { reference: ref, status: done?.status, creditMinor: row.credit_minor, chargeMinor: row.amount_minor, provider: row.provider }
+    return { reference: ref, status: done?.status, creditMinor: row.credit_minor, creditCurrency: row.credit_currency ?? 'NGN', chargeMinor: row.amount_minor, currency: row.currency, provider: row.provider }
   },
 
   // Naira ⇄ Lira inside Luda at today's rate minus Luda's margin.

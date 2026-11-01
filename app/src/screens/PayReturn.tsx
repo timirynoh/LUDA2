@@ -5,7 +5,7 @@ import { Header } from '../components/ui'
 import { PENDING_KEY, PROVIDER_LABEL, api, money, type Provider } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 
-interface DepositView { status: 'pending' | 'paid' | 'failed' | 'mismatch'; creditMinor: number; chargeMinor: number; provider: Provider }
+interface DepositView { status: 'pending' | 'paid' | 'failed' | 'mismatch'; creditMinor: number; creditCurrency: 'NGN' | 'TRY'; chargeMinor: number; currency: string; provider: Provider }
 
 /** Where Paystack / Flutterwave send people after a top-up. The server confirms with the provider before crediting. */
 export default function PayReturn() {
@@ -39,7 +39,7 @@ export default function PayReturn() {
       <div className="flex flex-col items-center gap-3 px-6 pt-10 text-center">
         {!ref ? <><XCircle size={56} className="text-rose-400" /><p className="text-lg font-bold">No payment to check</p></> :
           err ? <><XCircle size={56} className="text-rose-400" /><p className="text-lg font-bold">Couldn't check your payment</p><p className="text-sm text-slate-400">{err}. If you were charged, your wallet is credited as soon as {v ? PROVIDER_LABEL[v.provider] : 'the provider'} confirms. Reference <b>{ref.slice(-8)}</b>.</p></> :
-          st === 'paid' ? <><CheckCircle2 size={56} className="text-mint-400" /><p className="text-xl font-extrabold">Wallet topped up 🎉</p><p className="text-sm text-slate-400">{money(v!.creditMinor, 'NGN')} is now in your Naira wallet.</p></> :
+          st === 'paid' ? <><CheckCircle2 size={56} className="text-mint-400" /><p className="text-xl font-extrabold">Wallet topped up 🎉</p><p className="text-sm text-slate-400">{money(v!.creditMinor, v!.creditCurrency ?? 'NGN')} is now in your {v!.creditCurrency === 'TRY' ? 'Lira' : 'Naira'} wallet.</p></> :
           st === 'failed' ? <><XCircle size={56} className="text-rose-400" /><p className="text-lg font-bold">Payment didn't go through</p><p className="text-sm text-slate-400">You were not charged. You can try again.</p></> :
           st === 'mismatch' ? <><XCircle size={56} className="text-gold-300" /><p className="text-lg font-bold">We're reviewing this payment</p><p className="text-sm text-slate-400">The amount paid didn't match. Our team will credit or refund you. Reference <b>{ref.slice(-8)}</b>.</p></> :
           st === 'pending' && tries >= 10 ? <><Clock size={56} className="text-gold-300" /><p className="text-lg font-bold">Waiting for your bank</p><p className="text-sm text-slate-400">If you paid, your wallet is credited automatically when the payment confirms. You can leave this page.</p></> :

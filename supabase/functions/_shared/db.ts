@@ -8,7 +8,7 @@ export interface PaymentRow {
   status: 'pending' | 'paid' | 'failed' | 'mismatch'
   amount_minor: number; currency: string; base_amount: number; base_currency: string; fx_rate: number
   email: string; item: Record<string, unknown>; provider_tx_id?: string | null
-  user_id?: string | null; fee_minor?: number; credit_minor?: number | null
+  user_id?: string | null; fee_minor?: number; credit_minor?: number | null; credit_currency?: string
   created_at?: string; paid_at?: string | null
 }
 
@@ -49,7 +49,7 @@ export interface Db {
   tickets(userId: string, limit: number): Promise<TicketRow[]>
   withdrawal(reference: string): Promise<WithdrawalRow | null>
   withdrawals(userId: string, limit: number): Promise<WithdrawalRow[]>
-  depositedSince(userId: string, sinceIso: string): Promise<number>
+  depositedSince(userId: string, sinceIso: string, creditCurrency: string): Promise<number>
   // money (SQL functions); MoneyError('insufficient_funds' | 'account_frozen') on refusal
   post(entries: Entry[]): Promise<{ duplicate?: boolean }>
   depositPaid(reference: string, providerTx: string): Promise<void>
@@ -116,8 +116,8 @@ export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
     tickets: (id, n) => rows<TicketRow>(`tickets?user_id=eq.${q(id)}&order=created_at.desc&limit=${n}`),
     async withdrawal(ref) { return (await rows<WithdrawalRow>(`withdrawals?reference=eq.${q(ref)}&limit=1`))[0] ?? null },
     withdrawals: (id, n) => rows<WithdrawalRow>(`withdrawals?user_id=eq.${q(id)}&order=created_at.desc&limit=${n}`),
-    async depositedSince(id, s) {
-      const r = await rows<{ credit_minor: number }>(`payments?user_id=eq.${q(id)}&purpose=eq.deposit&status=in.(pending,paid)&created_at=gte.${since(s)}&select=credit_minor`)
+    async depositedSince(id, s, cc) {
+      const r = await rows<{ credit_minor: number }>(`payments?user_id=eq.${q(id)}&purpose=eq.deposit&credit_currency=eq.${q(cc)}&status=in.(pending,paid)&created_at=gte.${since(s)}&select=credit_minor`)
       return r.reduce((a, x) => a + Number(x.credit_minor ?? 0), 0)
     },
     async post(entries) { return rpc('luda_post', { entries }) },

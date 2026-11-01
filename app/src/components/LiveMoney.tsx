@@ -3,7 +3,9 @@ import { BadgeCheck, Building2, ExternalLink, Loader2, Lock, Search, ShieldCheck
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { HoldButton } from './Confirm'
 import { PinPad, Segmented, Sheet, Success } from './ui'
-import { PENDING_KEY, PROVIDER_LABEL, api, liveConfig, money, type Cur, type LiveConfig, type Provider } from '../lib/live'
+import { FOREIGN_CURRENCIES, PENDING_KEY, PROVIDER_LABEL, api, liveConfig, money, type Cur, type LiveConfig, type Provider } from '../lib/live'
+import { COUNTRIES } from '../lib/data'
+import { useStore } from '../lib/store'
 import { useLive } from '../lib/liveStore'
 
 const parseMinor = (v: string) => Math.round(Number(v.replace(/[^\d.]/g, '') || 0) * 100)
@@ -78,51 +80,76 @@ export function LiveKyc({ onDone }: { onDone?: () => void }) {
 
 export function DepositSheet({ onClose }: { onClose: () => void }) {
   const { me } = useLive()
+  const { s } = useStore()
+  const home = COUNTRIES.find((c) => c.code === s.country)?.currency ?? 'NGN'
   const [cfg, setCfg] = useState<LiveConfig | null>(null)
+  const [cur, setCur] = useState<string>('NGN')
   const [provider, setProvider] = useState<Provider>('paystack')
   const [amt, setAmt] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const [quote, setQuote] = useState<{ reference: string; checkoutUrl: string; creditMinor: number; feeMinor: number; chargeMinor: number } | null>(null)
-  useEffect(() => { liveConfig().then((c) => { setCfg(c); if (c.providers[0]) setProvider(c.providers[0]) }).catch((e) => setErr(errMsg(e))) }, [])
+  const [quote, setQuote] = useState<{ reference: string; checkoutUrl: string; currency: string; creditMinor: number; creditCurrency: Cur; feeMinor: number; chargeMinor: number } | null>(null)
+  useEffect(() => {
+    liveConfig().then((c) => {
+      setCfg(c)
+      // Start with the student's home currency when it's offered.
+      if (home !== 'NGN' && c.foreign.includes(home)) { setCur(home); setProvider('flutterwave') } else if (c.providers[0]) setProvider(c.providers[0])
+    }).catch((e) => setErr(errMsg(e)))
+  }, [home])
+  const foreign = cur !== 'NGN'
+  const info = FOREIGN_CURRENCIES[cur]
   const minor = parseMinor(amt)
+  const pick = (c: string) => { setCur(c); setAmt(''); setErr(''); if (c !== 'NGN') setProvider('flutterwave') }
   const start = async () => {
     setBusy(true); setErr('')
     try {
-      const q = await api('POST', 'deposit', { provider, amountMinor: minor })
+      const q = await api('POST', 'deposit', { provider, currency: cur, amountMinor: minor })
       localStorage.setItem(PENDING_KEY, q.reference)
       setQuote(q)
     } catch (e) { setErr(errMsg(e)) } finally { setBusy(false) }
   }
+  const currencies = ['NGN', ...(cfg?.foreign ?? [])]
   return (
-    <Sheet open onClose={onClose} title="Top up your Naira wallet">
+    <Sheet open onClose={onClose} title="Top up your wallet">
       {quote ? (
         <div className="flex flex-col gap-3">
           <div className="divide-y divide-fg/5 rounded-2xl bg-fg/[0.04] text-sm">
-            <div className="flex justify-between px-4 py-3"><span className="text-slate-400">Lands in your wallet</span><b>{money(quote.creditMinor, 'NGN')}</b></div>
-            <div className="flex justify-between px-4 py-3"><span className="text-slate-400">{PROVIDER_LABEL[provider]} fee</span><span>{money(quote.feeMinor, 'NGN')}</span></div>
-            <div className="flex justify-between px-4 py-3 text-base"><span>You pay</span><b>{money(quote.chargeMinor, 'NGN')}</b></div>
+            <div className="flex justify-between px-4 py-3"><span className="text-slate-400">Top-up</span><span>{money(quote.chargeMinor - quote.feeMinor, quote.currency)}</span></div>
+            <div className="flex justify-between px-4 py-3"><span className="text-slate-400">{PROVIDER_LABEL[provider]} fee</span><span>{money(quote.feeMinor, quote.currency)}</span></div>
+            <div className="flex justify-between px-4 py-3 text-base"><span>You pay</span><b>{money(quote.chargeMinor, quote.currency)}</b></div>
+            <div className="flex justify-between px-4 py-3"><span className="text-slate-400">Lands in your {quote.creditCurrency === 'TRY' ? 'Lira' : 'Naira'} wallet</span><b className="text-mint-300">{money(quote.creditMinor, quote.creditCurrency)}</b></div>
           </div>
-          <p className="text-[11px] text-slate-500">You'll pay on {PROVIDER_LABEL[provider]}'s secure page (card, bank transfer or USSD), then come back to Luda automatically.</p>
+          {quote.creditCurrency === 'TRY' && <p className="text-[11px] text-slate-500">Converted to Lira at today's rate. Spend it on tickets in Cyprus or send it to friends.</p>}
+          <p className="text-[11px] text-slate-500">You'll pay on {PROVIDER_LABEL[provider]}'s secure page{info ? ` (${info.how})` : ' (card, bank transfer or USSD)'}, then come back to Luda automatically.</p>
           <button className="btn-primary py-4" onClick={() => window.location.assign(quote.checkoutUrl)}><ExternalLink size={18} /> Confirm & pay with {PROVIDER_LABEL[provider]}</button>
           <button className="btn-ghost text-sm" onClick={() => setQuote(null)}>Change amount</button>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <input className="input text-2xl font-bold" inputMode="decimal" placeholder="₦ amount" value={amt} onChange={(e) => { setAmt(e.target.value.replace(/[^\d]/g, '')); setErr('') }} />
-          <div className="flex flex-wrap gap-2">{[5000, 10000, 20000, 50000].map((v) => <button key={v} className="chip" onClick={() => setAmt(String(v))}>₦{v.toLocaleString()}</button>)}</div>
-          <p className="label">Pay with</p>
-          <div className="grid grid-cols-2 gap-2">
-            {(cfg?.providers ?? []).map((p) => (
-              <button key={p} onClick={() => setProvider(p)} className={`glass rounded-2xl p-3 text-start ${provider === p ? 'border-mint-400/60 bg-mint-400/10' : ''}`}>
-                <p className="text-sm font-semibold">{PROVIDER_LABEL[p]}</p><p className="text-xs text-slate-400">Card · transfer · USSD</p></button>
+          <p className="label">Pay in</p>
+          <div className="flex flex-wrap gap-2">
+            {currencies.map((c) => (
+              <button key={c} onClick={() => pick(c)} className={`chip ${cur === c ? 'border-mint-400/60 bg-mint-400/15 text-mint-200' : ''}`}>{c === 'NGN' ? '🇳🇬' : FOREIGN_CURRENCIES[c]?.flag} {c}</button>
             ))}
           </div>
+          <input className="input text-2xl font-bold" inputMode="numeric" placeholder={`${cur} amount`} value={amt} onChange={(e) => { setAmt(e.target.value.replace(/[^\d]/g, '')); setErr('') }} />
+          <div className="flex flex-wrap gap-2">{(info?.quick ?? [5000, 10000, 20000, 50000]).map((v) => <button key={v} className="chip" onClick={() => setAmt(String(v))}>{money(v * 100, cur)}</button>)}</div>
+          {foreign ? (
+            <p className="rounded-xl bg-fg/[0.04] p-3 text-xs text-slate-300">{info?.flag} Paid with <b>Flutterwave</b> ({info?.how}). It lands in your <b>Lira wallet</b> at today's rate. You'll see the exact Lira amount before you pay.</p>
+          ) : <>
+            <p className="label">Pay with</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(cfg?.providers ?? []).map((p) => (
+                <button key={p} onClick={() => setProvider(p)} className={`glass rounded-2xl p-3 text-start ${provider === p ? 'border-mint-400/60 bg-mint-400/10' : ''}`}>
+                  <p className="text-sm font-semibold">{PROVIDER_LABEL[p]}</p><p className="text-xs text-slate-400">Card · transfer · USSD</p></button>
+              ))}
+            </div>
+          </>}
           {cfg && cfg.providers.length === 0 && <p className="text-sm text-rose-300">Top-ups are switched off right now.</p>}
-          {me?.profile.kyc !== 'verified' && <p className="text-[11px] text-slate-500">Before identity verification: up to ₦100,000 a day and ₦200,000 in your wallet.</p>}
+          {me?.profile.kyc !== 'verified' && <p className="text-[11px] text-slate-500">Before identity verification: Naira up to ₦100,000 a day; other currencies up to about ₺3,000 a day.</p>}
           {err && <p className="text-sm text-rose-300">{err}</p>}
-          <button className="btn-primary py-4" disabled={minor < 1000_00 || busy || !cfg?.providers.length} onClick={start}>{busy && <Loader2 size={18} className="animate-spin" />} Continue</button>
-          <p className="text-center text-[11px] text-slate-500">Minimum ₦1,000. The payment fee is shown before you pay.</p>
+          <button className="btn-primary py-4" disabled={minor <= 0 || (!foreign && minor < 1000_00) || busy || !cfg?.providers.length} onClick={start}>{busy && <Loader2 size={18} className="animate-spin" />} See exact amount</button>
+          <p className="text-center text-[11px] text-slate-500">{foreign ? 'Minimum about ₺100.' : 'Minimum ₦1,000.'} The fee is shown before you pay.</p>
         </div>
       )}
     </Sheet>

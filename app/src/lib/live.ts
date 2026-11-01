@@ -82,16 +82,27 @@ export interface Me {
   tickets: LiveTicket[]
   withdrawals: LiveWithdrawal[]
 }
-export interface LiveConfig { providers: Provider[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number } }
+export interface LiveConfig { providers: Provider[]; foreign: string[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number } }
 
 let cfg: Promise<LiveConfig> | null = null
 export const liveConfig = () => (cfg ??= raw<LiveConfig>('GET', 'config', undefined, false).catch((e) => { cfg = null; throw e }))
 
 /** Formats minor units: 1025000 NGN → ₦10,250 */
-export function money(minor: number, cur: Cur, opts: { sign?: boolean } = {}) {
+const SYMBOL: Record<string, string> = { NGN: '₦', TRY: '₺', USD: '$', GHS: 'GH₵', KES: 'KSh ', UGX: 'USh ', ZMW: 'ZK ', XAF: 'FCFA ' }
+export function money(minor: number, cur: string, opts: { sign?: boolean } = {}) {
   const v = minor / 100
-  const s = (cur === 'NGN' ? '₦' : '₺') + Math.abs(v).toLocaleString('en-GB', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 })
+  const s = (SYMBOL[cur] ?? cur + ' ') + Math.abs(v).toLocaleString('en-GB', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 })
   return opts.sign ? (minor < 0 ? '−' : '+') + s : (minor < 0 ? '−' : '') + s
+}
+
+/** Top-up currencies other than Naira (Flutterwave), credited to the Lira wallet. */
+export const FOREIGN_CURRENCIES: Record<string, { flag: string; name: string; quick: number[]; how: string }> = {
+  USD: { flag: '🇺🇸', name: 'US dollar', quick: [20, 50, 100, 200], how: 'Visa / Mastercard' },
+  GHS: { flag: '🇬🇭', name: 'Ghana cedi', quick: [200, 500, 1000, 2000], how: 'Card · MTN / Telecel / AirtelTigo MoMo' },
+  KES: { flag: '🇰🇪', name: 'Kenyan shilling', quick: [2000, 5000, 10000, 20000], how: 'Card · M-Pesa' },
+  UGX: { flag: '🇺🇬', name: 'Ugandan shilling', quick: [50000, 100000, 200000, 500000], how: 'Card · MTN / Airtel mobile money' },
+  ZMW: { flag: '🇿🇲', name: 'Zambian kwacha', quick: [300, 500, 1000, 2000], how: 'Card · mobile money' },
+  XAF: { flag: '🇨🇲', name: 'CFA franc', quick: [10000, 25000, 50000, 100000], how: 'Card · MTN / Orange mobile money' },
 }
 
 export const KIND_LABEL: Record<string, string> = {

@@ -15,6 +15,34 @@ export const LIMITS = {
   sendDay: { NGN: 500_000_00, TRY: 20_000_00 } as Record<Cur, number>,
   minSend: { NGN: 100_00, TRY: 10_00 } as Record<Cur, number>,
   convertDay: { NGN: 2_000_000_00, TRY: 50_000_00 } as Record<Cur, number>,
+  // Top-ups in other currencies land in the Lira wallet (amounts in kuruş).
+  foreign: {
+    minCreditTRY: 100_00, // ₺100
+    unverified: { depositDayTRY: 3_000_00, maxBalanceTRY: 6_000_00 },
+    verified: { depositDayTRY: 60_000_00, maxBalanceTRY: 300_000_00 },
+  },
+}
+
+/** Other currencies students can top up with (Flutterwave), and the payment methods shown for each. */
+export const FOREIGN: Record<string, { name: string; options: string }> = {
+  USD: { name: 'US dollar', options: 'card' },
+  GHS: { name: 'Ghana cedi', options: 'card,mobilemoneyghana' },
+  KES: { name: 'Kenyan shilling', options: 'card,mpesa' },
+  UGX: { name: 'Ugandan shilling', options: 'card,mobilemoneyuganda' },
+  ZMW: { name: 'Zambian kwacha', options: 'card,mobilemoneyzambia' },
+  XAF: { name: 'CFA franc (Cameroon)', options: 'card,mobilemoneyfranco' },
+}
+
+/** Which foreign currencies are switched on (FOREIGN_CURRENCIES="GHS,USD" limits them; unset = all). */
+export function foreignEnabled(env: { FOREIGN_CURRENCIES?: string }) {
+  const only = (env.FOREIGN_CURRENCIES ?? '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean)
+  return Object.keys(FOREIGN).filter((c) => !only.length || only.includes(c))
+}
+
+/** Fee the user pays on top for a foreign top-up (Flutterwave international / mobile money ≈ 3.8%). */
+export function foreignFee(amountMinor: number, env: { FOREIGN_FEE_PCT?: string }) {
+  const pct = num(env.FOREIGN_FEE_PCT, 3.8) / 100
+  return Math.ceil(amountMinor / (1 - pct)) - amountMinor
 }
 
 export interface FeeEnv {
@@ -51,6 +79,22 @@ export async function ngnPerTry(env: FxEnv, f: Fetch = fetch): Promise<number> {
   return rate
 }
 export const margin = (env: FxEnv) => num(env.FX_MARGIN, 0.01)
+
+let tryRates: { at: number; rates: Record<string, number> } | null = null
+/** Units of `cur` per 1 TRY (mid-market). FX_TRY_RATES='{"USD":0.029}' overrides; else live (cached 10 min). */
+export async function perTry(cur: string, env: FxEnv & { FX_TRY_RATES?: string }, f: Fetch = fetch): Promise<number> {
+  try { const o = JSON.parse(env.FX_TRY_RATES || '{}'); if (Number(o[cur]) > 0) return Number(o[cur]) } catch { /* ignore bad JSON */ }
+  if (!tryRates || Date.now() - tryRates.at > 600e3) {
+    try {
+      const r = await f('https://open.er-api.com/v6/latest/TRY', { signal: AbortSignal.timeout(5000) })
+      const rates = ((await r.json()) as { rates?: Record<string, number> }).rates
+      if (rates) tryRates = { at: Date.now(), rates }
+    } catch { /* fall through */ }
+  }
+  const v = tryRates?.rates[cur]
+  if (!v || !(v > 0)) throw new Error('Exchange rate unavailable, try again shortly')
+  return v
+}
 
 /** How much `to` you get for `amountMinor` of `from`, after Luda's margin. */
 export function convertOut(from: Cur, to: Cur, amountMinor: number, mid: number, m: number) {
