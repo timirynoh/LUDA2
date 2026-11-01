@@ -10,7 +10,7 @@ export const LIMITS = {
   maxDepositOnce: 1_000_000_00, // ₦1,000,000
   unverified: { depositDay: 100_000_00, maxBalanceNGN: 200_000_00 },
   verified: { depositDay: 2_000_000_00, maxBalanceNGN: 10_000_000_00 },
-  minWithdraw: 1_000_00,
+  minWithdraw: 300_00,
   withdrawDay: 1_000_000_00,
   sendDay: { NGN: 500_000_00, TRY: 20_000_00 } as Record<Cur, number>,
   minSend: { NGN: 100_00, TRY: 10_00 } as Record<Cur, number>,

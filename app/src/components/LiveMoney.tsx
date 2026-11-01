@@ -220,6 +220,9 @@ export function DepositSheet({ onClose }: { onClose: () => void }) {
 
 /* ------------------------------- withdraw ------------------------------- */
 
+/** Keep in sync with LIMITS.minWithdraw in supabase/functions/_shared/money.ts. */
+const MIN_WITHDRAW = 300_00
+
 export function WithdrawSheet({ onClose }: { onClose: () => void }) {
   const { me, refresh } = useLive()
   const [banks, setBanks] = useState<{ code: string; name: string }[]>([])
@@ -243,7 +246,7 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
   }, [bank, acct])
   const shown = useMemo(() => banks.filter((b) => b.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8), [banks, q])
   const minor = parseMinor(amt), bal = me?.balances.NGN ?? 0
-  const ready = !!bank && !!name?.matches && minor >= 1000_00 && minor + fee <= bal
+  const ready = !!bank && !!name?.matches && minor >= MIN_WITHDRAW && minor + fee <= bal
 
   return (
     <Sheet open onClose={onClose} title="Withdraw to your bank">
@@ -268,7 +271,7 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
               ? <p className="flex items-center gap-2 rounded-xl bg-mint-400/10 p-3 text-sm text-mint-200"><BadgeCheck size={16} /> {name.accountName}</p>
               : <p className="rounded-xl bg-rose-500/10 p-3 text-sm text-rose-300">{name.accountName}: this isn't your account. You can only withdraw to an account in your verified name ({me?.profile.kycName}).</p>)}
             <input className="input text-xl font-bold" inputMode="numeric" placeholder="₦ amount" value={amt} onChange={(e) => setAmt(e.target.value.replace(/\D/g, ''))} />
-            <p className="text-xs text-slate-400">Available {money(bal, 'NGN')} · fee {money(fee, 'NGN')} · minimum ₦1,000</p>
+            <p className="text-xs text-slate-400">Available {money(bal, 'NGN')} · fee {money(fee, 'NGN')} · minimum {money(MIN_WITHDRAW, 'NGN')}</p>
             {minor + fee > bal && minor > 0 && <p className="text-sm text-rose-300">Not enough in your Naira wallet (amount + fee).</p>}
           </>}
           {err && <p className="text-sm text-rose-300">{err}</p>}

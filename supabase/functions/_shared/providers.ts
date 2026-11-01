@@ -109,7 +109,7 @@ export function webhookEvent(p: Provider, body: Record<string, any>): { type: 'c
     if (ev.startsWith('transfer.')) return { type: 'transfer', ref: String(body.data?.reference ?? '') }
     return { type: 'other', ref: '' }
   }
-  if (ev.startsWith('transfer')) return { type: 'other', ref: '' } // Luda pays out via Paystack only
+  if (ev.startsWith('transfer') || String(body?.['event.type'] ?? '').toLowerCase() === 'transfer') return { type: 'transfer', ref: String(body?.data?.reference ?? '') }
   const ref = String(body?.data?.tx_ref ?? body?.txRef ?? '')
   return { type: ref ? 'charge' : 'other', ref }
 }

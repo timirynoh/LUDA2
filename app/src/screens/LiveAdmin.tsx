@@ -152,7 +152,7 @@ function Payouts({ onOpen }: { onOpen: (id: string) => void }) {
       {data?.withdrawals.map((w) => (
         <div key={w.reference} className="rounded-2xl bg-fg/[0.04] p-3 text-sm">
           <div className="flex items-center justify-between gap-2"><span className="selectable font-mono text-xs">{w.reference}</span><Badge s={w.status} /></div>
-          <p className="mt-1 text-xs text-slate-400">{money(Number(w.amount_minor), 'NGN')} + fee {money(Number(w.fee_minor), 'NGN')} → {w.account_name} · {w.bank_name} ••{String(w.account_number).slice(-4)} · {when(w.created_at)}</p>
+          <p className="mt-1 text-xs text-slate-400">{money(Number(w.amount_minor), 'NGN')} + fee {money(Number(w.fee_minor), 'NGN')} → {w.account_name} · {w.bank_name} ••{String(w.account_number).slice(-4)} · {when(w.created_at)}{w.provider ? ` · via ${w.provider === 'flutterwave' ? 'Flutterwave' : 'Paystack'}` : ''}</p>
           {w.note && <p className="text-xs text-slate-500">{w.note}</p>}
           <div className="mt-2 flex gap-2">
             {w.status === 'processing' && <button className="chip bg-fg/5 py-1.5 text-xs" onClick={() => recheck(w.reference)}><RefreshCw size={12} /> Re-check with Paystack</button>}

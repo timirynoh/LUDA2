@@ -28,7 +28,7 @@ export interface TicketRow { id: string; code: string; item: Record<string, unkn
 export interface WithdrawalRow {
   reference: string; user_id: string; amount_minor: number; fee_minor: number; currency: string; bank_code: string; bank_name: string | null
   account_number: string; account_name: string; status: 'processing' | 'paid' | 'failed' | 'reversed'; recipient_code?: string | null
-  transfer_code?: string | null; note?: string | null; created_at: string
+  transfer_code?: string | null; note?: string | null; provider?: string | null; created_at: string
 }
 export interface Entry { user_id: string; currency: string; amount_minor: number; kind: string; ref: string; meta?: Record<string, unknown> }
 
@@ -68,6 +68,7 @@ export interface Db {
   depositPaid(reference: string, providerTx: string): Promise<void>
   buyTicket(userId: string, currency: string, amountMinor: number, baseAmount: number, code: string, item: Record<string, unknown>): Promise<TicketRow>
   withdraw(userId: string, reference: string, amountMinor: number, feeMinor: number, bankCode: string, bankName: string, account: string, name: string, recipient: string): Promise<void>
+  setWithdrawal(reference: string, patch: { provider?: string; recipient_code?: string | null; transfer_code?: string | null }): Promise<void>
   withdrawSettle(reference: string, status: 'paid' | 'failed' | 'reversed', transferCode?: string | null, note?: string | null): Promise<void>
   spent(userId: string, currency: string, kinds: string[], hours: number): Promise<number>
   // support cases
@@ -166,6 +167,7 @@ export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
     async withdraw(u, ref, amt, fee, bank, bankName, acct, name, rcp) {
       await rpc('luda_withdraw', { p_user: u, p_reference: ref, p_amount: amt, p_fee: fee, p_bank_code: bank, p_bank_name: bankName, p_account: acct, p_name: name, p_recipient: rcp })
     },
+    async setWithdrawal(ref, patch) { await call(`withdrawals?reference=eq.${q(ref)}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) }) },
     async withdrawSettle(ref, status, tc, note) { await rpc('luda_withdraw_settle', { p_reference: ref, p_status: status, p_transfer: tc ?? null, p_note: note ?? null }) },
     async spent(u, cur, kinds, hours) { return Number(await rpc('luda_spent', { p_user: u, p_currency: cur, p_kinds: kinds, p_hours: hours })) },
     async createCase(c) { const r = await call('cases', { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(c) }); return ((await r.json()) as CaseRow[])[0] },

@@ -5,7 +5,7 @@
   - **Naira** goes into the **Naira wallet** (Paystack or Flutterwave).
   - **Other currencies** go through **Flutterwave** and are converted into the **Lira wallet** at today's rate, minus your margin: US dollar by card, Ghana cedi, Kenyan and Ugandan shilling, Zambian kwacha, Cameroon CFA (card or mobile money).
 - **Inside Luda:** they **convert** Naira ⇄ Lira, **buy bus and airport tickets** from the wallet, and **send money** to other Luda users. No card is involved.
-- **Out:** they **withdraw** Naira to **their own Nigerian bank account** through **Paystack**. Each withdrawal has a ₦50 fee. Withdrawals and sending need identity verification (NIN or BVN, checked automatically by **Dojah**).
+- **Out:** they **withdraw** Naira to **their own Nigerian bank account** through **Paystack**, or **Flutterwave** when Paystack refuses. Minimum ₦300; each withdrawal has a ₦50 fee. Withdrawals and sending need identity verification (NIN or BVN, checked automatically by **Dojah**).
 
 The balances live on your server (Supabase), not on the phone. Every kobo is recorded in a ledger, and nothing can be spent twice.
 
@@ -51,7 +51,11 @@ GitHub → `timirynoh/luda2` → **Settings → Secrets and variables → Action
 **Flutterwave (Live mode)**
 - Settings → API Keys → copy the **Live Secret Key**.
 - Settings → Webhooks → make up a long random **Secret hash** and save it.
-- Flutterwave is used for **top-ups only**. Its payouts need a fixed server address, which Supabase doesn't have. Money collected on Flutterwave settles to your bank; move what's needed into your Paystack balance for withdrawals.
+- **Flutterwave payouts (second route for withdrawals).** Luda tries Paystack first. If Paystack says no (e.g. "starter business" or not enough balance), it tries Flutterwave. Nothing is sent twice: Luda only moves on when a provider clearly refused. To let Flutterwave pay out:
+  1. Flutterwave → Settings → **API** → turn on **Transfers via API** (ask Flutterwave support if you can't see it).
+  2. **IP whitelisting:** Flutterwave only accepts payouts from server addresses on your list, and Luda's server has no fixed address. If you can turn whitelisting off, do so; otherwise ask support to allow API transfers without it. If a payout is refused for this reason, the student's money goes straight back and the live check shows "IP Whitelisting" in the withdrawal note.
+  3. Keep money in your **Flutterwave NGN balance**: Flutterwave pays from there.
+- Order of routes: secret `PAYOUT_PROVIDERS` (default `paystack,flutterwave`). Set it to `flutterwave` to use Flutterwave only.
 
 **Dojah (identity checks)**
 - Sign up at <https://dojah.io>, then **fund your Dojah wallet**. Each NIN or BVN lookup costs a small fee.
@@ -117,7 +121,7 @@ Paste the webhook address from step 5 into:
 2. **Wallet → Top up ₦1,000 with Paystack.** You should come back to "Wallet topped up". Do it once with **Flutterwave** too.
 3. **Convert** some Naira to Lira, then buy a **bus ticket** from the Lira wallet.
 4. **Verify your identity** with your NIN or BVN.
-5. **Withdraw ₦1,000** to your own bank account. Check that it arrives.
+5. **Withdraw ₦300** to your own bank account. Check that it arrives.
 6. Create a second account (a friend) and **send** ₺10 between you.
 7. In Supabase → **Table Editor**, check that `wallets` and `ledger` match what you did.
 
@@ -198,7 +202,7 @@ Nothing to set up. Students switch it on in **Security Center → Fingerprint / 
 - **Freeze an account** (suspected fraud): Table Editor → `profiles` → set `frozen` to `true`. They can't spend or withdraw, but can still receive refunds.
 - **Failed withdrawals** are refunded to the wallet automatically, including the fee.
 - **`mismatch` top-ups** (paid amount ≠ expected): check them in the provider dashboard, then refund there.
-- **Pause top-ups:** remove `PAYSTACK_SECRET_KEY` or `FLW_SECRET_KEY`. **Pause withdrawals:** remove `PAYSTACK_SECRET_KEY` (this also pauses Paystack top-ups).
+- **Pause top-ups:** remove `PAYSTACK_SECRET_KEY` or `FLW_SECRET_KEY`. **Pause withdrawals:** remove `PAYSTACK_SECRET_KEY` (this also pauses Paystack top-ups and the bank list).
 - **Stop selling a bus company:** remove it from `SELL_OPERATORS`.
 
 ## Built-in safety

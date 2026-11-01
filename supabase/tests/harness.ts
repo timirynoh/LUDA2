@@ -58,6 +58,7 @@ export async function makeDb() {
     async depositPaid(ref, tx) { await money(() => q(`select luda_deposit_paid($1,$2)`, [ref, tx])) },
     async buyTicket(u, cur, amt, base, code, item) { return money(async () => (await q(`select luda_buy_ticket($1,$2,$3,$4,$5,$6::jsonb) r`, [u, cur, amt, base, code, JSON.stringify(item)]))[0].r.ticket) },
     async withdraw(u, ref, amt, fee, bank, bankName, acct, name, rcp) { await money(() => q(`select luda_withdraw($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [u, ref, amt, fee, bank, bankName, acct, name, rcp])) },
+    async setWithdrawal(ref, patch) { const k = Object.keys(patch); if (k.length) await q(`update withdrawals set ${k.map((x, i) => `${x}=$${i + 2}`).join(',')}, updated_at=now() where reference=$1`, [ref, ...k.map((x) => (patch as any)[x])]) },
     async withdrawSettle(ref, st, tc, note) { await money(() => q(`select luda_withdraw_settle($1,$2,$3,$4)`, [ref, st, tc ?? null, note ?? null])) },
     async createCase(c) { return (await q(`insert into cases (user_id,category,subject,reference) values ($1,$2,$3,$4) returning *`, [c.user_id, c.category, c.subject, c.reference]))[0] },
     async getCase(id) { const r = (await q(`select c.*, json_build_object('username',p.username,'full_name',p.full_name,'email',p.email,'kyc_status',p.kyc_status) as user from cases c join profiles p using (user_id) where c.id::text=$1`, [id]))[0]; return r ?? null },
@@ -88,9 +89,12 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     charges: new Map<string, { status: string; amount?: number; currency?: string }>(), // ref -> what the provider reports
     inits: new Map<string, number>(), // ref -> amount sent at init (kobo)
     initCur: new Map<string, string>(), // ref -> currency sent at init
-    accounts: new Map<string, string>([['058:0123456789', 'OKAFOR ADA CHIOMA'], ['058:0999999999', 'JOHN STRANGER']]),
+    accounts: new Map<string, string>([['058:0123456789', 'OKAFOR ADA CHIOMA'], ['058:0999999999', 'JOHN STRANGER'], ['50211:0123456789', 'OKAFOR ADA CHIOMA']]),
     transfers: new Map<string, string>(), // ref -> paystack status
     transferReply: 'pending',
+    flwTransfers: new Map<string, { id: number; reference: string; status: string; account_bank: string; amount: number }>(), // id -> flutterwave transfer
+    flwReply: 'NEW' as string, // 'NEW' | 'SUCCESSFUL' | 'FAILED' | 'ip' (IP not whitelisted) | 'down' (5xx)
+    flwAccounts: new Map<string, string>([['058:0123456789', 'OKAFOR ADA CHIOMA'], ['090267:0123456789', 'OKAFOR ADA CHIOMA']]),
     ids: new Map<string, Record<string, string>>([['12345678901', { first_name: 'ADA', middle_name: 'CHIOMA', last_name: 'OKAFOR', date_of_birth: '2001-04-15' }],
       ['10987654321', { first_name: 'BOLA', last_name: 'ADEYEMI', date_of_birth: '15-Apr-2000' }]]),
     calls: [] as string[],
@@ -135,7 +139,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
         const ref = decodeURIComponent(url.pathname.split('/').pop()!), c = world.charges.get(ref) ?? { status: 'abandoned' }
         return ok({ status: true, data: { status: c.status, amount: c.amount ?? world.inits.get(ref), requested_amount: (c as any).requested, currency: c.currency ?? world.initCur.get(ref) ?? 'NGN', reference: ref, id: 4242 } })
       }
-      if (url.pathname === '/bank') return ok({ status: true, data: [{ code: '058', name: 'Guaranty Trust Bank', active: true }, { code: '044', name: 'Access Bank', active: true }] })
+      if (url.pathname === '/bank') return ok({ status: true, data: [{ code: '058', name: 'Guaranty Trust Bank', active: true }, { code: '044', name: 'Access Bank', active: true }, { code: '50211', name: 'Kuda Bank', active: true }] })
       if (url.pathname === '/bank/resolve') {
         const name = world.accounts.get(`${url.searchParams.get('bank_code')}:${url.searchParams.get('account_number')}`)
         return name ? ok({ status: true, data: { account_name: name } }) : ok({ status: false, message: 'Could not resolve account name' }, 422)
@@ -152,6 +156,17 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     // Flutterwave
     if (url.host === 'api.flutterwave.com') {
       if (url.pathname === '/v3/payments') { world.inits.set(body.tx_ref, Math.round(body.amount * 100)); world.initCur.set(body.tx_ref, body.currency); return ok({ status: 'success', data: { link: `https://checkout.flutterwave.com/${body.tx_ref}` } }) }
+      if (url.pathname === '/v3/banks/NG') return ok({ status: 'success', data: [{ id: 1, code: '058', name: 'GTBank Plc' }, { id: 2, code: '044', name: 'Access Bank' }, { id: 3, code: '090267', name: 'Kuda Microfinance Bank' }, { id: 4, code: '50211', name: 'Some Other Bank' }] })
+      if (url.pathname === '/v3/accounts/resolve') { const nm = world.flwAccounts.get(`${body.account_bank}:${body.account_number}`); return nm ? ok({ status: 'success', data: { account_name: nm } }) : ok({ status: 'error', message: 'Sorry, recipient account could not be validated' }, 400) }
+      if (url.pathname === '/v3/transfers' && init?.method === 'POST') {
+        if (world.flwReply === 'ip') return ok({ status: 'error', message: 'Please enable IP Whitelisting to access this service', data: null }, 400)
+        if (world.flwReply === 'down') return ok({ status: 'error', message: 'Service unavailable' }, 503)
+        const id = 9000 + world.flwTransfers.size
+        world.flwTransfers.set(String(id), { id, reference: body.reference, status: world.flwReply, account_bank: body.account_bank, amount: body.amount })
+        return ok({ status: 'success', message: 'Transfer Queued Successfully', data: { id, reference: body.reference, status: world.flwReply } })
+      }
+      if (url.pathname === '/v3/transfers') return ok({ status: 'success', data: [...world.flwTransfers.values()].reverse() })
+      if (url.pathname.startsWith('/v3/transfers/')) { const t = world.flwTransfers.get(url.pathname.split('/').pop()!); return t ? ok({ status: 'success', data: t }) : ok({ status: 'error', message: 'Transfer not found' }, 404) }
       if (url.pathname.endsWith('verify_by_reference')) {
         const ref = url.searchParams.get('tx_ref')!, c = world.charges.get(ref) ?? { status: 'pending' }
         return ok({ status: 'success', data: { status: c.status === 'success' ? 'successful' : c.status, amount: (c.amount ?? world.inits.get(ref)!) / 100, currency: c.currency ?? world.initCur.get(ref) ?? 'NGN', tx_ref: ref, id: 777 } })

@@ -6,6 +6,7 @@ import { handleApi, handleWebhook, type Deps } from '../functions/_shared/handle
 import { depositFee, convertOut } from '../functions/_shared/money.ts'
 import { priceTicket } from '../functions/_shared/pricing.ts'
 import { idMatchesName, accountMatchesName, normDate } from '../functions/_shared/kyc.ts'
+import { matchFlwBank } from '../functions/_shared/payouts.ts'
 import { ENV, fakeWorld, makeDb, sign } from './harness.ts'
 
 let d: Deps, world: ReturnType<typeof fakeWorld>['world'], q: Awaited<ReturnType<typeof makeDb>>['q']
@@ -510,9 +511,11 @@ test('appeals / support cases: photos, replies, and the team verifies the ID by 
 test('Paystack refuses a payout (starter business): money goes straight back, stuck ones heal', async () => {
   await q(`update profiles set kyc_status='verified', kyc_name='ADA CHIOMA OKAFOR', frozen=false, money_hold_until=null where username='ada'`)
   const before = (await bal(ada)).NGN
-  world.transferReply = 'starter'
+  world.transferReply = 'starter'; world.flwReply = 'ip' // both routes refuse
   const w = await call('POST', 'withdraw', { amountMinor: 1_000_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
   assert.equal(w.j.status, 'failed', JSON.stringify(w.j)); assert.match(w.j.message, /paused/)
+  assert.match((await q(`select note from withdrawals where reference=$1`, [w.j.reference]))[0].note, /starter business.*Whitelisting/)
+  world.flwReply = 'NEW'
   assert.equal((await bal(ada)).NGN, before, 'amount + fee refunded immediately')
   // a withdrawal stuck in "processing" from before the fix (Paystack never created it) heals on app open
   world.transferReply = 'pending'
@@ -521,6 +524,49 @@ test('Paystack refuses a payout (starter business): money goes straight back, st
   await q(`update withdrawals set created_at = now() - interval '20 minutes' where reference='wdr_oldstuck000000000000001'`)
   assert.equal((await bal(ada)).NGN, before, 'refunded once the user opens the app')
   assert.equal((await q(`select status from withdrawals where reference='wdr_oldstuck000000000000001'`))[0].status, 'failed')
+})
+
+test('Paystack refuses → Flutterwave pays out instead; ₦300 minimum; Kuda maps to Flutterwave\'s own code', async () => {
+  await q(`update profiles set kyc_status='verified', kyc_name='ADA CHIOMA OKAFOR', frozen=false, money_hold_until=null where username='ada'`)
+  await q(`delete from rate_hits`).catch(() => {})
+  const before = (await bal(ada)).NGN
+  world.transferReply = 'starter'; world.flwReply = 'NEW'
+  assert.match((await call('POST', 'withdraw', { amountMinor: 299_00, account: '0123456789', bankCode: '50211', pin: '4826' }, ada)).j.error, /Minimum withdrawal is ₦300/)
+  const w = await call('POST', 'withdraw', { amountMinor: 300_00, account: '0123456789', bankCode: '50211', pin: '4826' }, ada)
+  assert.equal(w.j.status, 'processing', JSON.stringify(w.j))
+  assert.equal((await bal(ada)).NGN, before - 350_00, '₦300 + ₦50 fee held')
+  const row = (await q(`select provider, transfer_code, bank_name from withdrawals where reference=$1`, [w.j.reference]))[0]
+  assert.equal(row.provider, 'flutterwave'); assert.ok(row.transfer_code); assert.equal(row.bank_name, 'Kuda Bank')
+  const t = world.flwTransfers.get(row.transfer_code)!
+  assert.equal(t.account_bank, '090267', 'Kuda uses Flutterwave\'s code, not Paystack\'s 50211'); assert.equal(t.amount, 300)
+  // Flutterwave reports failure by webhook → refunded once (re-checked with Flutterwave, not trusted from the body)
+  t.status = 'FAILED'
+  const raw = JSON.stringify({ event: 'transfer.completed', 'event.type': 'Transfer', data: { id: t.id, reference: w.j.reference, status: 'FAILED' } })
+  assert.equal((await hook(raw, { 'verif-hash': 'flwhash' })).status, 200); await hook(raw, { 'verif-hash': 'flwhash' })
+  assert.equal((await bal(ada)).NGN, before, 'refunded once, including the fee')
+  // success
+  const w2 = await call('POST', 'withdraw', { amountMinor: 300_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
+  const r2 = (await q(`select transfer_code from withdrawals where reference=$1`, [w2.j.reference]))[0]
+  assert.equal(world.flwTransfers.get(r2.transfer_code)!.account_bank, '058')
+  world.flwTransfers.get(r2.transfer_code)!.status = 'SUCCESSFUL'
+  assert.equal((await call('GET', `withdrawal?ref=${w2.j.reference}`, undefined, ada)).j.status, 'paid')
+  assert.equal((await bal(ada)).NGN, before - 350_00)
+  // Flutterwave down (unknown outcome): money stays held, nothing refunded
+  world.flwReply = 'down'
+  const w3 = await call('POST', 'withdraw', { amountMinor: 300_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
+  assert.equal(w3.j.status, 'processing'); assert.equal((await bal(ada)).NGN, before - 700_00)
+  // Paystack works again → Paystack is used first
+  world.transferReply = 'pending'; world.flwReply = 'NEW'
+  const w4 = await call('POST', 'withdraw', { amountMinor: 300_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
+  assert.equal((await q(`select provider from withdrawals where reference=$1`, [w4.j.reference]))[0].provider, 'paystack')
+})
+
+test('Flutterwave bank matching never picks a different bank', async () => {
+  const list = [{ code: '058', name: 'GTBank Plc' }, { code: '090267', name: 'Kuda Microfinance Bank' }, { code: '50211', name: 'Some Other Bank' }, { code: '044', name: 'Access Bank' }, { code: '063', name: 'Access Bank (Diamond)' }]
+  assert.equal(matchFlwBank('058', 'Guaranty Trust Bank', list), '058')
+  assert.equal(matchFlwBank('50211', 'Kuda Bank', list), '090267')
+  assert.equal(matchFlwBank('044', 'Access Bank', list), '044')
+  assert.equal(matchFlwBank('51318', 'Moniepoint MFB', list), null)
 })
 
 test('books balance: every wallet equals the sum of its ledger', async () => {

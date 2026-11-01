@@ -7,7 +7,7 @@ import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion
 import { MoneyError, type CaseRow, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
 import { accountMatchesName, diditDecision, diditEnabled, diditSignatureOk, diditStart, docHash, idMatchesName, kycEnabled, lookupId, nameTokens, normDate, type DiditEnv, type KycEnv } from './kyc.ts'
 import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, depositFee, foreignEnabled, foreignFee, margin, ngnPerTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
-import { PaystackRefused, checkTransfer, createRecipient, listBanks, payoutRefusalMessage, resolveAccount, sendTransfer } from './payouts.ts'
+import { PayoutRefused, checkTransfer, createRecipient, flwBanks, flwCheckTransfer, flwResolve, flwSendTransfer, listBanks, matchFlwBank, payoutRefusalMessage, resolveAccount, sendTransfer, type PayoutProvider } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
 import { decodeFile, putFile, signedUrl } from './storage.ts'
 import { checkCode, normPhone, sendCode, smsEnabled, type SmsEnv } from './sms.ts'
@@ -23,6 +23,7 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv {
   // Set to match each dashboard's "who pays the fee" setting, so the customer never pays it twice.
   // Paystack defaults to true (the owner's setting: customer pays); Flutterwave defaults to false.
   PAYSTACK_CUSTOMER_PAYS_FEE?: string; FLW_CUSTOMER_PAYS_FEE?: string
+  PAYOUT_PROVIDERS?: string // order to try for withdrawals, default "paystack,flutterwave"
   SERVICE_KEY?: string // for private file storage (support-case photos)
   ADMIN_EMAILS?: string // comma-separated Luda account emails that can open the owner's admin page
 }
@@ -251,15 +252,26 @@ export async function finalizeDeposit(reference: string, env: Env, d: Deps, sour
 
 /* ----------------------------- withdrawals (out) ----------------------------- */
 
-/** Asks Paystack for a withdrawal's final status; refunds the wallet if it failed. */
+/** Payout routes to try, in order, limited to providers whose key is set. */
+export function payoutOrder(env: Env): PayoutProvider[] {
+  const want = (env.PAYOUT_PROVIDERS || 'paystack,flutterwave').split(',').map((x) => x.trim().toLowerCase())
+  return want.filter((p, i): p is PayoutProvider => want.indexOf(p) === i && ((p === 'paystack' && !!env.PAYSTACK_SECRET_KEY) || (p === 'flutterwave' && !!env.FLW_SECRET_KEY)))
+}
+
+/** Asks the payout provider for a withdrawal's final status; refunds the wallet if it failed. */
 export async function settleWithdrawal(w: WithdrawalRow, env: Env, d: Deps): Promise<WithdrawalRow['status']> {
   if (w.status !== 'processing' && w.status !== 'paid') return w.status
+  const viaFlw = w.provider === 'flutterwave'
+  if (viaFlw ? !env.FLW_SECRET_KEY : !env.PAYSTACK_SECRET_KEY) return w.status
   let t
-  try { t = await checkTransfer(env.PAYSTACK_SECRET_KEY!, w.reference, d.fetch) } catch (e) {
-    // Paystack has no such transfer (it was refused before being created): after 5 minutes, give the money back.
-    if (e instanceof PaystackRefused && w.status === 'processing' && !w.transfer_code && Date.now() - Date.parse(w.created_at) > 5 * 60e3) {
-      await d.db.withdrawSettle(w.reference, 'failed', null, 'Paystack has no record of this transfer, refunded')
-      await d.db.log(w.reference, 'withdraw_failed', { reason: e.message })
+  try {
+    t = viaFlw ? await flwCheckTransfer(env.FLW_SECRET_KEY!, w.reference, w.transfer_code, d.fetch) : await checkTransfer(env.PAYSTACK_SECRET_KEY!, w.reference, d.fetch)
+  } catch (e) {
+    // The provider has no such transfer (it was refused before being created): after a while, give the money back.
+    const wait = viaFlw ? 30 * 60e3 : 5 * 60e3
+    if (e instanceof PayoutRefused && w.status === 'processing' && !w.transfer_code && Date.now() - Date.parse(w.created_at) > wait) {
+      await d.db.withdrawSettle(w.reference, 'failed', null, `${viaFlw ? 'Flutterwave' : 'Paystack'} has no record of this transfer, refunded`)
+      await d.db.log(w.reference, 'withdraw_failed', { reason: e.message, provider: w.provider ?? 'paystack' })
       return 'failed'
     }
     throw e
@@ -267,8 +279,50 @@ export async function settleWithdrawal(w: WithdrawalRow, env: Env, d: Deps): Pro
   if (t.reference && t.reference !== w.reference) return w.status
   if (t.status === 'processing' || t.status === w.status) return w.status
   await d.db.withdrawSettle(w.reference, t.status, t.transferCode, null)
-  await d.db.log(w.reference, `withdraw_${t.status}`)
+  await d.db.log(w.reference, `withdraw_${t.status}`, { provider: w.provider ?? 'paystack' })
   return t.status
+}
+
+/**
+ * Sends a recorded withdrawal through the payout providers in order. A definite refusal (nothing was sent)
+ * moves on to the next provider; an unknown outcome (network / 5xx) stops and stays "processing".
+ */
+async function payOut(reference: string, amount: number, bank: string, bankName: string, account: string, name: string, env: Env, d: Deps) {
+  const f = d.fetch, refusals: string[] = []
+  for (const p of payoutOrder(env)) {
+    await d.db.setWithdrawal(reference, { provider: p })
+    try {
+      let t
+      if (p === 'paystack') {
+        const recipient = await createRecipient(env.PAYSTACK_SECRET_KEY!, name, account, bank, f)
+        await d.db.setWithdrawal(reference, { recipient_code: recipient })
+        t = await sendTransfer(env.PAYSTACK_SECRET_KEY!, amount, recipient, reference, f)
+      } else {
+        const code = matchFlwBank(bank, bankName, await flwBanks(env.FLW_SECRET_KEY!, f))
+        if (!code) throw new PayoutRefused(`Flutterwave does not list this bank (${bankName || bank})`, 400, 'flutterwave')
+        const flwName = await flwResolve(env.FLW_SECRET_KEY!, account, code, f)
+        if (flwName && !accountMatchesName(flwName, name)) throw new PayoutRefused(`Flutterwave found a different account name (${flwName})`, 400, 'flutterwave')
+        t = await flwSendTransfer(env.FLW_SECRET_KEY!, amount, code, account, name, reference, f)
+      }
+      await d.db.log(reference, 'withdraw_sent', { ...t, provider: p })
+      if (t.status === 'failed') { refusals.push(`${p}: transfer failed`); continue }
+      if (t.transferCode) await d.db.setWithdrawal(reference, { transfer_code: t.transferCode })
+      if (t.status === 'paid') await d.db.withdrawSettle(reference, 'paid', t.transferCode, null)
+      return { status: t.status, provider: p }
+    } catch (e) {
+      if (e instanceof PayoutRefused) {
+        await d.db.log(reference, 'withdraw_refused', { error: e.message, http: e.httpStatus, provider: p })
+        refusals.push(`${p}: ${e.message}`); continue
+      }
+      // Unknown outcome: keep it "processing"; the webhook or a status check settles it.
+      await d.db.log(reference, 'withdraw_unknown', { error: String(e), provider: p })
+      return { status: 'processing' as const, provider: p }
+    }
+  }
+  // Every route said no, so nothing was sent: return the money (and fee) to the wallet right away.
+  const why = refusals.join(' | ').slice(0, 300) || 'No payout provider is switched on'
+  await d.db.withdrawSettle(reference, 'failed', null, why)
+  return { status: 'failed' as const, provider: null, message: payoutRefusalMessage(refusals[0] ?? why) }
 }
 
 /* ---------------------------------- api ---------------------------------- */
@@ -361,7 +415,7 @@ const routes: Record<string, Route> = {
       Object.assign(p, (await d.db.profile(p.user_id)) ?? {})
     }
     // Same for withdrawals whose bank confirmation (webhook) never arrived.
-    if (env.PAYSTACK_SECRET_KEY) for (const w of (await d.db.withdrawals(p.user_id, 5)).filter((x) => x.status === 'processing' && Date.parse(x.created_at) < Date.now() - 120e3)) {
+    if (env.PAYSTACK_SECRET_KEY || env.FLW_SECRET_KEY) for (const w of (await d.db.withdrawals(p.user_id, 5)).filter((x) => x.status === 'processing' && Date.parse(x.created_at) < Date.now() - 120e3)) {
       if (await d.db.hit(`wrecheck:${w.reference}`, 1, 120)) await settleWithdrawal(w, env, d).catch(() => {})
     }
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
@@ -824,31 +878,15 @@ const routes: Record<string, Route> = {
     if (!/^\d{10}$/.test(account) || !/^\w{2,10}$/.test(bank)) throw new Fail('Enter a 10-digit account number and pick a bank')
     await verifyAuth(p, body, env, d)
     if ((await d.db.spent(p.user_id, 'NGN', ['withdraw'], 24)) + amount > LIMITS.withdrawDay) throw new Fail(`Daily withdrawal limit is ${naira(LIMITS.withdrawDay)}`)
-    const key = env.PAYSTACK_SECRET_KEY, f = d.fetch
-    const name = await resolveAccount(key, account, bank, f).catch(() => { throw new Fail('Could not find that account. Check the number and bank.') })
+    const name = await resolveAccount(env.PAYSTACK_SECRET_KEY, account, bank, d.fetch).catch(() => { throw new Fail('Could not find that account. Check the number and bank.') })
     if (!accountMatchesName(name, p.kyc_name ?? '')) throw new Fail(`You can only withdraw to your own account. "${name}" doesn't match your verified name.`)
-    const bankName = String(body.bankName ?? '').slice(0, 60)
-    const recipient = await createRecipient(key, name, account, bank, f)
+    // The bank's name comes from Paystack's own list (not from the app), so Flutterwave gets the right bank.
+    const bankName = (await listBanks(env.PAYSTACK_SECRET_KEY, d.fetch).catch(() => [])).find((x) => x.code === bank)?.name ?? String(body.bankName ?? '').slice(0, 60)
     const fee = withdrawFee(env), reference = newRef('wdr')
-    try { await d.db.withdraw(p.user_id, reference, amount, fee, bank, bankName, account, name, recipient) } catch (e) { moneyMsg(e) }
+    try { await d.db.withdraw(p.user_id, reference, amount, fee, bank, bankName, account, name, '') } catch (e) { moneyMsg(e) }
     await d.db.log(reference, 'withdraw_init', { amount, fee, bank })
-    try {
-      const t = await sendTransfer(key, amount, recipient, reference, f)
-      if (t.status === 'failed') await d.db.withdrawSettle(reference, 'failed', t.transferCode, 'Paystack refused the transfer')
-      else if (t.status === 'paid') await d.db.withdrawSettle(reference, 'paid', t.transferCode, null)
-      await d.db.log(reference, 'withdraw_sent', t)
-      return { reference, status: t.status === 'failed' ? 'failed' : t.status, accountName: name, feeMinor: fee }
-    } catch (e) {
-      if (e instanceof PaystackRefused) {
-        // Paystack said no, so nothing was sent: return the money (and fee) to the wallet right away.
-        await d.db.withdrawSettle(reference, 'failed', null, e.message.slice(0, 200))
-        await d.db.log(reference, 'withdraw_refused', { error: e.message, http: e.httpStatus })
-        return { reference, status: 'failed', accountName: name, feeMinor: fee, message: payoutRefusalMessage(e.message) }
-      }
-      // Unknown outcome (network): keep it "processing"; the webhook or a status check settles it.
-      await d.db.log(reference, 'withdraw_unknown', { error: String(e) })
-      return { reference, status: 'processing', accountName: name, feeMinor: fee }
-    }
+    const r = await payOut(reference, amount, bank, bankName, account, name, env, d)
+    return { reference, status: r.status, accountName: name, feeMinor: fee, ...('message' in r ? { message: r.message } : {}) }
   },
 
   'GET withdrawal': async ({ req, env, d, url }) => {
