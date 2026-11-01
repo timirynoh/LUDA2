@@ -14,6 +14,8 @@ import { COUNTRIES, CURRENCIES } from '../lib/data'
 import { uid, useStore } from '../lib/store'
 import { departures, luhn, ticketCode, type Ticket } from '../lib/tickets'
 import { CardPicker } from '../components/Cards'
+import { OnlinePay } from '../components/OnlinePay'
+import { livePay } from '../lib/payments'
 import { brandOf } from '../lib/cards'
 import { ERCAN, km, routesFrom, taxiFare } from '../lib/transport'
 
@@ -101,7 +103,8 @@ function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
         {tk.returnDate && <p className="text-xs text-slate-600">Return: {new Date(tk.returnDate + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · {tk.returnTime}</p>}
         <p className="text-xs text-slate-500">Show this QR to the driver · paid {fmt(tk.total, 'TRY')} · saved {fmt(tk.saved, 'TRY')}</p>
       </div>
-      <button className="btn-ghost mt-3 w-full text-sm text-rose-300" disabled={tooLate} onClick={refund}>{tooLate ? `Refunds close ${SAVER.noRefundMinutes} min before departure` : 'Cancel & refund'}</button>
+      {tk.payRef ? <p className="mt-3 text-center text-xs text-slate-400">Paid online ({tk.payRef.slice(-8)}). To cancel, contact Luda support from Help: refunds go back to your card or bank.</p> :
+      <button className="btn-ghost mt-3 w-full text-sm text-rose-300" disabled={tooLate} onClick={refund}>{tooLate ? `Refunds close ${SAVER.noRefundMinutes} min before departure` : 'Cancel & refund'}</button>}
       {!tooLate && tk.saved > 0 && <p className="mt-2 text-center text-[11px] text-slate-500">Refunded Saver tickets still count toward your limits. {Math.max(0, refundsLeft - 1)} refund{refundsLeft - 1 === 1 ? '' : 's'} left this month before Saver pauses.</p>}
     </Sheet>
   )
@@ -109,7 +112,7 @@ function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
 
 /* ------------------------------ Bus tickets ------------------------------ */
 
-interface Trip { from: string; to: string; operator: string; official: { single: number; ret: number }; every: number; estimated?: boolean; kind: Ticket['kind']; first?: string; last?: string }
+interface Trip { from: string; to: string; operator: string; official: { single: number; ret: number }; every: number; estimated?: boolean; kind: Ticket['kind']; first?: string; last?: string; opId?: string; city?: string }
 
 function BusTickets() {
   const { s, gate } = useStore()
@@ -138,7 +141,7 @@ function BusTickets() {
       </div>
       <p className="label">Choose your bus</p>
       {GIRNE_LEFKOSA.operators.map((o) => (
-        <button key={o.id} onClick={() => gate(1, 'Buy bus tickets') && setTrip({ from, to, operator: o.name, official: { single: GIRNE_LEFKOSA.single, ret: GIRNE_LEFKOSA.return }, every: o.every, kind: 'bus' })} className="card flex items-center gap-3 text-start">
+        <button key={o.id} onClick={() => gate(1, 'Buy bus tickets') && setTrip({ from, to, operator: o.name, opId: o.id, official: { single: GIRNE_LEFKOSA.single, ret: GIRNE_LEFKOSA.return }, every: o.every, kind: 'bus' })} className="card flex items-center gap-3 text-start">
           <div className={`grid size-12 place-items-center rounded-2xl bg-gradient-to-br ${o.color} text-white`}><Bus /></div>
           <div className="flex-1"><p className="font-semibold">{o.name}</p><p className="text-xs text-slate-400">{from} → {to} · every {o.every} min · ~30 min</p></div>
           <span className="chip bg-mint-400/15 py-2 text-mint-300">Book</span>
@@ -182,7 +185,8 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const [made, setMade] = useState<Ticket | null>(null)
 
   const st = saverState(s)
-  const q = quote(ret ? trip.official.ret : trip.official.single, ret, pax, st.active)
+  const online = livePay && !!trip.opId // real checkout (Paystack / Flutterwave)
+  const q = quote(ret ? trip.official.ret : trip.official.single, ret, pax, st.active && !online)
   const official = q.full, total = q.total, saved = q.saved
   const [saverOpen, setSaverOpen] = useState(false)
   const bal = s.balances.TRY ?? 0
@@ -240,10 +244,14 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
               <div className="flex justify-between text-slate-400"><span>Official price</span><span className={saved ? 'line-through' : ''}>{fmt(official, 'TRY')}</span></div>
               {saved > 0 && <div className="flex justify-between text-mint-300"><span>Ride Saver (₺{q.off} × {q.seats} seat{q.seats > 1 ? 's' : ''})</span><span>−{fmt(saved, 'TRY')}</span></div>}
               {st.active && pax > q.seats && <p className="text-[11px] text-slate-500">Saver covers you + {SAVER.companions} companion. Other seats are normal price.</p>}
-              {!st.active && <button className="mt-1 text-start text-xs text-violet-300 underline" onClick={() => setSaverOpen(true)}>{st.message} {st.reason === 'not_member' ? `Save ₺${q.off}/seat →` : ''}</button>}
+              {!st.active && !online && <button className="mt-1 text-start text-xs text-violet-300 underline" onClick={() => setSaverOpen(true)}>{st.message} {st.reason === 'not_member' ? `Save ₺${q.off}/seat →` : ''}</button>}
               <div className="mt-1 flex justify-between text-lg font-extrabold"><span>You pay</span><span>{fmt(total, 'TRY')}</span></div>
               {trip.estimated && <p className="mt-1 text-[11px] text-slate-500">Fare estimated for this route in the demo.</p>}
             </div>
+            {online && <OnlinePay operator={trip.operator} ticketKind={trip.kind} total={total} ready={!!goTime && (!ret || !!(rtime || rtimes[0]))}
+              order={{ operatorId: trip.opId!, city: trip.city, return: ret, pax, from: trip.from, to: trip.to, date, time: goTime, returnDate: ret ? rd : undefined, returnTime: ret ? rtime || rtimes[0] : undefined, holder: s.name }} />}
+            {livePay && !online && <p className="text-sm text-slate-400">Online payment isn't available for this route yet.</p>}
+            {!livePay && <>
             <div className={`grid gap-2 ${showHome ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <button onClick={() => setPay('wallet')} className={`glass flex flex-col items-start gap-1 rounded-2xl p-3 text-start ${pay === 'wallet' ? 'border-mint-400/60 bg-mint-400/10' : ''}`}><Wallet size={18} /><span className="text-sm font-semibold">Lira wallet</span><span className="text-xs text-slate-400">{fmt(bal, 'TRY')}</span></button>
               {showHome && <button onClick={() => setPay('home')} className={`glass flex flex-col items-start gap-1 rounded-2xl p-3 text-start ${pay === 'home' ? 'border-mint-400/60 bg-mint-400/10' : ''}`}><span className="text-lg leading-none">{CURRENCIES[hc]?.flag}</span><span className="text-sm font-semibold">{hc} wallet</span><span className="text-xs text-slate-400">{fmt(homeBal, hc, { compact: true })}</span></button>}
@@ -269,6 +277,7 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
             {pay === 'wallet' && bal < total && <p className="text-sm text-rose-300">Not enough TL in your wallet. <Link to="/wallet?a=deposit" className="underline">Top up</Link>{showHome ? `, pay with your ${hc} wallet` : ''} or pay by card.</p>}
             {pay === 'home' && homeBal < homeNeeded && <p className="text-sm text-rose-300">Not enough {hc}. <Link to="/wallet?a=deposit" className="underline">Top up</Link> or pay by card.</p>}
             <button className="btn-primary py-4" disabled={!canPay} onClick={submit}><TicketIcon size={18} /> Pay {fmt(total, 'TRY')}</button>
+            </>}
             {saverOpen && <SaverSheet onClose={() => setSaverOpen(false)} />}
           </div>
         )}
@@ -318,7 +327,7 @@ function Airport() {
         <p className="mt-2"><span className="text-3xl font-extrabold">₺{active ? fare - TICKET_DISCOUNT.single : fare}</span> {active && <span className="text-sm text-white/60 line-through">₺{fare}</span>} <span className="text-xs text-white/70">per person{active ? '' : ` · ₺${fare - TICKET_DISCOUNT.single} with Ride Saver`}</span></p>
       </div>
       <Segmented value={toAirport ? 'to' : 'from'} onChange={(v) => setToAirport(v === 'to')} options={[{ value: 'to', label: '🛫 To the airport' }, { value: 'from', label: '🛬 From the airport' }]} />
-      <button className="btn-primary py-4" onClick={() => gate(1, 'Book airport shuttle') && setBook({ from: toAirport ? city.name : 'Ercan Airport', to: toAirport ? 'Ercan Airport' : city.name, operator: 'KIBHAS', official: { single: fare, ret: fare * 2 }, every: 60, kind: 'shuttle', first: toAirport ? '04:00' : '06:00', last: toAirport ? '22:00' : '23:59' })}>
+      <button className="btn-primary py-4" onClick={() => gate(1, 'Book airport shuttle') && setBook({ from: toAirport ? city.name : 'Ercan Airport', to: toAirport ? 'Ercan Airport' : city.name, operator: 'KIBHAS', opId: 'kibhas', city: s.city, official: { single: fare, ret: fare * 2 }, every: 60, kind: 'shuttle', first: toAirport ? '04:00' : '06:00', last: toAirport ? '22:00' : '23:59' })}>
         <TicketIcon size={18} /> Book KIBHAS seat
       </button>
       <div className="card text-xs text-slate-400">

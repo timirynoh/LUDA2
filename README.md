@@ -18,6 +18,12 @@ npm run build      # production build in app/dist
 
 It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desktop it renders as a phone frame.
 
+## Going live
+
+**Phase 1 (built):** real payments for bus tickets and KIBHAS airport seats with **Paystack** and **Flutterwave**. A Supabase server (`supabase/`) sets the price, verifies every payment with the provider, and checks webhook signatures. Card numbers are typed only on the provider's page. Setup steps: [`docs/GO_LIVE.md`](docs/GO_LIVE.md). Without `VITE_PAY_API` the app runs as the full demo.
+
+Server tests: `node --test supabase/functions/_shared/payments.test.ts`
+
 ## What's inside
 
 | Area | What it does | Status |

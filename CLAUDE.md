@@ -10,12 +10,12 @@ Luda is an all-in-one, gamified, modern app for Africans (mostly students) livin
 - Daily life: city directory, housing and roommates, jobs, community events (churches and mosques), a university hub (fees, deadlines, timetable OCR), and transport
 - Social and growth: chats, Flash help requests, marketplace, promos, and referrals
 
-**Everything is a DEMO. No real money, KYC or SMS is involved.** The owner chose "keep building" and is not going live yet.
+**Going live in phases (started 2026-11-01).** Phase 1 = real payments for bus/airport tickets via Paystack + Flutterwave (built; see `docs/GO_LIVE.md`). Everything else is still DEMO: wallet, sending money, P2P exchange, KYC and SMS. The live parts switch on only when `VITE_PAY_API` is set at build time; without it the app is the pure demo.
 
 ## Owner's rules (always follow)
 1. **Ask before adding features nobody requested.** Offer them as a multi-select question and build only what is picked.
 2. **Nigeria = English only.** Pidgin, Yoruba and Hausa were removed on purpose; do not re-add them. App languages: en, tr, fr, sw, ar.
-3. Stay in demo mode. Don't wire real payments, KYC or SMS providers unless asked.
+3. Real money only where the owner has asked: Phase 1 ticket payments. Don't turn on wallet, transfers or exchange for real until the owner has legal advice (they need CBN licences). Don't add KYC or SMS providers unless asked.
 4. **No spam or abuse anywhere.** Every posting or action goes through `allow()` (daily limits + duplicate check), moderation (`lib/moderation.ts`) and tier gates.
 5. **Money actions need a double confirmation.** Use `components/Confirm.tsx` (HoldButton, ConfirmSheet, CrossCheck). Never let a single tap move money.
 6. **Explore first, verify to act.** Unverified users can browse everything, and each action shows which tier unlocks it (`lib/access.ts`).
@@ -33,7 +33,8 @@ Luda is an all-in-one, gamified, modern app for Africans (mostly students) livin
 
 ## Open questions for the owner
 - Does "they give me 5" mean a ₺5 commission per ticket?
-- Going live is deferred. The suggested path: build the free features on a real backend (Supabase), host on Cloudflare Pages (root `app`, build `npm run build`, output `dist`, NODE_VERSION 22), and add payments and KYC providers later.
+- Is the owner's business registered with CAC yet? Paystack and Flutterwave need it for live keys.
+- Next phases: **1b** real Luda accounts on Supabase (then Ride Saver can apply to online payments); **2** live keys after CAC; **3** wallet, transfers and exchange after legal advice. Also needed: how the bus companies get paid their TL share.
 
 ## Stack
 React 19, Vite 8, TypeScript and Tailwind v4 (`@tailwindcss/vite`; custom classes use `@utility`, not `@apply`; variants are `tab:` and `desk:`). Also used: framer-motion, lucide-react, react-router-dom 7, qrcode.react, and tesseract.js 7 (on-device OCR).
@@ -54,6 +55,19 @@ All code lives in `app/`:
   - The PIN is a salted SHA-256 hash.
   - P2P handshake codes are 30-second HMAC TOTP-style codes (`lib/crypto.ts`).
   - Text is checked by the profanity and scam filter in `lib/moderation.ts`.
+
+## Live payments (Phase 1)
+- Server: `supabase/`. Migration `migrations/*_payments.sql` (tables `payments` and `payment_events`, RLS on, service-role only). Edge Functions `pay-init`, `pay-verify` and `pay-webhook`; the logic is in `functions/_shared/`:
+  - `handlers.ts`: the request handlers
+  - `providers.ts`: Paystack/Flutterwave API calls and webhook signatures
+  - `pricing.ts`: server-side prices; keep in sync with `app/src/config.ts`
+  - `fx.ts`: TL→NGN rate
+  - `db.ts`: PostgREST access
+- Rules: the server sets the price; the ticket is issued only after the server verifies with the provider (exact amount and currency, else `mismatch`); settled exactly once; webhooks are signature-checked; card data never touches Luda.
+- App: `src/lib/payments.ts`, `components/OnlinePay.tsx` (two-step: quote, then confirm), `screens/PayReturn.tsx` (`/pay/return`). Online-paid tickets have `payRef` and are refunded through support.
+- Tests: `node --test supabase/functions/_shared/payments.test.ts` (no install needed). Type-check with `app/node_modules/.bin/tsc -p supabase/functions/tsconfig.json`.
+- Setup for the owner: `docs/GO_LIVE.md`.
+- `vite.config.ts` uses base `/` for real hosting (deep links work) and `./` only for the embed build.
 
 ## Build, test, publish
 ```bash

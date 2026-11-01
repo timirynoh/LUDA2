@@ -41,6 +41,7 @@ import Admin from './screens/Admin'
 import Community from './screens/Community'
 import Jobs from './screens/Jobs'
 import Transport from './screens/Transport'
+import PayReturn from './screens/PayReturn'
 import Uni from './screens/Uni'
 import { useClassReminders } from './lib/reminders'
 import { useGigProgress } from './lib/gigs'
@@ -117,6 +118,7 @@ export default function App() {
                 <Route path="/community" element={<Community />} />
                 <Route path="/uni" element={<Uni />} />
                 <Route path="/transport" element={<Transport />} />
+                <Route path="/pay/return" element={<PayReturn />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/flash" element={<Flash />} />
                 <Route path="/security" element={<Security />} />

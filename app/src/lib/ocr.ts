@@ -177,7 +177,7 @@ function mergeBlocks(items: ClassItem[]): ClassItem[] {
   return out
 }
 
-const abs = (p: string) => new URL(p, document.baseURI).href
+const abs = (p: string) => new URL(import.meta.env.BASE_URL + p, document.baseURI).href // root-relative on real hosting, folder-relative in the demo
 
 /** Upscale, greyscale and erase table borders, which otherwise confuse OCR on grid timetables. */
 async function preprocess(file: Blob): Promise<Blob> {

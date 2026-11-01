@@ -3,6 +3,7 @@ export interface Ticket {
   returnDate?: string; returnTime?: string; pax: number; total: number; saved: number; paidWith: 'wallet' | 'card' | 'home'; paidCur?: string; paidAmount?: number
   createdAt: number; status: 'valid' | 'used' | 'refunded'; kind: 'bus' | 'shuttle'
   holder: string; secret: string; refundedAt?: number
+  payRef?: string // set when paid online via Paystack / Flutterwave
 }
 
 export function departures(date: string, first = '06:30', last = '23:00', everyMin = 30) {
