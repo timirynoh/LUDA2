@@ -54,7 +54,7 @@ export default function LiveWallet() {
         {me?.profile.frozen && <p className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-300">Your account is on hold. Contact Luda support.</p>}
         {me && !verified && (
           <button className="flex items-center gap-3 rounded-2xl border border-gold-400/40 bg-gold-400/10 p-3 text-start" onClick={() => setOpen('kyc')}>
-            <ShieldCheck className="shrink-0 text-gold-300" /><span className="text-sm"><b>Verify your identity</b><br /><span className="text-xs text-slate-400">Needed to withdraw and send money. Takes 1 minute with your NIN or BVN.</span></span>
+            <ShieldCheck className="shrink-0 text-gold-300" /><span className="text-sm"><b>Verify your identity</b><br /><span className="text-xs text-slate-400">Needed to withdraw and send money. About 2 minutes with your passport or ID + a selfie.</span></span>
           </button>
         )}
         {!!me?.withdrawals.some((w) => w.status === 'processing') && (

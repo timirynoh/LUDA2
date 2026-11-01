@@ -369,6 +369,49 @@ test('withdrawal stuck "processing" (webhook missed) settles when the user opens
   assert.equal((await bal(ada)).NGN, before, 'failed payout refunded automatically')
 })
 
+test('Didit ID check: document + selfie for any nationality, verified from Didit itself', async () => {
+  const kofi = (await call('POST', 'signup', { email: 'kofi@x.com', username: 'kofi', fullName: 'Kofi Mensah', password: 'Lefkosa2026!' })).j.session.access_token
+  assert.equal((await call('GET', 'config')).j.didit, true)
+  const st = await call('POST', 'kyc-start', {}, kofi)
+  assert.match(st.j.url, /verify\.didit\.me/); assert.ok(world.calls.some((c) => c.startsWith('didit-start:')))
+  const sid = (await q(`select kyc_session_id from profiles where username='kofi'`))[0].kyc_session_id
+  // browser says "approved" but Didit hasn't decided → still not verified
+  assert.equal((await call('GET', 'kyc-status', undefined, kofi)).j.status, 'none')
+  world.didit.set(sid, { status: 'In Review' })
+  assert.equal((await call('GET', 'kyc-status', undefined, kofi)).j.status, 'pending')
+  world.didit.set(sid, { status: 'Approved', id_verifications: [{ first_name: 'Kofi', last_name: 'Mensah', full_name: 'KOFI ASANTE MENSAH', date_of_birth: '2002-03-04', document_type: 'Passport', document_number: 'G1234567', issuing_state: 'GHA' }] })
+  const ok = await call('GET', 'kyc-status', undefined, kofi)
+  assert.equal(ok.j.status, 'verified'); assert.equal(ok.j.name, 'KOFI ASANTE MENSAH')
+  const row = (await q(`select kyc_id_last4, kyc_doc_hash, kyc_country from profiles where username='kofi'`))[0]
+  assert.equal(row.kyc_id_last4, '4567'); assert.equal(row.kyc_doc_hash.length, 64); assert.equal(row.kyc_country, 'GHA')
+  assert.equal((await call('GET', 'me', undefined, kofi)).j.profile.kyc, 'verified')
+
+  // the same passport on a second account is refused
+  const fake = (await call('POST', 'signup', { email: 'kofi2@x.com', username: 'kofi2', fullName: 'Kofi Mensah', password: 'Lefkosa2026!' })).j.session.access_token
+  await call('POST', 'kyc-start', {}, fake)
+  const sid2 = (await q(`select kyc_session_id from profiles where username='kofi2'`))[0].kyc_session_id
+  world.didit.set(sid2, world.didit.get(sid)!)
+  const dup = await call('GET', 'kyc-status', undefined, fake)
+  assert.equal(dup.j.status, 'failed'); assert.match(dup.j.message, /already verified on another Luda account/)
+
+  // a document in someone else's name is refused
+  const ama = (await call('POST', 'signup', { email: 'ama2@x.com', username: 'ama_two', fullName: 'Ama Boateng', password: 'Lefkosa2026!' })).j.session.access_token
+  await call('POST', 'kyc-start', {}, ama)
+  const sid3 = (await q(`select kyc_session_id from profiles where username='ama_two'`))[0].kyc_session_id
+  world.didit.set(sid3, { status: 'Approved', id_verifications: [{ full_name: 'JOHN DOE', document_type: 'ID', document_number: 'X1', issuing_state: 'GHA' }] })
+  assert.match((await call('GET', 'kyc-status', undefined, ama)).j.message, /doesn't match your Luda name/)
+
+  // declined, then the webhook path (signed) re-asks Didit
+  await call('POST', 'kyc-start', {}, ama)
+  const sid4 = (await q(`select kyc_session_id from profiles where username='ama_two'`))[0].kyc_session_id
+  world.didit.set(sid4, { status: 'Approved', id_verifications: [{ full_name: 'AMA BOATENG', document_type: 'ID', document_number: 'GHA-777', issuing_state: 'GHA' }] })
+  const raw = JSON.stringify({ session_id: sid4, status: 'Approved', webhook_type: 'status.updated' })
+  const { createHmac } = await import('node:crypto')
+  assert.equal((await hook(raw, { 'x-signature': 'forged' })).status, 401)
+  assert.equal((await hook(raw, { 'x-signature': createHmac('sha256', 'didit_secret').update(raw).digest('hex') })).status, 200)
+  assert.equal((await call('GET', 'me', undefined, ama)).j.profile.kyc, 'verified')
+})
+
 test('books balance: every wallet equals the sum of its ledger', async () => {
   const bad = await q(`select w.user_id from wallets w left join (select user_id, currency, sum(amount_minor) s from ledger group by 1,2) l using (user_id, currency) where w.balance_minor <> coalesce(l.s, 0)`)
   assert.equal(bad.length, 0)

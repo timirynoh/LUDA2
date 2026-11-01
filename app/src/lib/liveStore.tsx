@@ -21,7 +21,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       const m = await api<Me>('GET', 'me')
       setMe(m); setError('')
       // Mirror server identity/KYC into the local app so screens and tier gates agree with the server.
-      const kyc = m.profile.kyc === 'verified' ? 'verified' : m.profile.kyc === 'failed' ? 'rejected' : 'none'
+      const kyc = m.profile.kyc === 'verified' ? 'verified' : m.profile.kyc === 'failed' ? 'rejected' : m.profile.kyc === 'pending' ? 'pending' : 'none'
       // Phone: verified by SMS on the server; if SMS checks aren't switched on yet, a real account counts as level 1.
       const sms = await liveConfig().then((c) => c.sms).catch(() => false)
       const phone = m.profile.phoneVerified || !sms

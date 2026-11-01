@@ -33,6 +33,7 @@ export async function makeDb() {
     async recentByEmail(email, since) { return Number((await q(`select count(*) c from payments where email=$1 and created_at >= $2`, [email, since]))[0].c) },
     async log(ref, kind, payload) { await q(`insert into payment_events (reference, kind, payload) values ($1,$2,$3)`, [ref, kind, payload ?? null]) },
     async profile(id) { return ((await q<Profile>(`select * from profiles where user_id=$1`, [id]))[0]) ?? null },
+    async profileByKycSession(sid) { return ((await q<Profile>(`select * from profiles where kyc_session_id=$1`, [sid]))[0]) ?? null },
     async profileByPhone(ph) { return ((await q<Profile>(`select * from profiles where phone=$1`, [ph]))[0]) ?? null },
     async hit(key, max, seconds) { return (await q(`select luda_hit($1,$2,$3) r`, [key, max, seconds]))[0].r },
     async profileByEmail(e) { return ((await q<Profile>(`select * from profiles where lower(email)=lower($1)`, [e]))[0]) ?? null },
@@ -81,6 +82,8 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     ids: new Map<string, Record<string, string>>([['12345678901', { first_name: 'ADA', middle_name: 'CHIOMA', last_name: 'OKAFOR', date_of_birth: '2001-04-15' }],
       ['10987654321', { first_name: 'BOLA', last_name: 'ADEYEMI', date_of_birth: '15-Apr-2000' }]]),
     calls: [] as string[],
+    didit: new Map<string, Record<string, unknown>>(), // session id -> decision JSON
+    diditN: 0,
   }
   const ok = (j: unknown, status = 200) => new Response(JSON.stringify(j), { status })
   const f = (async (u: string, init?: RequestInit) => {
@@ -145,6 +148,13 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       if (url.pathname.endsWith('/Verifications')) { world.calls.push('sms:' + form.get('To')); return ok({ status: 'pending' }, 201) }
       if (url.pathname.endsWith('/VerificationCheck')) return ok({ status: form.get('Code') === '123456' ? 'approved' : 'pending' })
     }
+    // Didit (document + selfie KYC)
+    if (url.host === 'verification.didit.me') {
+      if (new Headers(init?.headers).get('x-api-key') !== 'didit_key') return ok({ detail: 'bad key' }, 401)
+      if (url.pathname === '/v3/session/' && init?.method === 'POST') { const id = 'ds_' + ++world.diditN; world.calls.push('didit-start:' + body.vendor_data); return ok({ session_id: id, url: `https://verify.didit.me/session/${id}` }, 201) }
+      const m = url.pathname.match(/^\/v3\/session\/([^/]+)\/decision\/$/)
+      if (m) return ok(world.didit.get(m[1]) ?? { status: 'Not Started', id_verifications: null })
+    }
     // Dojah
     if (url.host === 'api.dojah.io') {
       const n = url.searchParams.get('nin') ?? url.searchParams.get('bvn') ?? ''
@@ -159,7 +169,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
 export const ENV: Env = {
   APP_URL: 'https://luda.test', SUPABASE_URL: 'https://proj.supabase.co', AUTH_KEY: 'anon',
   PAYSTACK_SECRET_KEY: 'sk_live_test', FLW_SECRET_KEY: 'FLWSECK-x', FLW_SECRET_HASH: 'flwhash',
-  FX_FIXED_RATE: '40', FX_MARGIN: '0.01', FX_TRY_RATES: '{"GHS":0.4,"USD":0.025,"KES":3.2}', DOJAH_APP_ID: 'app', DOJAH_SECRET_KEY: 'sec', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_VERIFY_SID: 'VA1',
+  FX_FIXED_RATE: '40', FX_MARGIN: '0.01', FX_TRY_RATES: '{"GHS":0.4,"USD":0.025,"KES":3.2}', DOJAH_APP_ID: 'app', DOJAH_SECRET_KEY: 'sec', DIDIT_API_KEY: 'didit_key', DIDIT_WORKFLOW_ID: 'wf_free_kyc', DIDIT_WEBHOOK_SECRET: 'didit_secret', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_VERIFY_SID: 'VA1',
 }
 
 export const sign = {

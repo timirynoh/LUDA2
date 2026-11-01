@@ -48,3 +48,52 @@ export function accountMatchesName(accountName: string, legalName: string) {
   const legal = new Set(nameTokens(legalName))
   return nameTokens(accountName).filter((w) => legal.has(w)).length >= 2
 }
+
+/* ----------------------- Didit: document + selfie KYC ----------------------- */
+// Hosted flow: we create a session, the user photographs their ID and takes a live selfie on
+// Didit's page, then we ask Didit for the decision ourselves (never trusting the browser).
+
+export interface DiditEnv { DIDIT_API_KEY?: string; DIDIT_WORKFLOW_ID?: string; DIDIT_WEBHOOK_SECRET?: string; DIDIT_BASE_URL?: string }
+export const diditEnabled = (e: DiditEnv) => !!(e.DIDIT_API_KEY && e.DIDIT_WORKFLOW_ID)
+const diditBase = (e: DiditEnv) => (e.DIDIT_BASE_URL || 'https://verification.didit.me').replace(/\/$/, '')
+
+export async function diditStart(userId: string, callback: string, env: DiditEnv, f: Fetch = fetch) {
+  const r = await f(`${diditBase(env)}/v3/session/`, {
+    method: 'POST', headers: { 'x-api-key': env.DIDIT_API_KEY!, 'content-type': 'application/json' },
+    body: JSON.stringify({ workflow_id: env.DIDIT_WORKFLOW_ID, vendor_data: userId, callback }), signal: AbortSignal.timeout(20000),
+  })
+  const j = (await r.json().catch(() => ({}))) as Record<string, any>
+  if (!r.ok || !j.url || !j.session_id) throw new Error(r.status === 401 || r.status === 403 ? 'ID checks are misconfigured (Didit key). Contact support.' : 'Could not start the ID check. Try again.')
+  return { sessionId: String(j.session_id), url: String(j.url) }
+}
+
+export interface DiditResult { status: 'approved' | 'declined' | 'pending' | 'not_started'; name: string; firstName: string; lastName: string; dob: string; docType: string; docNumber: string; country: string; raw: string }
+
+export async function diditDecision(sessionId: string, env: DiditEnv, f: Fetch = fetch): Promise<DiditResult> {
+  const r = await f(`${diditBase(env)}/v3/session/${encodeURIComponent(sessionId)}/decision/`, { headers: { 'x-api-key': env.DIDIT_API_KEY! }, signal: AbortSignal.timeout(20000) })
+  if (!r.ok) throw new Error(`ID check status unavailable (${r.status})`)
+  const j = (await r.json()) as Record<string, any>
+  const raw = String(j.status ?? '')
+  const s = raw.toLowerCase()
+  const id = ((Array.isArray(j.id_verifications) ? j.id_verifications[0] : j.id_verification) ?? {}) as Record<string, any>
+  const firstName = String(id.first_name ?? ''), lastName = String(id.last_name ?? '')
+  return {
+    status: s === 'approved' ? 'approved' : s === 'declined' || s === 'abandoned' || s === 'expired' ? 'declined' : s === 'not started' ? 'not_started' : 'pending',
+    name: String(id.full_name || [firstName, lastName].filter(Boolean).join(' ')), firstName, lastName,
+    dob: normDate(String(id.date_of_birth ?? '')), docType: String(id.document_type ?? 'document'), docNumber: String(id.document_number ?? id.personal_number ?? ''),
+    country: String(id.issuing_state ?? id.issuing_state_name ?? id.nationality ?? ''), raw,
+  }
+}
+
+/** Didit signs webhooks with HMAC-SHA256 (hex) of the raw body (X-Signature). */
+export async function diditSignatureOk(raw: string, sig: string | null, env: DiditEnv) {
+  if (!env.DIDIT_WEBHOOK_SECRET || !sig) return false
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.DIDIT_WEBHOOK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const mac = [...new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(raw)))].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return mac.length === sig.length && [...mac].every((c, i) => c === sig[i])
+}
+
+export async function docHash(docType: string, country: string, number: string) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${docType}|${country}|${number}`.toLowerCase().replace(/\s/g, '')))
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}

@@ -14,7 +14,7 @@ export interface PaymentRow {
 
 export interface Profile {
   user_id: string; username: string; full_name: string; email: string; country?: string | null
-  kyc_status: 'none' | 'verified' | 'failed'; kyc_name?: string | null; kyc_dob?: string | null; kyc_id_type?: string | null; kyc_id_last4?: string | null
+  kyc_status: 'none' | 'pending' | 'verified' | 'failed'; kyc_session_id?: string | null; kyc_doc_hash?: string | null; kyc_country?: string | null; kyc_at?: string | null; kyc_name?: string | null; kyc_dob?: string | null; kyc_id_type?: string | null; kyc_id_last4?: string | null
   kyc_tries: number; kyc_tries_day?: string | null
   pin_hash?: string | null; pin_salt?: string | null; pin_fails: number; pin_locked_until?: string | null
   frozen: boolean; created_at?: string; bio_challenge?: string | null; bio_challenge_exp?: string | null
@@ -46,6 +46,7 @@ export interface Db {
   profileByUsername(username: string): Promise<Profile | null>
   profileByEmail(email: string): Promise<Profile | null>
   profileByPhone(phone: string): Promise<Profile | null>
+  profileByKycSession(sessionId: string): Promise<Profile | null>
   /** Sliding-window rate limit: true = allowed (and counted). */
   hit(key: string, max: number, seconds: number): Promise<boolean>
   createProfile(p: Pick<Profile, 'user_id' | 'username' | 'full_name' | 'email'> & { country?: string }): Promise<Profile | 'taken'>
@@ -114,6 +115,7 @@ export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
     },
     async profile(id) { return (await rows<Profile>(`profiles?user_id=eq.${q(id)}&limit=1`))[0] ?? null },
     async profileByUsername(u) { return (await rows<Profile>(`profiles?username=eq.${q(u)}&limit=1`))[0] ?? null },
+    async profileByKycSession(sid) { return (await rows<Profile>(`profiles?kyc_session_id=eq.${q(sid)}&limit=1`))[0] ?? null },
     async profileByPhone(ph) { return (await rows<Profile>(`profiles?phone=eq.${q(ph)}&limit=1`))[0] ?? null },
     async hit(key, max, seconds) { return Boolean(await rpc('luda_hit', { p_key: key, p_max: max, p_seconds: seconds })) },
     async profileByEmail(e) { return (await rows<Profile>(`profiles?email=ilike.${q(e.replace(/[%_\\*]/g, ''))}&limit=1`))[0] ?? null },

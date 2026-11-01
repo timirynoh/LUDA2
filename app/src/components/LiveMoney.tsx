@@ -57,7 +57,48 @@ export function ReviewAndPin({ rows, warning, holdLabel, run, done, onClose }: {
 
 /* ---------------------------------- KYC ---------------------------------- */
 
+/** Identity check: Didit (ID document + live selfie, any nationality) and/or Nigerian NIN/BVN (Dojah). */
 export function LiveKyc({ onDone }: { onDone?: () => void }) {
+  const { me } = useLive()
+  const [cfg, setCfg] = useState<LiveConfig | null>(null)
+  const [nin, setNin] = useState(false)
+  useEffect(() => { liveConfig().then(setCfg).catch(() => {}) }, [])
+  if (me?.profile.kyc === 'verified' || !cfg) return <NinKyc onDone={onDone} />
+  if (cfg.didit && !nin) return <DiditKyc ninAvailable={!!cfg.nin} onUseNin={() => setNin(true)} />
+  return <NinKyc onDone={onDone} />
+}
+
+function DiditKyc({ ninAvailable, onUseNin }: { ninAvailable: boolean; onUseNin: () => void }) {
+  const { me } = useLive()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const start = async () => {
+    setBusy(true); setErr('')
+    try { const r = await api<{ url?: string; status?: string }>('POST', 'kyc-start'); if (r.url) window.location.assign(r.url) } catch (e) { setErr(errMsg(e)); setBusy(false) }
+  }
+  if (me?.profile.kyc === 'pending') return (
+    <div className="flex items-center gap-3 rounded-2xl border border-sky-400/40 bg-sky-400/10 p-3 text-sky-200"><Loader2 className="animate-spin" />
+      <div><p className="text-sm font-bold">ID check in progress</p><p className="text-xs text-slate-400">Usually a few minutes. We'll unlock withdrawals and sending as soon as it's approved.</p></div></div>
+  )
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-start gap-3 rounded-2xl bg-mint-400/10 p-3"><ShieldCheck className="shrink-0 text-mint-300" />
+        <p className="text-sm">Verify once to <b>withdraw</b> and <b>send money</b>. Takes about 2 minutes, for every nationality.</p></div>
+      <ul className="grid gap-1.5 text-sm text-slate-300">
+        <li>📄 Photo of your <b>passport</b>, national ID or TRNC residence permit</li>
+        <li>🤳 A quick live selfie (we check it's really you)</li>
+        <li>✍️ The name on your document must match <b>{me?.profile.fullName}</b></li>
+      </ul>
+      {me?.profile.kyc === 'failed' && <p className="rounded-xl bg-rose-500/10 p-3 text-xs text-rose-300">Your last check wasn't approved. Use a valid, unexpired document and good light, then try again.</p>}
+      {err && <p className="text-sm text-rose-300">{err}</p>}
+      <button className="btn-primary py-4" disabled={busy} onClick={start}>{busy ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />} Verify my identity</button>
+      <p className="flex items-start gap-1.5 text-[11px] text-slate-500"><Lock size={12} className="mt-0.5 shrink-0" /> Done on Didit's secure page. Luda keeps only your verified name, date of birth, country and the last 4 characters of your document number.</p>
+      {ninAvailable && <button className="text-xs text-slate-400 underline" onClick={onUseNin}>Nigerian? Verify with NIN or BVN instead</button>}
+    </div>
+  )
+}
+
+function NinKyc({ onDone }: { onDone?: () => void }) {
   const { me, refresh } = useLive()
   const [type, setType] = useState<'nin' | 'bvn'>('nin')
   const [num, setNum] = useState('')

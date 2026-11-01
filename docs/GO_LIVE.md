@@ -83,6 +83,7 @@ Optional (defaults in brackets):
 | `DEPOSIT_FEE_PCT` / `DEPOSIT_FEE_FLAT` / `DEPOSIT_FEE_FLAT_WAIVE_BELOW` / `DEPOSIT_FEE_CAP` | Naira top-up fee passed to the user (`1.5` / `100` / `2500` / `2000`, matching Paystack's local card fee) |
 | `FOREIGN_CURRENCIES` | which other currencies to offer, e.g. `GHS,USD` (all six) |
 | `FOREIGN_FEE_PCT` | fee passed to the user on other-currency top-ups (`3.8`) |
+| `DIDIT_API_KEY` / `DIDIT_WORKFLOW_ID` / `DIDIT_WEBHOOK_SECRET` | ID document + selfie checks (see below) |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_VERIFY_SID` | real SMS phone checks (see below) |
 | `FX_TRY_RATES` | your own rates instead of live ones, as units per ₺1, e.g. `{"USD":0.029,"GHS":0.35}` |
 
@@ -150,6 +151,20 @@ Once they're set:
 - **One Luda account per phone number.**
 
 Until they're set, the phone step is skipped.
+
+### ID checks with Didit (any nationality, free for 500 a month)
+Students photograph their **passport, national ID, driver's licence or residence permit** and take a **live selfie**. Didit checks that the document is real and that the face matches. Luda then asks Didit for the result directly, and unlocks withdrawals and sending.
+1. In the Didit Console, use the **live** application ("My Application", not the Sandbox one). Go to **API & Webhooks** and copy the **API key**.
+2. In Supabase, go to **Edge Functions → Secrets** and add:
+   - `DIDIT_API_KEY` = your API key
+   - `DIDIT_WORKFLOW_ID` = `e573a01e-9ba1-480b-b2e6-499f237077a0` (your "Free KYC" workflow)
+3. Optional, for instant results: in Didit, add a webhook pointing to your `pay-webhook` address, copy its **secret**, and add it in Supabase as `DIDIT_WEBHOOK_SECRET`. Without it, Luda still gets the result when the student comes back or next opens the app.
+
+Built-in rules:
+- The name on the document must match the Luda name.
+- **One document can verify only one account.**
+- Luda stores only the verified name, date of birth, country and the last 4 characters of the document number.
+- Nigerians can still use NIN/BVN if Dojah is set up.
 
 ### Fingerprint / Face ID
 Nothing to set up. Students switch it on in **Security Center → Fingerprint / Face ID**, and it needs their PIN once. After that they unlock Luda and approve payments with their fingerprint, and the PIN still works as a backup. Each phone is checked by your server; the fingerprint itself never leaves the phone.

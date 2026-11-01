@@ -128,7 +128,7 @@ export function KycStatus({ compact }: { compact?: boolean }) {
 export function useKycReview() {
   const { s, set, reward, notify } = useStore()
   useEffect(() => {
-    if (s.kyc.status !== 'pending') return
+    if (LIVE || s.kyc.status !== 'pending') return // live: only the server (Didit/Dojah) approves
     const wait = Math.max(0, (s.kyc.submittedAt ?? Date.now()) + 6000 - Date.now())
     const t = setTimeout(() => {
       set((p) => ({ ...p, verified: true, kyc: { ...p.kyc, status: 'verified' } }))
@@ -145,8 +145,8 @@ function LiveKycStatus() {
   return (
     <div className={`flex items-center gap-3 rounded-2xl border p-3 ${ok ? 'border-mint-400/40 bg-mint-400/10 text-mint-300' : 'border-gold-400/40 bg-gold-400/10 text-gold-300'}`}>
       {ok ? <BadgeCheck /> : <ShieldCheck />}
-      <div className="flex-1"><p className="text-sm font-bold">{ok ? 'Identity verified' : 'Identity not verified'}</p>
-        <p className="text-xs text-slate-400">{ok ? 'Withdrawals and sending money are unlocked.' : 'You can top up (up to ₦100,000/day) and pay for things. Verify with your NIN or BVN to withdraw and send.'}</p></div>
+      <div className="flex-1"><p className="text-sm font-bold">{ok ? 'Identity verified' : s.kyc.status === 'pending' ? 'ID check in progress' : 'Identity not verified'}</p>
+        <p className="text-xs text-slate-400">{ok ? 'Withdrawals and sending money are unlocked.' : 'You can top up and pay for things. Verify your ID (passport, national ID or residence permit + selfie) to withdraw and send.'}</p></div>
     </div>
   )
 }

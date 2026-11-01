@@ -5,14 +5,14 @@
 import { hashPin, randomHex, recover, refresh, setPassword, signIn, signUp, userFromToken, type AuthEnv } from './auth.ts'
 import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion } from './webauthn.ts'
 import { MoneyError, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
-import { accountMatchesName, idMatchesName, kycEnabled, lookupId, normDate, type KycEnv } from './kyc.ts'
+import { accountMatchesName, diditDecision, diditEnabled, diditSignatureOk, diditStart, docHash, idMatchesName, kycEnabled, lookupId, nameTokens, normDate, type DiditEnv, type KycEnv } from './kyc.ts'
 import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, depositFee, foreignEnabled, foreignFee, margin, ngnPerTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
 import { checkTransfer, createRecipient, listBanks, resolveAccount, sendTransfer } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
 import { checkCode, normPhone, sendCode, smsEnabled, type SmsEnv } from './sms.ts'
 import { checkWebhook, initCheckout, verifyPayment, webhookEvent, type Fetch, type Keys, type Provider } from './providers.ts'
 
-export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv {
+export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv {
   APP_URL: string
   ALLOWED_ORIGINS?: string
   SUPABASE_URL: string
@@ -120,6 +120,41 @@ function noHold(p: Profile, d: Deps) {
   }
 }
 
+/**
+ * Applies a Didit decision to the profile (asked from Didit's API, never trusted from the browser).
+ * Approved → verified, with the legal name from the document (used to match withdrawal bank accounts).
+ * The document's name must match the Luda name, and one document can verify only one account.
+ */
+async function kycSync(p: Profile, env: Env, d: Deps): Promise<{ status: Profile['kyc_status']; message?: string }> {
+  if (p.kyc_status === 'verified' || !p.kyc_session_id || !diditEnabled(env)) return { status: p.kyc_status }
+  const r = await diditDecision(p.kyc_session_id, env, d.fetch)
+  await d.db.log(p.kyc_session_id, 'kyc_decision', { status: r.raw })
+  if (r.status === 'pending') { if (p.kyc_status !== 'pending') await d.db.updateProfile(p.user_id, { kyc_status: 'pending' }); return { status: 'pending' } }
+  if (r.status === 'not_started') return { status: p.kyc_status }
+  if (r.status === 'declined') { await d.db.updateProfile(p.user_id, { kyc_status: 'failed' }); return { status: 'failed', message: 'Your ID check was not approved. Try again with a clear photo of a valid document.' } }
+  const legal = (r.name || `${r.firstName} ${r.lastName}`).trim().toUpperCase()
+  const mine = new Set(nameTokens(p.full_name))
+  const overlap = nameTokens(legal).filter((w) => mine.has(w)).length
+  if (!legal || overlap < Math.min(2, nameTokens(p.full_name).length)) {
+    await d.db.updateProfile(p.user_id, { kyc_status: 'failed' })
+    return { status: 'failed', message: `The name on your document (${legal || 'unreadable'}) doesn't match your Luda name "${p.full_name}". Contact support to correct it.` }
+  }
+  const hash = r.docNumber ? await docHash(r.docType, r.country, r.docNumber) : null
+  try {
+    await d.db.updateProfile(p.user_id, {
+      kyc_status: 'verified', kyc_name: legal, kyc_dob: r.dob || null, kyc_id_type: `didit:${r.docType}`.slice(0, 40),
+      kyc_id_last4: r.docNumber ? r.docNumber.slice(-4) : null, kyc_doc_hash: hash, kyc_country: r.country.slice(0, 40) || null, kyc_at: new Date().toISOString(),
+    } as Partial<Profile>)
+  } catch (e) {
+    if (e instanceof MoneyError && e.message === 'conflict') {
+      await d.db.updateProfile(p.user_id, { kyc_status: 'failed' })
+      return { status: 'failed', message: 'This ID document is already verified on another Luda account. Contact support if this is a mistake.' }
+    }
+    throw e
+  }
+  return { status: 'verified' }
+}
+
 const needKyc = (p: Profile, what: string) => { if (p.kyc_status !== 'verified') throw new Fail(`Verify your identity to ${what}`, 403) }
 
 /** Loads (or, on first use, creates) the signed-in user's profile. */
@@ -187,7 +222,7 @@ type Route = (ctx: { req: Request; env: Env; d: Deps; body: Body; url: URL }) =>
 
 const routes: Record<string, Route> = {
   /* ---- public ---- */
-  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env) } }),
+  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env) } }),
 
   'GET username': async ({ d, url }) => {
     const u = (url.searchParams.get('u') ?? '').toLowerCase()
@@ -263,6 +298,11 @@ const routes: Record<string, Route> = {
     // (covers a missed webhook or a closed browser). Each payment is re-checked at most every 2 minutes.
     for (const pay of (await d.db.pendingDeposits(p.user_id, new Date((d.now?.() ?? new Date()).getTime() - 48 * 3600e3).toISOString())).slice(0, 3)) {
       if (await d.db.hit(`recheck:${pay.reference}`, 1, 120)) await finalizeDeposit(pay.reference, env, d, 'recheck').catch(() => {})
+    }
+    // ID check finished while the user was away? Ask Didit (at most every 2 minutes).
+    if (p.kyc_status !== 'verified' && p.kyc_session_id && diditEnabled(env) && (await d.db.hit(`kycrecheck:${p.user_id}`, 1, 120))) {
+      await kycSync(p, env, d).catch(() => {})
+      Object.assign(p, (await d.db.profile(p.user_id)) ?? {})
     }
     // Same for withdrawals whose bank confirmation (webhook) never arrived.
     if (env.PAYSTACK_SECRET_KEY) for (const w of (await d.db.withdrawals(p.user_id, 5)).filter((x) => x.status === 'processing' && Date.parse(x.created_at) < Date.now() - 120e3)) {
@@ -410,6 +450,24 @@ const routes: Record<string, Route> = {
       ])
     } catch (e) { moneyMsg(e) }
     return { ok: true, to: to.username }
+  },
+
+  // Real-time document check (any nationality): returns Didit's secure page for ID photo + live selfie.
+  'POST kyc-start': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    if (p.kyc_status === 'verified') return { status: 'verified' }
+    if (!diditEnabled(env)) throw new Fail('ID checks are not switched on yet', 503)
+    await limit(d, `kyc-start:${p.user_id}`, 5, 86400, 'Too many ID check attempts today. Try again tomorrow or contact support.')
+    const s = await diditStart(p.user_id, `${env.APP_URL.replace(/\/$/, '')}/kyc/return`, env, d.fetch).catch((e) => { throw new Fail(e instanceof Error ? e.message : 'Could not start the ID check', 502) })
+    await d.db.updateProfile(p.user_id, { kyc_session_id: s.sessionId, ...(p.kyc_status === 'failed' ? { kyc_status: 'none' } : {}) } as Partial<Profile>)
+    return { url: s.url }
+  },
+
+  'GET kyc-status': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    const r = await kycSync(p, env, d).catch(() => ({ status: p.kyc_status, message: 'Could not reach the ID checker. Try again in a minute.' }))
+    const fresh = await d.db.profile(p.user_id)
+    return { ...r, name: fresh?.kyc_name ?? null }
   },
 
   'POST kyc': async ({ req, env, d, body }) => {
@@ -592,6 +650,18 @@ export async function handleApi(req: Request, env: Env, d: Deps): Promise<Respon
 export async function handleWebhook(req: Request, env: Env, d: Deps): Promise<Response> {
   if (req.method !== 'POST') return new Response('ok')
   const raw = await req.text()
+  // Didit (ID checks): we only use the session id from the message and ask Didit for the real decision.
+  if (req.headers.get('x-signature') || req.headers.get('x-signature-v2') || req.headers.get('x-signature-simple')) {
+    if (env.DIDIT_WEBHOOK_SECRET && !(await diditSignatureOk(raw, req.headers.get('x-signature'), env))) {
+      if (await d.db.hit('badsig', 50, 3600).catch(() => false)) await d.db.log('-', 'webhook_bad_signature', { from: 'didit' })
+      return new Response('bad signature', { status: 401 })
+    }
+    let sid = ''
+    try { sid = String((JSON.parse(raw) as Record<string, unknown>).session_id ?? '') } catch { /* ignore */ }
+    const p = sid ? await d.db.profileByKycSession(sid) : null
+    if (p) { await d.db.log(sid, 'webhook', { provider: 'didit' }); await kycSync(p, env, d).catch(() => {}) }
+    return new Response('ok')
+  }
   const provider = await checkWebhook(req.headers, raw, env)
   if (!provider) {
     // Record rejected webhooks (e.g. a wrong Flutterwave secret hash) so the owner's check can spot them.
