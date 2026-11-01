@@ -154,7 +154,8 @@ export async function finalizeDeposit(reference: string, env: Env, d: Deps, sour
     if (v.status === 'failed') { await d.db.settle(reference, 'failed', v.providerTxId); return { ...p, status: 'failed' } }
     return p
   }
-  if (v.reference !== reference || v.currency !== p.currency || v.amountMinor !== p.amount_minor) {
+  // Paid at least what we asked (a provider may add its own fee on top) in the same currency → credit as quoted.
+  if (v.reference !== reference || v.currency !== p.currency || v.amountMinor < p.amount_minor) {
     await d.db.settle(reference, 'mismatch', v.providerTxId)
     await d.db.log(reference, 'mismatch', { expected: { amount: p.amount_minor, currency: p.currency }, got: v })
     return { ...p, status: 'mismatch' }
@@ -256,9 +257,16 @@ const routes: Record<string, Route> = {
   /* ---- signed in ---- */
   'GET me': async ({ req, env, d }) => {
     const p = await me(req, env, d)
-    const [balances, history, tickets, withdrawals] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 10)])
+    // Self-healing: re-check this user's unfinished top-ups from the last 2 days with the provider
+    // (covers a missed webhook or a closed browser). Each payment is re-checked at most every 2 minutes.
+    for (const pay of (await d.db.pendingDeposits(p.user_id, new Date((d.now?.() ?? new Date()).getTime() - 48 * 3600e3).toISOString())).slice(0, 3)) {
+      if (await d.db.hit(`recheck:${pay.reference}`, 1, 120)) await finalizeDeposit(pay.reference, env, d, 'recheck').catch(() => {})
+    }
+    const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
     return {
       profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null },
+      // Every top-up attempt with its status (pending / paid / failed / mismatch), so the app can show all of them.
+      deposits: deposits.map((x) => ({ reference: x.reference, provider: x.provider, status: x.status, chargeMinor: Number(x.amount_minor), currency: x.currency, feeMinor: Number(x.fee_minor ?? 0), creditMinor: Number(x.credit_minor ?? 0), creditCurrency: x.credit_currency ?? 'NGN', createdAt: x.created_at, paidAt: x.paid_at ?? null })),
       balances, history, tickets, withdrawals: withdrawals.map((w) => ({ ...w, account_number: '••••' + w.account_number.slice(-4), recipient_code: undefined })),
     }
   },

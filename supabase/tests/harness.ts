@@ -50,6 +50,8 @@ export async function makeDb() {
     async tickets(id, l) { return q(`select * from tickets where user_id=$1 order by created_at desc limit ${l}`, [id]) },
     async withdrawal(ref) { const r = (await q(`select * from withdrawals where reference=$1`, [ref]))[0]; return r ? { ...r, amount_minor: n(r.amount_minor), fee_minor: n(r.fee_minor) } : null },
     async withdrawals(id, l) { return q(`select * from withdrawals where user_id=$1 order by created_at desc limit ${l}`, [id]) },
+    async deposits(id, n) { return (await q(`select * from payments where user_id=$1 and purpose='deposit' order by created_at desc limit ${n}`, [id])).map((r) => ({ ...r, amount_minor: Number(r.amount_minor), credit_minor: Number(r.credit_minor), fee_minor: Number(r.fee_minor) })) },
+    async pendingDeposits(id, since) { return (await q(`select * from payments where user_id=$1 and purpose='deposit' and status='pending' and created_at >= $2 order by created_at desc limit 5`, [id, since])).map((r) => ({ ...r, amount_minor: Number(r.amount_minor), credit_minor: Number(r.credit_minor) })) },
     async depositedSince(id, since, cc) { return Number((await q(`select coalesce(sum(credit_minor),0) s from payments where user_id=$1 and purpose='deposit' and credit_currency=$3 and status in ('pending','paid') and created_at >= $2`, [id, since, cc]))[0].s) },
     async post(entries: Entry[]) { return money(async () => (await q(`select luda_post($1::jsonb) r`, [JSON.stringify(entries)]))[0].r) },
     async depositPaid(ref, tx) { await money(() => q(`select luda_deposit_paid($1,$2)`, [ref, tx])) },
@@ -115,7 +117,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       if (url.pathname === '/transaction/initialize') { world.inits.set(body.reference, body.amount); world.initCur.set(body.reference, body.currency); return ok({ status: true, data: { authorization_url: `https://checkout.paystack.com/${body.reference}` } }) }
       if (url.pathname.startsWith('/transaction/verify/')) {
         const ref = decodeURIComponent(url.pathname.split('/').pop()!), c = world.charges.get(ref) ?? { status: 'abandoned' }
-        return ok({ status: true, data: { status: c.status, amount: c.amount ?? world.inits.get(ref), currency: c.currency ?? world.initCur.get(ref) ?? 'NGN', reference: ref, id: 4242 } })
+        return ok({ status: true, data: { status: c.status, amount: c.amount ?? world.inits.get(ref), requested_amount: (c as any).requested, currency: c.currency ?? world.initCur.get(ref) ?? 'NGN', reference: ref, id: 4242 } })
       }
       if (url.pathname === '/bank') return ok({ status: true, data: [{ code: '058', name: 'Guaranty Trust Bank', active: true }, { code: '044', name: 'Access Bank', active: true }] })
       if (url.pathname === '/bank/resolve') {

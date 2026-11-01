@@ -99,12 +99,14 @@ export async function liveSetPassword(accessToken: string, password: string) {
 export interface LedgerRow { id: number; currency: Cur; amount_minor: number; balance_after: number; kind: string; ref: string; meta: Record<string, any> | null; at: string }
 export interface LiveTicket { id: string; code: string; item: Record<string, any>; base_amount: number; paid_minor: number; paid_currency: Cur; status: string; created_at: string }
 export interface LiveWithdrawal { reference: string; amount_minor: number; fee_minor: number; bank_name: string | null; account_number: string; account_name: string; status: 'processing' | 'paid' | 'failed' | 'reversed'; created_at: string }
+export interface LiveDeposit { reference: string; provider: Provider; status: 'pending' | 'paid' | 'failed' | 'mismatch'; chargeMinor: number; currency: string; feeMinor: number; creditMinor: number; creditCurrency: Cur; createdAt: string; paidAt: string | null }
 export interface Me {
   profile: { username: string; fullName: string; email: string; kyc: 'none' | 'verified' | 'failed'; kycName: string | null; hasPin: boolean; frozen: boolean; frozenBy: 'user' | 'admin' | null; phone: string | null; phoneVerified: boolean; moneyHoldUntil: string | null }
   balances: Record<Cur, number>
   history: LedgerRow[]
   tickets: LiveTicket[]
   withdrawals: LiveWithdrawal[]
+  deposits: LiveDeposit[]
 }
 export interface LiveConfig { google: boolean; sms: boolean; providers: Provider[]; foreign: string[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number } }
 

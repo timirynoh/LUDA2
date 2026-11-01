@@ -60,7 +60,8 @@ export async function verifyPayment(p: Provider, reference: string, k: Keys, f: 
   if (p === 'paystack') {
     const j = await call(f, `${PAYSTACK}/transaction/verify/${encodeURIComponent(reference)}`, need(k.PAYSTACK_SECRET_KEY, 'PAYSTACK_SECRET_KEY'))
     const d = j.data ?? {}
-    return { ok: d.status === 'success', status: String(d.status ?? 'unknown'), amountMinor: Number(d.amount ?? 0), currency: String(d.currency ?? ''), reference: String(d.reference ?? ''), providerTxId: String(d.id ?? '') }
+    // If the merchant passes Paystack's fee to the customer, `amount` includes that fee; `requested_amount` is what we asked for.
+    return { ok: d.status === 'success', status: String(d.status ?? 'unknown'), amountMinor: Number(d.requested_amount ?? d.amount ?? 0), currency: String(d.currency ?? ''), reference: String(d.reference ?? ''), providerTxId: String(d.id ?? '') }
   }
   const j = await call(f, `${FLW}/transactions/verify_by_reference?tx_ref=${encodeURIComponent(reference)}`, need(k.FLW_SECRET_KEY, 'FLW_SECRET_KEY'))
   const d = j.data ?? {}

@@ -312,6 +312,26 @@ test('change password while signed in needs the current one', async () => {
   assert.equal((await call('POST', 'login', { id: 'ada@x.com', password: 'Another2026!' })).status, 200)
 })
 
+test('top-up credited even if the user never came back and no webhook arrived (self-healing)', async () => {
+  const before = (await bal(ada)).NGN
+  const r = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 1_000_00 }, ada)
+  world.charges.set(r.j.reference, { status: 'success' }) // paid on Paystack; browser closed; webhook missing
+  assert.equal((await bal(ada)).NGN, before + 1_000_00, 'credited just by opening the app')
+  assert.equal((await bal(ada)).NGN, before + 1_000_00, 'and only once')
+  const deps = (await call('GET', 'me', undefined, ada)).j.deposits
+  const mine = deps.find((x: any) => x.reference === r.j.reference)
+  assert.equal(mine.status, 'paid'); assert.equal(mine.provider, 'paystack'); assert.ok(mine.createdAt && mine.paidAt)
+  assert.ok(deps.some((x: any) => x.status === 'mismatch'), 'failed / under-review top-ups are listed too')
+})
+
+test('customer paid Paystack fee on top (amount > asked): still credited as quoted', async () => {
+  const before = (await bal(ada)).NGN
+  const r = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 1_000_00 }, ada)
+  world.charges.set(r.j.reference, { status: 'success', amount: r.j.chargeMinor + 15_00, requested: r.j.chargeMinor } as any)
+  assert.equal((await call('GET', `deposit?ref=${r.j.reference}`, undefined, ada)).j.status, 'paid')
+  assert.equal((await bal(ada)).NGN, before + 1_000_00)
+})
+
 test('books balance: every wallet equals the sum of its ledger', async () => {
   const bad = await q(`select w.user_id from wallets w left join (select user_id, currency, sum(amount_minor) s from ledger group by 1,2) l using (user_id, currency) where w.balance_minor <> coalesce(l.s, 0)`)
   assert.equal(bad.length, 0)
