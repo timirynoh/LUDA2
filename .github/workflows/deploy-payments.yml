@@ -22,7 +22,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: node --test supabase/functions/_shared/payments.test.ts
+      - name: Money tests (real Postgres, fake providers)
+        working-directory: supabase
+        run: npm ci && npm test
 
   deploy:
     needs: test
@@ -45,10 +47,10 @@ jobs:
           supabase link --project-ref "$SUPABASE_PROJECT_REF" -p "$SUPABASE_DB_PASSWORD"
           supabase db push -p "$SUPABASE_DB_PASSWORD"
       - name: Deploy payment functions
-        # No Supabase JWT check: pay-init/pay-verify are public by design (rate-limited,
-        # server-priced) and pay-webhook is protected by the provider signature.
+        # No Supabase JWT gate: "api" checks the user token itself (public routes are
+        # rate-limited) and pay-webhook is protected by the provider signature.
         run: |
-          for fn in pay-init pay-verify pay-webhook; do
+          for fn in api pay-webhook; do
             supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
           done
       - name: Print your webhook address

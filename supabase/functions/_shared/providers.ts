@@ -99,8 +99,15 @@ export async function checkWebhook(headers: Headers, raw: string, k: Keys): Prom
   return null
 }
 
-/** Pulls our reference out of a (signature-checked) webhook body. */
-export function webhookReference(p: Provider, body: Record<string, any>): string {
-  if (p === 'paystack') return body?.event === 'charge.success' ? String(body.data?.reference ?? '') : ''
-  return String(body?.data?.tx_ref ?? body?.txRef ?? '')
+/** What a (signature-checked) webhook is about: a deposit charge or a payout transfer, and our reference. */
+export function webhookEvent(p: Provider, body: Record<string, any>): { type: 'charge' | 'transfer' | 'other'; ref: string } {
+  const ev = String(body?.event ?? body?.['event.type'] ?? '')
+  if (p === 'paystack') {
+    if (ev === 'charge.success') return { type: 'charge', ref: String(body.data?.reference ?? '') }
+    if (ev.startsWith('transfer.')) return { type: 'transfer', ref: String(body.data?.reference ?? '') }
+    return { type: 'other', ref: '' }
+  }
+  if (ev.startsWith('transfer')) return { type: 'other', ref: '' } // Luda pays out via Paystack only
+  const ref = String(body?.data?.tx_ref ?? body?.txRef ?? '')
+  return { type: ref ? 'charge' : 'other', ref }
 }
