@@ -59,6 +59,13 @@ export async function makeDb() {
     async buyTicket(u, cur, amt, base, code, item) { return money(async () => (await q(`select luda_buy_ticket($1,$2,$3,$4,$5,$6::jsonb) r`, [u, cur, amt, base, code, JSON.stringify(item)]))[0].r.ticket) },
     async withdraw(u, ref, amt, fee, bank, bankName, acct, name, rcp) { await money(() => q(`select luda_withdraw($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [u, ref, amt, fee, bank, bankName, acct, name, rcp])) },
     async withdrawSettle(ref, st, tc, note) { await money(() => q(`select luda_withdraw_settle($1,$2,$3,$4)`, [ref, st, tc ?? null, note ?? null])) },
+    async createCase(c) { return (await q(`insert into cases (user_id,category,subject,reference) values ($1,$2,$3,$4) returning *`, [c.user_id, c.category, c.subject, c.reference]))[0] },
+    async getCase(id) { const r = (await q(`select c.*, json_build_object('username',p.username,'full_name',p.full_name,'email',p.email,'kyc_status',p.kyc_status) as user from cases c join profiles p using (user_id) where c.id::text=$1`, [id]))[0]; return r ?? null },
+    async updateCase(id, patch) { const k = Object.keys(patch); await q(`update cases set ${k.map((x, i) => `${x}=$${i + 2}`).join(',')}, updated_at=now() where id=$1`, [id, ...k.map((x) => (patch as any)[x])]) },
+    async userCases(u, n) { return q(`select * from cases where user_id=$1 order by updated_at desc limit ${n}`, [u]) },
+    async listCases(st, n) { return q(`select c.*, json_build_object('username',p.username,'full_name',p.full_name,'email',p.email,'kyc_status',p.kyc_status) as user from cases c join profiles p using (user_id) where $1::text is null or c.status = any(string_to_array($1, ',')) order by c.updated_at desc limit ${n}`, [st]) },
+    async addCaseMessage(m) { await q(`insert into case_messages (case_id,author,author_name,body,files) values ($1,$2,$3,$4,$5)`, [m.case_id, m.author, m.author_name, m.body, m.files]) },
+    async caseMessages(ids) { return ids.length ? q(`select * from case_messages where case_id::text = any($1) order by id`, [ids]) : [] },
     async adminOverview() { return (await q(`select luda_admin_overview() r`))[0].r },
     async searchProfiles(qs, n) { const s = `%${qs}%`; return q<Profile>(`select * from profiles where $1 = '%%' or username ilike $1 or email ilike $1 or full_name ilike $1 or coalesce(phone,'') ilike $1 order by created_at desc limit ${n}`, [s]) },
     async listDeposits(st, qs, n) { return (await q(`select * from payments where purpose='deposit' and ($1::text is null or status=$1) and ($2::text is null or reference ilike $2 or email ilike $2) order by created_at desc limit ${n}`, [st, qs ? `%${qs}%` : null])).map((r) => ({ ...r, amount_minor: Number(r.amount_minor), credit_minor: Number(r.credit_minor), fee_minor: Number(r.fee_minor) })) },
@@ -88,6 +95,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       ['10987654321', { first_name: 'BOLA', last_name: 'ADEYEMI', date_of_birth: '15-Apr-2000' }]]),
     calls: [] as string[],
     didit: new Map<string, Record<string, unknown>>(), // session id -> decision JSON
+    files: new Map<string, number>(), // storage path -> size
     diditN: 0,
   }
   const ok = (j: unknown, status = 200) => new Response(JSON.stringify(j), { status })
@@ -153,6 +161,12 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       if (url.pathname.endsWith('/Verifications')) { world.calls.push('sms:' + form.get('To')); return ok({ status: 'pending' }, 201) }
       if (url.pathname.endsWith('/VerificationCheck')) return ok({ status: form.get('Code') === '123456' ? 'approved' : 'pending' })
     }
+    // Supabase Storage (private case photos)
+    if (url.pathname.startsWith('/storage/v1/object/sign/')) return ok({ signedURL: url.pathname.replace('/storage/v1', '') + '?token=t' })
+    if (url.pathname.startsWith('/storage/v1/object/case-files/') && init?.method === 'POST') {
+      if (!new Headers(init?.headers).get('apikey')) return ok({ error: 'no key' }, 401)
+      world.files.set(url.pathname.split('/case-files/')[1], (init!.body as Uint8Array).length); return ok({ Key: url.pathname })
+    }
     // Didit (document + selfie KYC)
     if (url.host === 'verification.didit.me') {
       if (new Headers(init?.headers).get('x-api-key') !== 'didit_key') return ok({ detail: 'bad key' }, 401)
@@ -174,7 +188,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
 export const ENV: Env = {
   APP_URL: 'https://luda.test', SUPABASE_URL: 'https://proj.supabase.co', AUTH_KEY: 'anon',
   PAYSTACK_SECRET_KEY: 'sk_live_test', FLW_SECRET_KEY: 'FLWSECK-x', FLW_SECRET_HASH: 'flwhash',
-  FX_FIXED_RATE: '40', FX_MARGIN: '0.01', FX_TRY_RATES: '{"GHS":0.4,"USD":0.025,"KES":3.2}', DOJAH_APP_ID: 'app', DOJAH_SECRET_KEY: 'sec', PAYSTACK_CUSTOMER_PAYS_FEE: 'false', DIDIT_API_KEY: 'didit_key', DIDIT_WORKFLOW_ID: 'wf_free_kyc', DIDIT_WEBHOOK_SECRET: 'didit_secret', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_VERIFY_SID: 'VA1',
+  FX_FIXED_RATE: '40', FX_MARGIN: '0.01', FX_TRY_RATES: '{"GHS":0.4,"USD":0.025,"KES":3.2}', DOJAH_APP_ID: 'app', DOJAH_SECRET_KEY: 'sec', PAYSTACK_CUSTOMER_PAYS_FEE: 'false', SERVICE_KEY: 'svc_key', DIDIT_API_KEY: 'didit_key', DIDIT_WORKFLOW_ID: 'wf_free_kyc', DIDIT_WEBHOOK_SECRET: 'didit_secret', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_VERIFY_SID: 'VA1',
 }
 
 export const sign = {

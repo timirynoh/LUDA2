@@ -32,6 +32,9 @@ export interface WithdrawalRow {
 }
 export interface Entry { user_id: string; currency: string; amount_minor: number; kind: string; ref: string; meta?: Record<string, unknown> }
 
+export interface CaseRow { id: string; user_id: string; category: string; subject: string; reference: string | null; status: 'open' | 'waiting_user' | 'resolved' | 'rejected'; resolution: string | null; created_at: string; updated_at: string; user?: { username: string; full_name: string; email: string; kyc_status: string } }
+export interface CaseMessage { id: number; case_id: string; author: 'user' | 'admin'; author_name: string | null; body: string; files: string[]; at: string }
+
 export class MoneyError extends Error {}
 
 export interface Db {
@@ -67,6 +70,14 @@ export interface Db {
   withdraw(userId: string, reference: string, amountMinor: number, feeMinor: number, bankCode: string, bankName: string, account: string, name: string, recipient: string): Promise<void>
   withdrawSettle(reference: string, status: 'paid' | 'failed' | 'reversed', transferCode?: string | null, note?: string | null): Promise<void>
   spent(userId: string, currency: string, kinds: string[], hours: number): Promise<number>
+  // support cases
+  createCase(c: Pick<CaseRow, 'user_id' | 'category' | 'subject' | 'reference'>): Promise<CaseRow>
+  getCase(id: string): Promise<CaseRow | null>
+  updateCase(id: string, patch: Partial<CaseRow>): Promise<void>
+  userCases(userId: string, limit: number): Promise<CaseRow[]>
+  listCases(status: string | null, limit: number): Promise<CaseRow[]>
+  addCaseMessage(m: Pick<CaseMessage, 'case_id' | 'author' | 'author_name' | 'body' | 'files'>): Promise<void>
+  caseMessages(caseIds: string[]): Promise<CaseMessage[]>
   // owner admin
   adminOverview(): Promise<Record<string, any>>
   searchProfiles(q: string, limit: number): Promise<Profile[]>
@@ -157,6 +168,13 @@ export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
     },
     async withdrawSettle(ref, status, tc, note) { await rpc('luda_withdraw_settle', { p_reference: ref, p_status: status, p_transfer: tc ?? null, p_note: note ?? null }) },
     async spent(u, cur, kinds, hours) { return Number(await rpc('luda_spent', { p_user: u, p_currency: cur, p_kinds: kinds, p_hours: hours })) },
+    async createCase(c) { const r = await call('cases', { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(c) }); return ((await r.json()) as CaseRow[])[0] },
+    async getCase(id) { return (await rows<CaseRow>(`cases?id=eq.${q(id)}&select=*,user:profiles(username,full_name,email,kyc_status)&limit=1`))[0] ?? null },
+    async updateCase(id, patch) { await call(`cases?id=eq.${q(id)}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) }) },
+    userCases: (u, n) => rows<CaseRow>(`cases?user_id=eq.${q(u)}&order=updated_at.desc&limit=${n}`),
+    listCases: (st, n) => rows<CaseRow>(`cases?select=*,user:profiles(username,full_name,email,kyc_status)${st ? `&status=in.(${st.split(',').map(q).join(',')})` : ''}&order=updated_at.desc&limit=${n}`),
+    async addCaseMessage(m) { await call('case_messages', { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(m) }) },
+    caseMessages: (ids) => (ids.length ? rows<CaseMessage>(`case_messages?case_id=in.(${ids.map(q).join(',')})&order=id.asc`) : Promise.resolve([])),
     async adminOverview() { return rpc('luda_admin_overview', {}) },
     searchProfiles(qs, n) {
       const s = qs.replace(/[^\w@.+ -]/g, '').trim()

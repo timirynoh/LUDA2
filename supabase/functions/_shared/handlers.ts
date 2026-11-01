@@ -4,11 +4,12 @@
 // crediting; spending needs the user's PIN; withdrawing and sending need KYC.
 import { hashPin, randomHex, recover, refresh, setPassword, signIn, signUp, userFromToken, type AuthEnv } from './auth.ts'
 import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion } from './webauthn.ts'
-import { MoneyError, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
+import { MoneyError, type CaseRow, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
 import { accountMatchesName, diditDecision, diditEnabled, diditSignatureOk, diditStart, docHash, idMatchesName, kycEnabled, lookupId, nameTokens, normDate, type DiditEnv, type KycEnv } from './kyc.ts'
 import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, depositFee, foreignEnabled, foreignFee, margin, ngnPerTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
 import { checkTransfer, createRecipient, listBanks, resolveAccount, sendTransfer } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
+import { decodeFile, putFile, signedUrl } from './storage.ts'
 import { checkCode, normPhone, sendCode, smsEnabled, type SmsEnv } from './sms.ts'
 import { checkWebhook, initCheckout, verifyPayment, webhookEvent, type Fetch, type Keys, type Provider } from './providers.ts'
 
@@ -22,6 +23,7 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv {
   // Set to match each dashboard's "who pays the fee" setting, so the customer never pays it twice.
   // Paystack defaults to true (the owner's setting: customer pays); Flutterwave defaults to false.
   PAYSTACK_CUSTOMER_PAYS_FEE?: string; FLW_CUSTOMER_PAYS_FEE?: string
+  SERVICE_KEY?: string // for private file storage (support-case photos)
   ADMIN_EMAILS?: string // comma-separated Luda account emails that can open the owner's admin page
 }
 export interface Deps { db: Db; fetch?: Fetch; now?: () => Date }
@@ -40,6 +42,7 @@ async function googleEnabled(env: Env, d: Deps) {
   return authSettings.google
 }
 
+type CaseStatus = CaseRow['status']
 class Fail extends Error { status: number; constructor(msg: string, status = 400) { super(msg); this.status = status } }
 
 export function cors(req: Request, env: Env) {
@@ -171,6 +174,33 @@ const adminProfile = (u: Profile) => ({
   kyc: u.kyc_status, kycName: u.kyc_name ?? null, kycType: u.kyc_id_type ?? null, kycLast4: u.kyc_id_last4 ?? null, kycCountry: u.kyc_country ?? null,
   frozen: u.frozen, frozenBy: u.frozen_by ?? null, moneyHoldUntil: u.money_hold_until ?? null, isAdmin: !!u.is_admin, createdAt: u.created_at,
 })
+
+const CASE_CATEGORIES = ['kyc', 'payment', 'withdrawal', 'account', 'other']
+const cleanText = (v: unknown, max: number) => String(v ?? '').replace(/[<>\u0000-\u0008\u000b-\u001f]/g, '').trim().slice(0, max)
+
+/** Stores up to 4 attached photos/PDFs privately; returns their storage paths. */
+async function storeFiles(env: Env, d: Deps, userId: string, caseId: string, files: unknown): Promise<string[]> {
+  const list = Array.isArray(files) ? files.slice(0, 5) : []
+  if (list.length > 4) throw new Fail('Attach at most 4 files')
+  const out: string[] = []
+  for (const raw of list) {
+    let file
+    try { file = decodeFile(raw as { type?: unknown; data?: unknown }) } catch (e) { throw new Fail(e instanceof Error ? e.message : 'Bad file') }
+    const path = `${userId}/${caseId}/${randomHex(8)}.${file.ext}`
+    await putFile({ SUPABASE_URL: env.SUPABASE_URL, SERVICE_KEY: env.SERVICE_KEY }, path, file.bytes, file.type, d.fetch).catch(() => { throw new Fail('Upload failed, try again', 502) })
+    out.push(path)
+  }
+  return out
+}
+
+/** Messages of some cases, with short-lived links to their files (only for whoever is allowed to see that case). */
+async function threads(env: Env, d: Deps, caseIds: string[]) {
+  const msgs = await d.db.caseMessages(caseIds)
+  return Promise.all(msgs.map(async (m) => ({
+    id: m.id, caseId: m.case_id, author: m.author, authorName: m.author_name, body: m.body, at: m.at,
+    files: await Promise.all((m.files ?? []).map(async (path) => ({ name: path.split('/').pop(), url: await signedUrl({ SUPABASE_URL: env.SUPABASE_URL, SERVICE_KEY: env.SERVICE_KEY }, path, d.fetch).catch(() => null) }))),
+  })))
+}
 
 const needKyc = (p: Profile, what: string) => { if (p.kyc_status !== 'verified') throw new Fail(`Verify your identity to ${what}`, 403) }
 
@@ -473,6 +503,42 @@ const routes: Record<string, Route> = {
     return { ok: true, to: to.username }
   },
 
+  // Support cases / appeals.
+  'POST case-create': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const category = String(body.category ?? ''), subject = cleanText(body.subject, 80), message = cleanText(body.message, 2000)
+    if (!CASE_CATEGORIES.includes(category)) throw new Fail('Pick what the problem is about')
+    if (subject.length < 3 || message.length < 5) throw new Fail('Add a short title and describe the problem')
+    const reference = cleanText(body.reference, 60).replace(/[^\w-]/g, '') || null
+    const open = (await d.db.userCases(p.user_id, 20)).filter((c) => c.status === 'open' || c.status === 'waiting_user')
+    if (open.length >= 3) throw new Fail('You already have 3 open cases. Please wait for a reply or add to an existing one.')
+    await limit(d, `case-new:${p.user_id}`, 5, 86400, 'Too many new cases today. Add details to an existing case instead.')
+    const c = await d.db.createCase({ user_id: p.user_id, category, subject, reference })
+    const files = await storeFiles(env, d, p.user_id, c.id, body.files)
+    await d.db.addCaseMessage({ case_id: c.id, author: 'user', author_name: p.full_name, body: message, files })
+    return { id: c.id }
+  },
+
+  'GET cases': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    const list = await d.db.userCases(p.user_id, 20)
+    const msgs = await threads(env, d, list.map((c) => c.id))
+    return { cases: list.map((c) => ({ ...c, user_id: undefined, messages: msgs.filter((m) => m.caseId === c.id) })) }
+  },
+
+  'POST case-reply': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const c = await d.db.getCase(String(body.caseId ?? ''))
+    if (!c || c.user_id !== p.user_id) throw new Fail('Case not found', 404)
+    const message = cleanText(body.message, 2000)
+    if (message.length < 2 && !(Array.isArray(body.files) && body.files.length)) throw new Fail('Write a message or attach a photo')
+    await limit(d, `case-msg:${p.user_id}`, 30, 86400)
+    const files = await storeFiles(env, d, p.user_id, c.id, body.files)
+    await d.db.addCaseMessage({ case_id: c.id, author: 'user', author_name: p.full_name, body: message || '(photo)', files })
+    await d.db.updateCase(c.id, { status: 'open' }) // a reply re-opens the case for the team
+    return { ok: true }
+  },
+
   // Real-time document check (any nationality): returns Didit's secure page for ID photo + live selfie.
   'POST kyc-start': async ({ req, env, d }) => {
     const p = await me(req, env, d)
@@ -597,7 +663,7 @@ const routes: Record<string, Route> = {
   },
 
   /* ---- owner admin ---- */
-  'GET admin-overview': async ({ req, env, d }) => { await admin(req, env, d); return d.db.adminOverview() },
+  'GET admin-overview': async ({ req, env, d }) => { await admin(req, env, d); return { ...(await d.db.adminOverview()), openCases: (await d.db.listCases('open', 200)).length } },
 
   'GET admin-users': async ({ req, env, d, url }) => {
     await admin(req, env, d)
@@ -623,6 +689,35 @@ const routes: Record<string, Route> = {
     return { withdrawals: (await d.db.listWithdrawals(url.searchParams.get('status') || null, 50)).map((w) => ({ ...w, recipient_code: undefined })) }
   },
 
+  'GET admin-cases': async ({ req, env, d, url }) => {
+    await admin(req, env, d)
+    const st = (url.searchParams.get('status') ?? 'open,waiting_user').replace(/[^a-z_,]/g, '') || null
+    const list = await d.db.listCases(st === 'all' ? null : st, 100)
+    const msgs = await d.db.caseMessages(list.map((c) => c.id))
+    return { cases: list.map((c) => { const mine = msgs.filter((m) => m.case_id === c.id); const last = mine[mine.length - 1]; return { ...c, messages: mine.length, last: last ? { author: last.author, body: last.body.slice(0, 120), at: last.at, files: last.files.length } : null } }) }
+  },
+
+  'GET admin-case': async ({ req, env, d, url }) => {
+    await admin(req, env, d)
+    const c = await d.db.getCase(url.searchParams.get('id') ?? '')
+    if (!c) throw new Fail('Case not found', 404)
+    const u = await d.db.profile(c.user_id)
+    return { case: c, user: u ? adminProfile(u) : null, messages: await threads(env, d, [c.id]) }
+  },
+
+  'POST admin-case-reply': async ({ req, env, d, body }) => {
+    const a = await admin(req, env, d)
+    const c = await d.db.getCase(String(body.caseId ?? ''))
+    if (!c) throw new Fail('Case not found', 404)
+    const message = cleanText(body.message, 2000)
+    const status = ['open', 'waiting_user', 'resolved', 'rejected'].includes(String(body.status)) ? (String(body.status) as CaseStatus) : null
+    if (!message && !status) throw new Fail('Write a reply or change the status')
+    if (message) await d.db.addCaseMessage({ case_id: c.id, author: 'admin', author_name: 'Luda team', body: message, files: [] })
+    await d.db.updateCase(c.id, { ...(status ? { status } : message ? { status: 'waiting_user' as CaseStatus } : {}), ...(status === 'resolved' || status === 'rejected' ? { resolution: message || status } : {}) })
+    await d.db.log(c.id, 'admin_case_reply', { by: a.username, status })
+    return { ok: true }
+  },
+
   // Ask Paystack/Flutterwave again about a top-up or withdrawal (safe: it only settles what the provider confirms).
   'POST admin-recheck': async ({ req, env, d, body }) => {
     const a = await admin(req, env, d)
@@ -642,6 +737,11 @@ const routes: Record<string, Route> = {
     if (!u) throw new Fail('User not found', 404)
     const action = String(body.action ?? ''), reason = String(body.reason ?? '').replace(/[<>\u0000-\u001f]/g, '').slice(0, 140)
     const audit = (extra: Record<string, unknown> = {}) => d.db.log(u.user_id, `admin_${action}`, { by: a.username, user: u.username, reason, ...extra })
+    // When acting from a support case, tell the user in that case and update its status.
+    const caseNote = async (text: string, status: CaseStatus) => {
+      const c = body.caseId ? await d.db.getCase(String(body.caseId)) : null
+      if (c && c.user_id === u.user_id) { await d.db.addCaseMessage({ case_id: c.id, author: 'admin', author_name: 'Luda team', body: text, files: [] }); await d.db.updateCase(c.id, { status, ...(status === 'resolved' ? { resolution: text } : {}) }) }
+    }
     switch (action) {
       case 'freeze': await d.db.updateProfile(u.user_id, { frozen: true, frozen_by: 'admin' }); break
       case 'unfreeze': await d.db.updateProfile(u.user_id, { frozen: false, frozen_by: null }); break
@@ -649,7 +749,25 @@ const routes: Record<string, Route> = {
       case 'kyc-approve': {
         const legal = String(body.legalName ?? '').trim().replace(/\s+/g, ' ').toUpperCase()
         if (nameTokens(legal).length < 2 || !reason) throw new Fail('Enter the legal name exactly as on the ID, and a reason')
-        await d.db.updateProfile(u.user_id, { kyc_status: 'verified', kyc_name: legal, kyc_id_type: 'manual', kyc_at: new Date().toISOString() } as Partial<Profile>)
+        // Optional document details from the photo: also blocks the same document on two accounts.
+        const docType = cleanText(body.docType, 30) || 'document', docNumber = cleanText(body.docNumber, 40).replace(/\s/g, ''), country = cleanText(body.country, 40).toUpperCase()
+        const hash = docNumber ? await docHash(docType, country, docNumber) : null
+        try {
+          await d.db.updateProfile(u.user_id, {
+            kyc_status: 'verified', kyc_name: legal, kyc_id_type: `manual:${docType}`.slice(0, 40), kyc_at: new Date().toISOString(),
+            ...(docNumber ? { kyc_id_last4: docNumber.slice(-4), kyc_doc_hash: hash, kyc_country: country || null } : {}), ...(body.dob ? { kyc_dob: normDate(String(body.dob)) || null } : {}),
+          } as Partial<Profile>)
+        } catch (e) {
+          if (e instanceof MoneyError && e.message === 'conflict') throw new Fail('This document is already verified on another Luda account')
+          throw e
+        }
+        await caseNote('✅ Your identity has been verified by the Luda team. Withdrawals and sending money are now unlocked.', 'resolved')
+        break
+      }
+      case 'kyc-reject': {
+        if (!reason) throw new Fail('Tell the user why (e.g. photo blurry, document expired)')
+        await d.db.updateProfile(u.user_id, { kyc_status: 'failed' })
+        await caseNote(`We couldn't verify your identity: ${reason}. Please reply with clearer photos or a valid document.`, 'waiting_user')
         break
       }
       case 'adjust': {

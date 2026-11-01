@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ReviewAndPin, errMsg, type Approval } from '../components/LiveMoney'
 import { Header, Segmented, Sheet, Success } from '../components/ui'
 import { KIND_LABEL, api, money, type Cur } from '../lib/live'
+import { CATEGORY_LABEL, STATUS_LABEL, Thread, type CaseCategory } from '../components/LiveSupport'
 import { useLive } from '../lib/liveStore'
 
-type Tab = 'overview' | 'users' | 'topups' | 'withdrawals'
+type Tab = 'overview' | 'cases' | 'users' | 'topups' | 'withdrawals'
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–')
 const short = (ref: string) => '…' + ref.slice(-8)
 const BADGE: Record<string, string> = {
@@ -24,9 +25,10 @@ export default function LiveAdmin() {
   return (
     <div className="pb-6">
       <Header back title="Admin" sub="Owner tools · every change needs your PIN and is logged" />
-      <div className="px-5 pb-3"><Segmented value={tab} onChange={setTab} options={[{ value: 'overview', label: 'Overview' }, { value: 'users', label: 'Users' }, { value: 'topups', label: 'Top-ups' }, { value: 'withdrawals', label: 'Payouts' }]} /></div>
+      <div className="px-5 pb-3"><Segmented value={tab} onChange={setTab} options={[{ value: 'overview', label: 'Home' }, { value: 'cases', label: 'Cases' }, { value: 'users', label: 'Users' }, { value: 'topups', label: 'Top-ups' }, { value: 'withdrawals', label: 'Payouts' }]} /></div>
       <div className="px-5">
         {tab === 'overview' && <Overview />}
+        {tab === 'cases' && <CasesTab />}
         {tab === 'users' && <UsersTab onOpen={setUserId} />}
         {tab === 'topups' && <TopUps onOpen={setUserId} />}
         {tab === 'withdrawals' && <Payouts onOpen={setUserId} />}
@@ -63,6 +65,7 @@ function Overview() {
     p.withdrawalsStuck && `${p.withdrawalsStuck} payout(s) processing for over 30 min`,
     p.badWebhooks7d && `${p.badWebhooks7d} rejected webhook(s) this week: check secret keys/hash`,
     p.ledgerMismatch && `${p.ledgerMismatch} wallet(s) don't match their ledger: contact your developer`,
+    o.openCases && `${o.openCases} support case(s) waiting for you (Cases tab)`,
   ].filter(Boolean) as string[]
   const wh = o.webhooks7d ?? {}
   return (
@@ -223,6 +226,94 @@ function UserSheet({ id, onClose }: { id: string; onClose: () => void }) {
           {data.history.slice(0, 20).map((h: any) => (
             <div key={h.id} className="flex justify-between gap-2 text-xs"><span className="text-slate-400">{KIND_LABEL[h.kind] ?? h.kind} · {when(h.at)}</span><span className={h.amount_minor > 0 ? 'text-mint-300' : ''}>{money(Number(h.amount_minor), h.currency, { sign: true })}</span></div>
           ))}
+        </div>
+      )}
+    </Sheet>
+  )
+}
+
+/* ------------------------------- support cases ------------------------------- */
+
+function CasesTab() {
+  const [status, setStatus] = useState('open,waiting_user')
+  const { data, err, load } = useLoad<{ cases: any[] }>(`admin-cases?status=${status}`)
+  const [open, setOpen] = useState<string | null>(null)
+  return (
+    <div className="flex flex-col gap-2">
+      <select className="input w-auto py-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
+        <option value="open,waiting_user">Open</option><option value="open">Needs your reply</option><option value="waiting_user">Waiting for user</option><option value="resolved">Resolved</option><option value="rejected">Closed</option><option value="all">All</option>
+      </select>
+      {err && <p className="text-sm text-rose-300">{err}</p>}
+      {data?.cases.length === 0 && <p className="text-sm text-slate-500">No cases here. 🎉</p>}
+      {data?.cases.map((c) => (
+        <button key={c.id} onClick={() => setOpen(c.id)} className="glass flex flex-col gap-1 rounded-2xl p-3 text-start">
+          <div className="flex items-center justify-between gap-2"><p className="truncate text-sm font-semibold">{c.subject}</p><span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_LABEL[c.status]?.c}`}>{c.status === 'open' ? 'Needs reply' : STATUS_LABEL[c.status]?.t}</span></div>
+          <p className="text-xs text-slate-400">{CATEGORY_LABEL[c.category as CaseCategory]} · {c.user?.full_name} @{c.user?.username} · ID: {c.user?.kyc_status}</p>
+          {c.last && <p className="truncate text-xs text-slate-500">{c.last.author === 'admin' ? 'You' : 'User'}: {c.last.body}{c.last.files ? ` · 📎${c.last.files}` : ''} · {when(c.last.at)}</p>}
+        </button>
+      ))}
+      {open && <AdminCaseSheet id={open} onClose={() => { setOpen(null); load() }} />}
+    </div>
+  )
+}
+
+function AdminCaseSheet({ id, onClose }: { id: string; onClose: () => void }) {
+  const { data, err, load } = useLoad<any>(`admin-case?id=${id}`)
+  const [reply, setReply] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [act, setAct] = useState<Act | null>(null)
+  const [kyc, setKyc] = useState({ legal: '', docType: 'Passport', docNumber: '', country: '', dob: '', reason: '' })
+  const c = data?.case, u = data?.user
+  const send = async (status?: string) => {
+    setBusy(true); setMsg('')
+    try { await api('POST', 'admin-case-reply', { caseId: id, message: reply, status }); setReply(''); await load(); setMsg(status ? `Marked ${status.replace('_', ' ')}` : 'Reply sent') } catch (e) { setMsg(errMsg(e)) } finally { setBusy(false) }
+  }
+  const run = async (auth: Approval) => { await api('POST', 'admin-action', { action: act!.action, userId: u.userId, caseId: id, ...act!.extra, ...auth }); await load() }
+  return (
+    <Sheet open onClose={onClose} title={c?.subject ?? 'Case'}>
+      {err && <p className="text-sm text-rose-300">{err}</p>}
+      {!c ? <p className="text-sm text-slate-500">Loading…</p> : act ? (
+        <ReviewAndPin rows={act.rows} warning={act.danger} holdLabel="Hold to confirm" onClose={() => setAct(null)} run={run}
+          done={<Success title="Done ✅" sub="The user was told in this case. Saved in the audit log." onClose={() => setAct(null)} />} />
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="rounded-2xl bg-fg/[0.04] p-3 text-xs text-slate-300">
+            <p><b>{u?.fullName}</b> @{u?.username} · {u?.email}</p>
+            <p>ID check: <b>{u?.kyc}</b>{u?.kycName ? ` · ${u.kycName}` : ''} · {u?.frozen ? '🧊 frozen' : 'active'} · {CATEGORY_LABEL[c.category as CaseCategory]}</p>
+            {c.reference && <p>Reference: <span className="font-mono">{c.reference}</span></p>}
+          </div>
+          <Thread messages={data.messages} />
+          <textarea className="input min-h-20" maxLength={2000} placeholder="Reply to the user…" value={reply} onChange={(e) => setReply(e.target.value)} />
+          {msg && <p className="text-xs text-slate-300">{msg}</p>}
+          <div className="grid grid-cols-3 gap-2">
+            <button className="btn-primary py-2.5 text-sm" disabled={busy || !reply.trim()} onClick={() => send()}>Reply</button>
+            <button className="btn-ghost py-2.5 text-sm" disabled={busy} onClick={() => send('resolved')}>Resolve</button>
+            <button className="btn-ghost py-2.5 text-sm" disabled={busy} onClick={() => send('rejected')}>Close</button>
+          </div>
+          {u && u.kyc !== 'verified' && (
+            <div className="flex flex-col gap-2 rounded-2xl border border-mint-400/30 bg-mint-400/[0.06] p-3">
+              <p className="flex items-center gap-2 text-sm font-bold"><ShieldCheck size={16} className="text-mint-300" /> Verify ID manually</p>
+              <p className="text-[11px] text-slate-400">Check the photos above (document readable, not expired, selfie matches). For extra safety, do a short video call. Then copy the details from the document.</p>
+              <input className="input py-2 text-sm" placeholder="Legal name exactly as on the document" value={kyc.legal} onChange={(e) => setKyc({ ...kyc, legal: e.target.value })} />
+              <div className="grid grid-cols-2 gap-2">
+                <select className="input py-2 text-sm" value={kyc.docType} onChange={(e) => setKyc({ ...kyc, docType: e.target.value })} aria-label="Document type">{['Passport', 'National ID', 'Residence permit', "Driver's licence"].map((x) => <option key={x}>{x}</option>)}</select>
+                <input className="input py-2 text-sm" placeholder="Document number" value={kyc.docNumber} onChange={(e) => setKyc({ ...kyc, docNumber: e.target.value })} />
+                <input className="input py-2 text-sm" placeholder="Country (e.g. NGA)" maxLength={40} value={kyc.country} onChange={(e) => setKyc({ ...kyc, country: e.target.value })} />
+                <input className="input py-2 text-sm" type="date" aria-label="Date of birth" value={kyc.dob} onChange={(e) => setKyc({ ...kyc, dob: e.target.value })} />
+              </div>
+              <input className="input py-2 text-sm" maxLength={140} placeholder="How you checked (saved in the audit log)" value={kyc.reason} onChange={(e) => setKyc({ ...kyc, reason: e.target.value })} />
+              <div className="grid grid-cols-2 gap-2">
+                <button className="btn-primary py-2.5 text-sm" disabled={!kyc.legal.trim().includes(' ') || !kyc.docNumber || !kyc.reason} onClick={() => setAct({ action: 'kyc-approve', title: 'Approve ID',
+                  extra: { legalName: kyc.legal, docType: kyc.docType, docNumber: kyc.docNumber, country: kyc.country, dob: kyc.dob, reason: kyc.reason },
+                  rows: [['Approve', `${u.fullName} (@${u.username})`], ['Legal name', kyc.legal.toUpperCase()], ['Document', `${kyc.docType} ••${kyc.docNumber.slice(-4)} ${kyc.country}`], ['Checked by', kyc.reason]],
+                  danger: 'This unlocks withdrawals and sending for this person. Only approve a real, readable document that matches the selfie.' })}>Approve ID</button>
+                <button className="btn-ghost py-2.5 text-sm text-rose-300" disabled={!kyc.reason} onClick={() => setAct({ action: 'kyc-reject', title: 'Reject ID', extra: { reason: kyc.reason },
+                  rows: [['Reject ID of', u.fullName], ['Reason sent to user', kyc.reason]] })}>Reject</button>
+              </div>
+              {!kyc.reason && <p className="text-[11px] text-slate-500">To reject, write the reason above (it's sent to the user).</p>}
+            </div>
+          )}
         </div>
       )}
     </Sheet>

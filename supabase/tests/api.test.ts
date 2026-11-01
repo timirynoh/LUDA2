@@ -466,6 +466,47 @@ test('owner admin page: hidden from others, every change needs the PIN and is au
   assert.ok(log.some((x: any) => x.kind === 'admin_adjust' && x.by === 'bola') && log.some((x: any) => x.kind === 'admin_freeze'))
 })
 
+test('appeals / support cases: photos, replies, and the team verifies the ID by hand', async () => {
+  const AENV = { ...ENV, ADMIN_EMAILS: 'b@x.com' }
+  const zara = (await call('POST', 'signup', { email: 'zara@x.com', username: 'zara', fullName: 'Zara Musa', password: 'Lefkosa2026!' })).j.session.access_token
+  const jpg = { name: 'front.jpg', type: 'image/jpeg', data: Buffer.from([0xff, 0xd8, 0xff, 1, 2, 3]).toString('base64') }
+  assert.match((await call('POST', 'case-create', { category: 'kyc', subject: 'Upload not working', message: 'The ID page does not open', files: [{ type: 'application/x-msdownload', data: 'AA==' }] }, zara)).j.error, /Only photos/)
+  assert.match((await call('POST', 'case-create', { category: 'kyc', subject: 'x', message: 'y' }, zara)).j.error, /short title/)
+  const c = await call('POST', 'case-create', { category: 'kyc', subject: "Can't verify my ID", message: 'The selfie step crashes on my phone. Photos attached.', files: [jpg, { ...jpg, name: 'selfie.jpg' }] }, zara)
+  assert.equal(c.status, 200, JSON.stringify(c.j))
+  assert.equal([...world.files.keys()].filter((k) => k.includes(c.j.id)).length, 2, 'stored privately under user/case')
+  const mine = (await call('GET', 'cases', undefined, zara)).j.cases
+  assert.equal(mine[0].status, 'open'); assert.equal(mine[0].messages[0].files.length, 2); assert.match(mine[0].messages[0].files[0].url, /token=/)
+  assert.equal((await call('POST', 'case-reply', { caseId: c.j.id, message: 'hello' }, ada)).status, 404, "can't touch someone else's case")
+  // the team
+  assert.equal((await call('GET', 'admin-cases', undefined, zara, AENV)).status, 404)
+  const list = (await call('GET', 'admin-cases', undefined, bola, AENV)).j.cases
+  assert.ok(list.some((x: any) => x.id === c.j.id && x.user.username === 'zara'))
+  assert.equal((await call('GET', 'admin-overview', undefined, bola, AENV)).j.openCases >= 1, true)
+  const det = (await call('GET', `admin-case?id=${c.j.id}`, undefined, bola, AENV)).j
+  assert.equal(det.user.username, 'zara'); assert.equal(det.messages[0].files.length, 2)
+  await call('POST', 'admin-case-reply', { caseId: c.j.id, message: 'Please send the back of your ID too.' }, bola, AENV)
+  assert.equal((await call('GET', 'cases', undefined, zara)).j.cases[0].status, 'waiting_user')
+  await call('POST', 'case-reply', { caseId: c.j.id, message: 'Here it is', files: [{ ...jpg, name: 'back.jpg' }] }, zara)
+  assert.equal((await call('GET', 'cases', undefined, zara)).j.cases[0].status, 'open', 'user reply re-opens it')
+  // manual verification from the case (PIN, legal name, document) — and the same document can't be reused
+  const zid = det.user.userId
+  assert.match((await call('POST', 'admin-action', { action: 'kyc-approve', userId: zid, caseId: c.j.id, legalName: 'Zara Musa', reason: 'Checked photos', docType: 'Passport', docNumber: 'G1234567', country: 'GHA', pin: '4826' }, bola, AENV)).j.error, /already verified on another/)
+  assert.equal((await call('POST', 'admin-action', { action: 'kyc-approve', userId: zid, caseId: c.j.id, legalName: 'Zara Amina Musa', reason: 'Checked passport photos + video call', docType: 'Passport', docNumber: 'A09876543', country: 'NGA', dob: '2003-05-06', pin: '4826' }, bola, AENV)).status, 200)
+  const after = (await call('GET', 'cases', undefined, zara)).j.cases[0]
+  assert.equal(after.status, 'resolved'); assert.match(after.messages[after.messages.length - 1].body, /verified by the Luda team/)
+  assert.equal((await call('GET', 'me', undefined, zara)).j.profile.kyc, 'verified')
+  // reject path
+  const c2 = await call('POST', 'case-create', { category: 'kyc', subject: 'Second try', message: 'Please check again' }, ada)
+  const adaId = (await call('GET', 'admin-users?q=okafor', undefined, bola, AENV)).j.users[0].userId
+  assert.match((await call('POST', 'admin-action', { action: 'kyc-reject', userId: adaId, caseId: c2.j.id, pin: '4826' }, bola, AENV)).j.error, /why/)
+  await call('POST', 'admin-action', { action: 'kyc-reject', userId: adaId, caseId: c2.j.id, reason: 'photo too blurry', pin: '4826' }, bola, AENV)
+  assert.equal((await call('GET', 'cases', undefined, ada)).j.cases[0].status, 'waiting_user')
+  // at most 3 open cases
+  for (let i = 0; i < 2; i++) await call('POST', 'case-create', { category: 'other', subject: `Question ${i}`, message: 'Some question here' }, ada)
+  assert.match((await call('POST', 'case-create', { category: 'other', subject: 'Question 9', message: 'Some question here' }, ada)).j.error, /3 open cases/)
+})
+
 test('books balance: every wallet equals the sum of its ledger', async () => {
   const bad = await q(`select w.user_id from wallets w left join (select user_id, currency, sum(amount_minor) s from ledger group by 1,2) l using (user_id, currency) where w.balance_minor <> coalesce(l.s, 0)`)
   assert.equal(bad.length, 0)

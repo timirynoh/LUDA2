@@ -4,6 +4,8 @@ import { Header, Sheet } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { checkText } from '../lib/moderation'
 import { useStore } from '../lib/store'
+import { LIVE } from '../lib/live'
+import { MyCases } from '../components/LiveSupport'
 
 const FAQ: [string, string][] = [
   ['Is my money safe in Luda?', 'In the live app, money is held by a licensed payment partner in separate accounts. Every payment needs your PIN, and you can freeze your wallet any time in Security Center.'],
@@ -36,12 +38,14 @@ export default function Help() {
     <div>
       <Header back title="Help & Support" sub="We're here for you" />
       <div className="flex flex-col gap-4 px-5">
+        {LIVE ? <MyCases /> : <>
         <div className="grid grid-cols-3 gap-2 text-center text-xs">
           <a href="https://wa.me/905000000000" target="_blank" rel="noreferrer" className="card flex flex-col items-center gap-1 py-4"><MessageCircle className="text-emerald-300" /> WhatsApp</a>
           <a href="mailto:support@luda.app" className="card flex flex-col items-center gap-1 py-4"><Mail className="text-sky-300" /> Email</a>
           <button onClick={() => setReport(true)} className="card flex flex-col items-center gap-1 py-4"><Siren className="text-rose-300" /> Report a problem</button>
         </div>
         <Link to="/disputes" className="card flex items-center gap-3"><span className="text-xl">🛡️</span><span className="flex-1 text-sm font-semibold">My appeals & support cases</span><span className="chip bg-fg/5 text-slate-300">{s.disputes.filter((d) => d.status !== 'resolved').length} open</span></Link>
+        </>}
         <section>
           <p className="label mb-2">Frequently asked</p>
           <div className="card divide-y divide-fg/5 p-1">

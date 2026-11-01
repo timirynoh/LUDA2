@@ -5,6 +5,7 @@ import { ConvertSheet, DepositSheet, LiveKyc, SendSheet, WithdrawSheet } from '.
 import { Header, Sheet } from '../components/ui'
 import { KIND_LABEL, money, type Cur, type Me } from '../lib/live'
 import { useLive } from '../lib/liveStore'
+import { NewCaseSheet } from '../components/LiveSupport'
 import { useStore } from '../lib/store'
 
 type Open = null | 'deposit' | 'withdraw' | 'convert' | 'send' | 'kyc'
@@ -139,6 +140,7 @@ function Row({ it, onOpen }: { it: Item; onOpen: () => void }) {
 
 function Details({ it, onClose }: { it: Item; onClose: () => void }) {
   const [copied, setCopied] = useState(false)
+  const [report, setReport] = useState(false)
   return (
     <Sheet open onClose={onClose} title={it.title}>
       <div className="flex flex-col gap-3">
@@ -149,7 +151,8 @@ function Details({ it, onClose }: { it: Item; onClose: () => void }) {
           {it.details.map(([k, v]) => <div key={k} className="flex justify-between gap-3 px-4 py-2.5"><span className="shrink-0 text-slate-400">{k}</span><span className="break-all text-end font-medium">{v}</span></div>)}
         </div>
         {it.reference && <button className="btn-ghost text-sm" onClick={() => { navigator.clipboard?.writeText(it.reference!).then(() => setCopied(true)).catch(() => {}) }}>{copied ? '✓ Reference copied' : 'Copy reference'}</button>}
-        <p className="text-center text-[11px] text-slate-500">Questions about this transaction? Contact support from Help and share the reference.</p>
+        <button className="btn-ghost text-sm text-gold-200" onClick={() => setReport(true)}>Report a problem with this</button>
+        {report && <NewCaseSheet category={it.title === 'Withdrawal' ? 'withdrawal' : 'payment'} reference={it.reference} subject={`Problem with ${it.title.toLowerCase()}`} onClose={() => setReport(false)} />}
       </div>
     </Sheet>
   )

@@ -175,6 +175,8 @@ In Supabase → **Edge Functions → Secrets**, add `ADMIN_EMAILS` = the email o
 - **Actions:** freeze or unfreeze, reset or approve an ID check, correct a balance (a reason is required, and you can't change your own), refund a ticket.
 - **Top-ups / Payouts:** filter, and re-check any payment with Paystack or Flutterwave.
 
+**Cases tab (appeals and support):** students open a case from **Help → My cases**, from "Can't verify? Send your ID to the Luda team", or from "Report a problem" on any transaction. They can attach up to 4 photos or PDFs, which are stored privately in the Supabase bucket `case-files`. You reply, resolve or close the case. For ID cases you can **verify the ID by hand**: enter the legal name, document type, number, country and date of birth, plus how you checked. The same document still can't verify two accounts. Or **reject** with a reason the student sees.
+
 Every change needs your PIN or fingerprint and is written to the audit log (`payment_events`, kinds `admin_*`). Nobody else can see the page.
 
 ### Fingerprint / Face ID

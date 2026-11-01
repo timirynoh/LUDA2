@@ -1,6 +1,7 @@
 // Real-money building blocks (live mode): review → hold → PIN, KYC, top-up, withdraw, convert, send.
 import { BadgeCheck, Building2, ExternalLink, Fingerprint, Loader2, Lock, Search, ShieldCheck } from 'lucide-react'
 import { bioApprove, bioSaved } from '../lib/bio'
+import { NewCaseSheet } from './LiveSupport'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { HoldButton } from './Confirm'
 import { PinPad, Segmented, Sheet, Success } from './ui'
@@ -70,6 +71,7 @@ export function LiveKyc({ onDone }: { onDone?: () => void }) {
 
 function DiditKyc({ ninAvailable, onUseNin }: { ninAvailable: boolean; onUseNin: () => void }) {
   const { me } = useLive()
+  const [appeal, setAppeal] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const start = async () => {
@@ -90,9 +92,11 @@ function DiditKyc({ ninAvailable, onUseNin }: { ninAvailable: boolean; onUseNin:
         <li>✍️ The name on your document must match <b>{me?.profile.fullName}</b></li>
       </ul>
       {me?.profile.kyc === 'failed' && <p className="rounded-xl bg-rose-500/10 p-3 text-xs text-rose-300">Your last check wasn't approved. Use a valid, unexpired document and good light, then try again.</p>}
+      {appeal && <NewCaseSheet category="kyc" subject="I can't complete the ID check" onClose={() => setAppeal(false)} />}
       {err && <p className="text-sm text-rose-300">{err}</p>}
       <button className="btn-primary py-4" disabled={busy} onClick={start}>{busy ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />} Verify my identity</button>
       <p className="flex items-start gap-1.5 text-[11px] text-slate-500"><Lock size={12} className="mt-0.5 shrink-0" /> Done on Didit's secure page. Luda keeps only your verified name, date of birth, country and the last 4 characters of your document number.</p>
+      <button className="text-xs text-mint-300 underline" onClick={() => setAppeal(true)}>Can't verify? Send your ID to the Luda team</button>
       {ninAvailable && <button className="text-xs text-slate-400 underline" onClick={onUseNin}>Nigerian? Verify with NIN or BVN instead</button>}
     </div>
   )
