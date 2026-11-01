@@ -1,4 +1,4 @@
-export type Lang = 'en' | 'tr' | 'fr' | 'sw' | 'ar'
+export type Lang = 'en' | 'tr' | 'fr' | 'sw' | 'ar' | 'pcm' | 'yo' | 'ha'
 
 export const LANGS: { code: Lang; name: string; native: string; flag: string; rtl?: boolean }[] = [
   { code: 'en', name: 'English', native: 'English', flag: '🇬🇧' },
@@ -6,6 +6,9 @@ export const LANGS: { code: Lang; name: string; native: string; flag: string; rt
   { code: 'fr', name: 'French', native: 'Français', flag: '🇫🇷' },
   { code: 'sw', name: 'Swahili', native: 'Kiswahili', flag: '🇰🇪' },
   { code: 'ar', name: 'Arabic', native: 'العربية', flag: '🇸🇩', rtl: true },
+  { code: 'pcm', name: 'Nigerian Pidgin', native: 'Naija Pidgin', flag: '🇳🇬' },
+  { code: 'yo', name: 'Yoruba', native: 'Yorùbá', flag: '🇳🇬' },
+  { code: 'ha', name: 'Hausa', native: 'Hausa', flag: '🇳🇬' },
 ]
 
 /** Largest African communities in North Cyprus (mostly students), roughly by size. */
@@ -105,6 +108,10 @@ export const BADGES: Record<string, { name: string; emoji: string; desc: string 
   handy_hero: { name: 'Handy Hero', emoji: '🛠️', desc: 'Completed a Flash job and got paid safely' },
   saver: { name: 'Ride Saver', emoji: '🎟️', desc: 'Selected for Luda Ride Saver' },
   exchanger: { name: 'Verified Exchanger', emoji: '🏪', desc: 'Approved as a Luda exchanger' },
+  generous: { name: 'Generous', emoji: '💝', desc: 'Sent money to a friend' },
+  saver_pot: { name: 'Piggy Bank', emoji: '🐷', desc: 'Reached a savings goal milestone' },
+  trader: { name: 'Market Trader', emoji: '🛒', desc: 'Bought or sold on the marketplace' },
+  critic: { name: 'Helpful Reviewer', emoji: '⭐', desc: 'Left a review' },
   home_sweet: { name: 'Home Sweet Home', emoji: '🏡', desc: 'Booked a house viewing' },
   good_neighbour: { name: 'Good Neighbour', emoji: '🤝', desc: 'Posted a listing or found a roommate' },
 }

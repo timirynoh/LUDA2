@@ -50,8 +50,16 @@ It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desk
 | **Exchange hub (in Chats)** | Chats tab has 💬 Chats and 💱 Exchange. Apply to become a **verified exchanger** (KYC + phone + refundable ₺2,000 deposit) → create ads (sell/buy ₺, rate within ±15% of market, min/max, cash in person or in-app with funds locked in escrow, payment methods, Safe Spot), pause/delete, close account to get deposit back | ✅ demo approval |
 | **Trade chat & appeals** | Private chat (with photos) inside every SafeSwap trade and Flash job. **Appeal center** like Bybit: reason → description → up to 6 evidence photos → case with status steps (Submitted → Under review → Evidence → Resolved), support agent messages, funds frozen until resolved, refund on resolution; "My appeals" in Help & Profile | ✅ demo support desk |
 | **Saved cards** | Add Visa/Mastercard/Troy (Luhn + expiry checks, 3-D Secure step), only last 4 digits kept, default card, remove; used for card top-ups and ticket payments ("save this card") | ✅ simulated |
+| **Send money** | Free, instant Luda-to-Luda transfers by @username or QR (receive tab), note, PIN, daily limit, KYC required | ✅ demo directory |
+| **Ratings & reviews** | Stars + tags + text after SafeSwap trades, Flash jobs and marketplace purchases; shown on profiles | ✅ |
+| **Public profiles** | `/u/:name` for fixers, exchangers and sellers: rating, jobs/trades, reply time, KYC badges, skills, past jobs, reviews, Message / Send money / Report | ✅ demo people |
+| **Rate alerts** | "Tell me when 1,000 NGN ≥ ₺30": checked every minute against live rates, notification + inbox | ✅ |
+| **Savings pots** | Goals with emoji, target and deadline; add/take out from wallet; 25/50/75/100% milestones with XP | ✅ |
+| **Marketplace** | Buy & sell student items (photos, condition, category, area), buy safely with escrow at a Safe Spot, chat with seller, release, review, appeal | ✅ demo listings |
+| **Voice notes** | Tap-to-record (≤60 s) voice messages with waveform playback in group chats, trade, job and marketplace chats | ✅ needs mic permission |
+| **More languages** | Nigerian Pidgin (full), Yorùbá and Hausa (core screens; have a native speaker review) | ✅ |
 | **Gamification** | XP, 5 levels (Newcomer → Legend), daily streaks, 7 quests, 9 badges, redeemable Luda Points and a community leaderboard by country, plus XP toasts and confetti | ✅ |
-| **Languages** | English, Türkçe, Français (DRC/Cameroon), Kiswahili (Kenya/Uganda/E. DRC), العربية (Sudan) with full RTL | ✅ |
+| **Languages** | English, Türkçe, Français, Kiswahili, العربية (RTL), Naija Pidgin, Yorùbá, Hausa | ✅ |
 
 Everything is saved on the device (`localStorage`) so the demo is fully interactive with no backend. **No real money moves**, and every money screen says so.
 

@@ -38,6 +38,7 @@ export function useDisputeProgress() {
           ...p, balances,
           trades: kind === 'swap' ? p.trades.map((x) => (x.id === refId ? { ...x, status: 'cancelled' } : x)) : p.trades,
           flash: kind === 'flash' ? p.flash.map((x) => (x.id === refId ? { ...x, status: 'cancelled' } : x)) : p.flash,
+          orders: kind === 'market' ? p.orders.map((x) => (x.id === refId ? { ...x, status: 'cancelled' } : x)) : p.orders,
           disputes: p.disputes.map((x) => (x.id === id ? { ...x, status: 'resolved', outcome, updatedAt: now } : x)),
           txs: [{ id: uid(), type: 'p2p', amount, currency: cur, label: 'Appeal refund', ts: now }, ...p.txs],
           threads: { ...p.threads, [`case-${id}`]: [...(p.threads[`case-${id}`] ?? []), { id: uid(), from: 'support', text: `Thank you for the evidence. ${outcome} 🙏🏾`, ts: now }, { id: uid(), from: 'system', text: 'Case closed', ts: now }] },

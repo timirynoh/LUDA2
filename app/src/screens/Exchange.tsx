@@ -4,6 +4,8 @@ import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { TradeChat } from '../components/TradeChat'
+import { RateAlerts } from '../components/RateAlerts'
+import { ReviewSheet } from '../components/Review'
 import { OpenDispute } from './Disputes'
 import { DemoNote, Header, PinPad, Segmented, Sheet, Success } from '../components/ui'
 import { P2P_FEE } from '../config'
@@ -96,6 +98,7 @@ function Convert() {
       <button className="btn-gold py-4" disabled={!amt || amt > bal || from === to} onClick={go}>
         {amt > bal ? t('wallet.insufficient') : `${t('fx.convert')} ${from} → ${to}`}
       </button>
+      <RateAlerts />
       <Sheet open={done} onClose={() => { setDone(false); setAmount('') }} title={t('fx.convert')}>
         <Success title={t('wallet.success')} sub={`You received ${fmt(out, to)}`} onClose={() => { setDone(false); setAmount('') }} />
       </Sheet>
@@ -199,7 +202,7 @@ function P2P() {
               <BadgeCheck size={16} className="absolute -right-1 -bottom-1 rounded-full bg-ink-900 text-mint-400" />
             </div>
             <div className="flex-1">
-              <p className="font-semibold">{o.name}</p>
+              <Link to={`/u/${encodeURIComponent(o.name)}`} className="font-semibold underline-offset-2 hover:underline">{o.name} ›</Link>
               <p className="flex items-center gap-1 text-xs text-slate-400"><Star size={12} className="fill-gold-400 text-gold-400" />{o.rating.toFixed(2)} · {o.trades} trades · {o.km} km</p>
             </div>
             {i === 0 && <span className="chip bg-mint-400/15 text-mint-300">Best rate</span>}
@@ -263,6 +266,7 @@ function TradeSheet({ trade, onClose }: { trade: Trade | null; onClose: () => vo
   const [arrived, setArrived] = useState(false)
   const [done, setDone] = useState(false)
   const [appeal, setAppeal] = useState(false)
+  const [rate, setRate] = useState(false)
   const cur = trade ? s.trades.find((x) => x.id === trade.id) ?? trade : null
 
   useEffect(() => {
@@ -303,7 +307,9 @@ function TradeSheet({ trade, onClose }: { trade: Trade | null; onClose: () => vo
 
   return (
     <Sheet open onClose={onClose} title={`Trade · ${cur.trader}`}>
-      {done ? <Success title="Swap complete 🎉" sub={`Enjoy your ${fmt(cur.get, 'TRY')}. Rate ${cur.trader} to help the community.`} onClose={onClose} /> : (
+      {done ? <div><Success title="Swap complete 🎉" sub={`Enjoy your ${fmt(cur.get, 'TRY')}. Rate ${cur.trader} to help the community.`} onClose={onClose} />
+        <button className="btn-gold w-full py-3.5" onClick={() => setRate(true)}>⭐ Rate {cur.trader}</button>
+        {rate && <ReviewSheet about={cur.trader} context="SafeSwap trade" refId={`rev-${cur.id}`} onClose={() => setRate(false)} />}</div> : (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div className="rounded-2xl bg-fg/[0.04] p-3"><p className="text-xs text-slate-500">In escrow</p><p className="font-bold">{fmt(cur.give, cur.giveCur)}</p></div>

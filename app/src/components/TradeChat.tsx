@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { checkText } from '../lib/moderation'
 import { uid, useStore } from '../lib/store'
 import { counterReply, thumb, type ThreadMsg } from '../lib/threads'
+import { MicButton, RecordingBar, useRecorder, VoiceBubble } from './Voice'
 
 /** Private chat between the two sides of a trade or job, with photo sharing and an appeal shortcut. */
 export function TradeChat({ threadKey, name, flag, onAppeal, intro }: { threadKey: string; name: string; flag?: string; onAppeal?: () => void; intro?: string }) {
@@ -20,6 +21,7 @@ export function TradeChat({ threadKey, name, flag, onAppeal, intro }: { threadKe
     if (!c.ok) return toast({ title: c.scam ? `Not sent: ${c.scam}` : 'Not sent: keep it respectful', emoji: '⚠️' })
     push({ id: uid(), from: 'me', text: body, ts: Date.now() }); setText(''); reply(body)
   }
+  const recorder = useRecorder((url, dur) => { push({ id: uid(), from: 'me', text: '', voice: url, dur, ts: Date.now() }); reply('voice') }, (msg) => toast({ title: msg, emoji: '🎙️' }))
   const attach = async (f?: File) => { if (!f) return; push({ id: uid(), from: 'me', text: '', img: await thumb(f), ts: Date.now() }); reply('photo') }
 
   return (
@@ -35,6 +37,7 @@ export function TradeChat({ threadKey, name, flag, onAppeal, intro }: { threadKe
           <div key={m.id} className={`flex ${m.from === 'me' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-sm ${m.from === 'me' ? 'rounded-br-md bg-gradient-to-br from-mint-400 to-emerald-500 text-ink-950' : 'rounded-bl-md bg-ink-700'}`}>
               {m.img && <img src={m.img} alt="Shared" className="mb-1 max-h-40 rounded-xl" />}
+              {m.voice && <VoiceBubble src={m.voice} dur={m.dur ?? 1} mine={m.from === 'me'} seed={m.id} />}
               {m.text}<span className="ms-2 text-[9px] opacity-60">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
           </div>
@@ -42,10 +45,12 @@ export function TradeChat({ threadKey, name, flag, onAppeal, intro }: { threadKe
         {typing && <div className="w-fit rounded-2xl rounded-bl-md bg-ink-700 px-3 py-2 text-xs text-slate-400">• • •</div>}
       </div>
       <div className="flex items-center gap-2 border-t border-fg/10 p-2">
+        {recorder.rec ? <RecordingBar sec={recorder.sec} onSend={recorder.stop} onCancel={recorder.cancel} /> : <>
         <label className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-xl bg-fg/5 text-slate-400" aria-label="Send photo"><ImagePlus size={18} />
           <input type="file" accept="image/*" className="hidden" onChange={(e) => { attach(e.target.files?.[0]); e.target.value = '' }} /></label>
         <input className="input py-2.5" placeholder={`Message ${name.split(' ')[0]}`} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} />
-        <button onClick={send} disabled={!text.trim()} aria-label="Send" className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-mint-400 to-emerald-500 text-ink-950 disabled:opacity-30"><SendHorizontal size={18} /></button>
+        {text.trim() ? <button onClick={send} aria-label="Send" className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-mint-400 to-emerald-500 text-ink-950"><SendHorizontal size={18} /></button> : <MicButton onClick={recorder.start} />}
+        </>}
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 /** 1:1 conversation attached to a trade, Flash job or dispute. */
-export interface ThreadMsg { id: string; from: 'me' | 'them' | 'support' | 'system'; text: string; img?: string; ts: number }
+export interface ThreadMsg { id: string; from: 'me' | 'them' | 'support' | 'system'; text: string; img?: string; voice?: string; dur?: number; ts: number }
 
 /** Shrinks a photo to a small JPEG thumbnail (kept on-device; evidence for disputes). */
 export async function thumb(file: Blob, max = 360): Promise<string> {

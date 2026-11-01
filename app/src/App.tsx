@@ -23,6 +23,11 @@ import Search from './screens/Search'
 import Help from './screens/Help'
 import { DisputeList, DisputeView } from './screens/Disputes'
 import { useDisputeProgress, useExchangerReview } from './lib/disputeFlow'
+import { useRateAlerts } from './components/RateAlerts'
+import SendScreen from './screens/Send'
+import Savings from './screens/Savings'
+import Market from './screens/Market'
+import Person from './screens/Person'
 import Profile from './screens/Profile'
 import Residency from './screens/Residency'
 import Rewards from './screens/Rewards'
@@ -55,6 +60,7 @@ export default function App() {
   useKycReview()
   useDisputeProgress()
   useExchangerReview()
+  useRateAlerts()
   const inRoom = loc.pathname.startsWith('/chats/')
   const [splash, setSplash] = useState(true)
   const [authView, setAuthView] = useState<'landing' | 'signup' | 'signin'>('landing')
@@ -113,6 +119,10 @@ export default function App() {
                 <Route path="/search" element={<Search />} />
                 <Route path="/help" element={<Help />} />
                 <Route path="/disputes" element={<DisputeList />} />
+                <Route path="/send" element={<SendScreen />} />
+                <Route path="/savings" element={<Savings />} />
+                <Route path="/market" element={<Market />} />
+                <Route path="/u/:name" element={<Person />} />
                 <Route path="/disputes/:id" element={<DisputeView />} />
                 <Route path="/chats" element={<Chats />} />
                 <Route path="/chats/:id" element={<ChatRoom />} />

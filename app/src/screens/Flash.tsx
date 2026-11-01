@@ -223,7 +223,7 @@ function MyRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
                 <motion.div key={o.id} initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="card">
                   <div className="flex items-center gap-3">
                     <div className="grid size-11 place-items-center rounded-2xl bg-ink-700 text-xl">{o.flag}</div>
-                    <div className="flex-1"><p className="flex items-center gap-1 font-semibold">{o.fixer}{o.verified && <BadgeCheck size={14} className="text-mint-400" />}</p>
+                    <div className="flex-1"><Link to={`/u/${encodeURIComponent(o.fixer)}`} className="flex items-center gap-1 font-semibold">{o.fixer}{o.verified && <BadgeCheck size={14} className="text-mint-400" />}<span className="text-xs text-mint-300">profile ›</span></Link>
                       <p className="flex items-center gap-1 text-xs text-slate-400"><Star size={11} className="fill-gold-400 text-gold-400" />{o.rating} · {o.jobs} jobs · <Clock size={11} /> {o.eta}</p></div>
                     <p className="text-xl font-extrabold text-mint-300">₺{o.price}</p>
                   </div>
@@ -270,7 +270,7 @@ function MyRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
           <div className="flex flex-col items-center gap-2 rounded-3xl bg-mint-400/10 p-5 text-center">
             <p className="text-lg font-bold">All done 🎉</p>
             <p className="text-sm text-slate-300">How was {acc?.fixer}?</p>
-            <Stars value={rated} onPick={rated ? undefined : (n) => { setRated(n); update({ rating: n }); reward(10, { title: 'Thanks for rating' }) }} />
+            <Stars value={rated} onPick={rated ? undefined : (n) => { setRated(n); update({ rating: n }); set((st) => ({ ...st, reviews: [{ id: `rev-${f.id}`, about: acc!.fixer, by: st.name, stars: n, text: '', tags: [], ts: Date.now(), context: 'Flash job' }, ...st.reviews] })); reward(15, { badge: 'critic', title: 'Thanks for rating' }) }} />
           </div>
         )}
 

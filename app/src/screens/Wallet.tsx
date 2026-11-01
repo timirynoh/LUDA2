@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { Lock, ArrowDownLeft, ArrowUpRight, Banknote, Building, CreditCard, Loader2, ShieldCheck, Smartphone } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { DemoNote, Header, PinPad, Sheet, Success } from '../components/ui'
 import { TxList } from '../components/TxList'
 import { COUNTRIES, CURRENCIES } from '../lib/data'
@@ -116,6 +116,10 @@ export default function Wallet() {
         Funds are held with a licensed partner in segregated accounts. PIN + device binding protects every withdrawal.
       </div>
 
+      <div className="mx-5 mt-3 grid grid-cols-2 gap-2">
+        <Link to="/send" className="card flex items-center gap-2 py-3 text-sm font-semibold"><span className="text-xl">💸</span> Send to a friend</Link>
+        <Link to="/savings" className="card flex items-center gap-2 py-3 text-sm font-semibold"><span className="text-xl">🐷</span> Savings · {fmt(s.pots.reduce((a, p) => a + p.saved, 0), 'TRY')}</Link>
+      </div>
       <button onClick={() => setManage(true)} className="mx-5 mt-3 flex w-[calc(100%-2.5rem)] items-center gap-3 rounded-2xl bg-fg/[0.03] p-3 text-start">
         <span className="text-xl">💳</span><span className="flex-1 text-sm font-semibold">Saved cards</span>
         <span className="text-xs text-slate-400">{s.cards.length ? s.cards.map((c) => `•••• ${c.last4}`).join(' · ') : 'Add a card'}</span>

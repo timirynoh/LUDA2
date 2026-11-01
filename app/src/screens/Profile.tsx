@@ -72,7 +72,7 @@ export default function Profile() {
 
         <section className="card">
           <p className="label mb-3">{t('profile.lang')}</p>
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             {LANGS.map((l) => (
               <button key={l.code} onClick={() => set((p) => ({ ...p, lang: l.code }))}
                 className={`flex flex-col items-center gap-1 rounded-2xl p-2 text-[11px] font-semibold ${s.lang === l.code ? 'bg-mint-400/15 text-mint-200 ring-1 ring-mint-400/50' : 'bg-fg/[0.03] text-slate-400'}`}>

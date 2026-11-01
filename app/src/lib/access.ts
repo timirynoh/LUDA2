@@ -25,8 +25,9 @@ export const FEATURES: Feature[] = [
   { label: 'Ride Saver discounts', emoji: '💸', tier: 1 }, { label: 'RSVP & post events', emoji: '📣', tier: 1 },
   { label: 'Top up your wallet (small limits)', emoji: '💰', tier: 1 }, { label: 'Withdraw & send money home', emoji: '🏦', tier: 2 }, { label: 'Convert Naira, Cedi, CFA → Lira', emoji: '💱', tier: 2 },
   { label: 'SafeSwap in-person exchange', emoji: '🔒', tier: 2 }, { label: 'Pay bills with cashback', emoji: '⚡', tier: 2 },
-  { label: 'Pay tuition from your wallet', emoji: '🏛️', tier: 2 }, { label: 'Escrow-protected payments', emoji: '🛡️', tier: 2 },
+  { label: 'Pay tuition from your wallet', emoji: '🏛️', tier: 2 }, { label: 'Escrow-protected payments', emoji: '🛡️', tier: 2 }, { label: 'Send money to friends', emoji: '💸', tier: 2 }, { label: 'Savings pots', emoji: '🐷', tier: 2 },
+  { label: 'Buy & sell marketplace', emoji: '🛒', tier: 1 },
 ]
 
 /** Minimum tier for home shortcuts (for lock badges). */
-export const ACTION_TIER: Record<string, Tier> = { deposit: 1, withdraw: 2, convert: 2, p2p: 2, bills: 2 }
+export const ACTION_TIER: Record<string, Tier> = { deposit: 1, withdraw: 2, convert: 2, p2p: 2, bills: 2, send: 2, savings: 2 }

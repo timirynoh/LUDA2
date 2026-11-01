@@ -79,7 +79,7 @@ export default function Chats() {
                       {(g.official || g.verified) && <BadgeCheck size={14} className={`shrink-0 ${g.official ? 'text-gold-300' : 'text-mint-400'}`} />}
                       {muted && <BellOff size={12} className="shrink-0 text-slate-500" />}
                     </div>
-                    <p className="truncate text-sm text-slate-400">{last ? `${last.mine ? 'You' : last.from}: ${last.text}` : g.desc}</p>
+                    <p className="truncate text-sm text-slate-400">{last ? `${last.mine ? 'You' : last.from}: ${last.voice ? '🎙️ Voice note' : last.text}` : g.desc}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <span className={`text-[11px] ${unread && !muted ? 'text-mint-300' : 'text-slate-500'}`}>{last ? ago(last.ts) : ''}</span>

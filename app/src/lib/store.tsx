@@ -16,6 +16,9 @@ import type { ThreadMsg } from './threads'
 import type { Dispute } from './disputes'
 import type { Ad, ExchangerApp } from './exchanger'
 import type { SavedCard } from './cards'
+import type { Review } from './social'
+import type { Item, Order } from './market'
+import type { Pot, RateAlert } from './savings'
 
 export type TxType = 'deposit' | 'withdraw' | 'convert' | 'bill' | 'p2p' | 'reward'
 export interface Tx { id: string; type: TxType; amount: number; currency: string; label: string; ts: number; meta?: string }
@@ -90,6 +93,12 @@ export interface State {
   ads: Ad[]
   cards: SavedCard[]
   flashPop: boolean
+  reviews: Review[]
+  alerts: RateAlert[]
+  pots: Pot[]
+  myItems: Item[]
+  orders: Order[]
+  sent: { id: string; to: string; amount: number; cur: string; note: string; ts: number }[]
   recentPosts: { f: string; t: number }[]
   deposits: number
   gigs: MyGig[]
@@ -112,7 +121,7 @@ export const initialState: State = {
   university: '', classes: [], remind: { on: false, minutes: 15 }, paidFees: [],
   joinedGroups: ['g-help'], myGroups: [], chatMsgs: {}, lastRead: {}, mutedGroups: [], blockedUsers: [], hiddenMsgs: [],
   chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {}, flash: [], gigs: [], saver: { status: 'none' }, createdAt: Date.now(), toured: false, account: null, signedIn: false, lockOnOpen: true,
-  security: { frozen: false, twoStep: false, hideBalances: false, dailyWithdraw: 20000, autoLockMin: 3 }, logins: [], inbox: [], referral: '', kyc: { status: 'none' }, threads: {}, disputes: [], exchanger: { status: 'none' }, ads: [], cards: [], flashPop: true, activity: {}, recentPosts: [], deposits: 0,
+  security: { frozen: false, twoStep: false, hideBalances: false, dailyWithdraw: 20000, autoLockMin: 3 }, logins: [], inbox: [], referral: '', kyc: { status: 'none' }, threads: {}, disputes: [], exchanger: { status: 'none' }, ads: [], cards: [], flashPop: true, reviews: [], alerts: [], pots: [], myItems: [], orders: [], sent: [], activity: {}, recentPosts: [], deposits: 0,
 }
 
 function load(): State {

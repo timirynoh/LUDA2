@@ -8,6 +8,7 @@ export interface Group {
 
 export interface Msg {
   id: string; gid: string; from: string; flag: string; text: string; ts: number
+  voice?: string; dur?: number
   mine?: boolean; reactions?: Record<string, number>; myReaction?: string; replyTo?: { from: string; text: string }; system?: boolean
 }
 

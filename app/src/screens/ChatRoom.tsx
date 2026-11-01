@@ -7,6 +7,7 @@ import { colorFor, demoReply, seedMessages, type Msg } from '../lib/chat'
 import { checkText, rateLimited } from '../lib/moderation'
 import { uid, useStore } from '../lib/store'
 import { GroupAvatar, JoinRules, useGroups } from './Chats'
+import { MicButton, RecordingBar, useRecorder, VoiceBubble } from '../components/Voice'
 
 const QUICK = ['👍', '❤️', '😂', '🙏', '🔥', '😮']
 const EMOJI_ROW = ['😀', '😂', '🥹', '😍', '🙏🏾', '👍🏾', '🔥', '💯', '🎉', '😢', '🤝🏾', '❤️', '🇳🇬', '🇨🇲', '🇿🇼', '🇬🇭', '🇰🇪', '🇨🇩']
@@ -34,6 +35,11 @@ export default function ChatRoom() {
   const msgs = useMemo(() => [...seedMessages(id), ...(s.chatMsgs[id] ?? [])]
     .filter((m) => !s.blockedUsers.includes(m.from) && !s.hiddenMsgs.includes(m.id)), [id, s.chatMsgs, s.blockedUsers, s.hiddenMsgs])
   const muted = s.chatStrikes.until > Date.now()
+  const recorder = useRecorder((url, dur) => {
+    set((p) => ({ ...p, chatMsgs: { ...p.chatMsgs, [id]: [...(p.chatMsgs[id] ?? []), { id: uid(), gid: id, from: p.name, flag: '', text: '', voice: url, dur, ts: Date.now(), mine: true }].slice(-200) } }))
+    setTimeout(() => setTyping('Tolu'), 900)
+    setTimeout(() => { setTyping(null); set((p) => ({ ...p, chatMsgs: { ...p.chatMsgs, [id]: [...(p.chatMsgs[id] ?? []), { id: uid(), gid: id, from: 'Tolu', flag: '🇳🇬', text: '🎧 Nice voice note!', ts: Date.now() }] } })) }, 2600)
+  }, (msg) => toast({ title: msg, emoji: '🎙️' }))
 
   useLayoutEffect(() => { listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' }) }, [msgs.length, typing])
   useEffect(() => { if (joined) set((p) => ({ ...p, lastRead: { ...p.lastRead, [id]: Date.now() } })) }, [msgs.length, joined, id, set])
@@ -126,7 +132,7 @@ export default function ChatRoom() {
                         : `border border-fg/5 bg-ink-800 ${firstOfRun ? 'rounded-2xl' : 'rounded-2xl rounded-tl-md'} ${lastOfRun ? 'rounded-bl-md' : ''}`} ${picked?.id === m.id ? 'ring-2 ring-gold-300' : ''}`}>
                       {!m.mine && firstOfRun && <p className={`mb-0.5 text-xs font-bold ${colorFor(m.from)}`}>{m.from}</p>}
                       {m.replyTo && <div className={`mb-1.5 rounded-lg border-s-4 px-2 py-1 text-xs ${m.mine ? 'border-ink-950/40 bg-ink-950/10' : 'border-mint-400 bg-fg/5'}`}><p className="font-bold">{m.replyTo.from}</p><p className="line-clamp-1 opacity-80">{m.replyTo.text}</p></div>}
-                      <span className="whitespace-pre-wrap break-words">{m.text}</span>
+                      {m.voice ? <VoiceBubble src={m.voice} dur={m.dur ?? 1} mine={m.mine} seed={m.id} /> : <span className="whitespace-pre-wrap break-words">{m.text}</span>}
                       <span className={`ms-2 inline-flex translate-y-0.5 items-center gap-0.5 text-[10px] ${m.mine ? 'text-ink-950/60' : 'text-slate-500'}`}>
                         {new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         {m.mine && (Date.now() - m.ts > 2500 ? <CheckCheck size={13} className="text-sky-800" /> : <Check size={13} />)}
@@ -196,16 +202,17 @@ export default function ChatRoom() {
           {muted ? (
             <p className="rounded-2xl bg-fg/5 p-3 text-center text-sm text-slate-400">🔇 Muted for breaking the rules · {Math.ceil((s.chatStrikes.until - Date.now()) / 1000 / 60)} min left</p>
           ) : (
+            recorder.rec ? <RecordingBar sec={recorder.sec} onSend={recorder.stop} onCancel={recorder.cancel} /> :
             <div className="flex items-end gap-2">
               <button onClick={() => setEmoji(!emoji)} className={`grid size-11 shrink-0 place-items-center rounded-2xl ${emoji ? 'bg-mint-400/20 text-mint-300' : 'bg-fg/5 text-slate-400'}`} aria-label="Emoji"><Smile size={20} /></button>
               <textarea ref={inputRef} rows={1} value={text} placeholder="Message" maxLength={1000}
                 onChange={(e) => { setText(e.target.value); if (warn) setWarn(null); e.target.style.height = 'auto'; e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px` }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
                 className="max-h-30 min-h-11 flex-1 resize-none rounded-2xl border border-fg/10 bg-ink-800 px-4 py-2.5 text-[15px] outline-none focus:border-mint-400/50" />
-              <motion.button whileTap={{ scale: 0.85, rotate: -15 }} onClick={send} disabled={!text.trim()} aria-label="Send"
+              {!text.trim() ? <MicButton onClick={recorder.start} /> : <motion.button whileTap={{ scale: 0.85, rotate: -15 }} onClick={send} disabled={!text.trim()} aria-label="Send"
                 className="grid size-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-mint-400 to-emerald-500 text-ink-950 shadow-lg shadow-emerald-500/30 transition disabled:opacity-30 disabled:shadow-none">
                 <SendHorizontal size={20} className="rtl:rotate-180" />
-              </motion.button>
+              </motion.button>}
             </div>
           )}
         </div>
