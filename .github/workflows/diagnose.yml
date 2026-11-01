@@ -20,7 +20,9 @@ jobs:
           q() {
             echo; echo "=== $1"
             jq -n --arg q "$2" '{query: $q}' | curl -sS -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
-              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @- | jq -c '.[]? // .'
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @- > /tmp/out.json || true
+            jq -c '.[]? // .' /tmp/out.json 2>/dev/null || cat /tmp/out.json
+            sleep 2 # stay under the Management API rate limit
           }
           q "Latest top-ups" "select '…'||right(reference,8) as ref, provider, status, amount_minor/100.0 as charged, currency, credit_minor/100.0 as credit, credit_currency, created_at, paid_at from payments order by created_at desc limit 10"
           q "Processing history (latest 25 events)" "select '…'||right(reference,8) as ref, kind, at, left(coalesce(payload::text,''), 220) as detail from payment_events order by id desc limit 25"
