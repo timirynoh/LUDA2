@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { TradeChat } from '../components/TradeChat'
 import { RateAlerts } from '../components/RateAlerts'
+import { CourierPanel, DelegatePanel, HandoverPicker } from '../components/Handover'
 import { ReviewSheet } from '../components/Review'
 import { OpenDispute } from './Disputes'
 import { DemoNote, Header, PinPad, Segmented, Sheet, Success } from '../components/ui'
@@ -298,10 +299,22 @@ function TradeSheet({ trade, onClose }: { trade: Trade | null; onClose: () => vo
     onClose()
   }
 
-  const steps = [
+  const mode = cur.handover ?? 'person'
+  const verified = cur.status === 'meeting' || cur.status === 'completed'
+  const steps = mode === 'courier' ? [
+    { k: 'Escrow locked', ok: true },
+    { k: 'Courier assigned & on the way', ok: !!cur.courier },
+    { k: 'Courier verified with delivery code', ok: verified },
+    { k: 'Cash counted · escrow released to trader', ok: cur.status === 'completed' },
+  ] : mode === 'delegate' ? [
+    { k: 'Escrow locked', ok: true },
+    { k: 'Pickup code sent to your person', ok: !!cur.delegate },
+    { k: 'Code checked & cash collected', ok: verified },
+    { k: 'Escrow released to trader', ok: cur.status === 'completed' },
+  ] : [
     { k: 'Escrow locked', ok: true },
     { k: 'Arrived at Safe Spot', ok: arrived || cur.status !== 'escrow' },
-    { k: 'QR handshake verified', ok: cur.status === 'meeting' || cur.status === 'completed' },
+    { k: 'QR handshake verified', ok: verified },
     { k: 'Cash counted · escrow released', ok: cur.status === 'completed' },
   ]
 
@@ -333,9 +346,13 @@ function TradeSheet({ trade, onClose }: { trade: Trade | null; onClose: () => vo
             <TradeChat threadKey={`trade-${cur.id}`} name={cur.trader} flag={cur.traderFlag} onAppeal={cur.status === 'disputed' ? undefined : () => setAppeal(true)} />
           )}
 
-          {cur.status === 'escrow' && !arrived && <button className="btn-ghost" onClick={() => setArrived(true)}><MapPin size={16} /> I've arrived — share live check-in</button>}
+          {cur.status === 'escrow' && !arrived && <HandoverPicker t={cur} />}
+          {cur.status === 'escrow' && mode === 'courier' && <CourierPanel t={cur} onVerified={() => update('meeting')} />}
+          {cur.status === 'escrow' && mode === 'delegate' && <DelegatePanel t={cur} onReady={() => update('meeting')} />}
 
-          {cur.status === 'escrow' && arrived && (
+          {cur.status === 'escrow' && mode === 'person' && !arrived && <button className="btn-ghost" onClick={() => setArrived(true)}><MapPin size={16} /> I've arrived — share live check-in</button>}
+
+          {cur.status === 'escrow' && mode === 'person' && arrived && (
             <div className="flex flex-col items-center gap-3 rounded-3xl bg-white p-5 text-ink-950">
               <p className="text-sm font-semibold">Let {cur.trader} scan this</p>
               <QRCodeSVG value={`luda://swap/${cur.id}/${code}`} size={170} />
@@ -350,7 +367,9 @@ function TradeSheet({ trade, onClose }: { trade: Trade | null; onClose: () => vo
             <div className="flex flex-col items-center gap-3"><p className="text-sm text-slate-300">Enter PIN to release {fmt(cur.give, cur.giveCur)}</p><PinPad error={pinErr} onDone={release} /></div>
           ) : (
             <>
-              <div className="rounded-2xl bg-mint-400/10 p-3 text-sm text-mint-100">✅ Identity matched: {cur.trader} is the verified trader you booked. Count the cash before releasing.</div>
+              <div className="rounded-2xl bg-mint-400/10 p-3 text-sm text-mint-100">{mode === 'courier' && cur.courier ? `✅ Courier ${cur.courier.name} (${cur.courier.plate}) verified. Count the cash in front of them, then release. The money goes to ${cur.trader}, not the courier.`
+                : mode === 'delegate' && cur.delegate ? `✅ ${cur.delegate.name} confirmed they have the cash. Releasing pays ${cur.trader}.`
+                : `✅ Identity matched: ${cur.trader} is the verified trader you booked. Count the cash before releasing.`}</div>
               <button className="btn-primary py-4" onClick={() => setReleasing(true)}>I received {fmt(cur.get, 'TRY')} — release escrow</button>
             </>
           ))}

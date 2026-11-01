@@ -26,9 +26,13 @@ export type TxType = 'deposit' | 'withdraw' | 'convert' | 'bill' | 'p2p' | 'rewa
 export interface Tx { id: string; type: TxType; amount: number; currency: string; label: string; ts: number; meta?: string }
 
 export type TradeStatus = 'escrow' | 'meeting' | 'completed' | 'cancelled' | 'disputed'
+export interface Courier { name: string; flag: string; vehicle: string; plate: string; phone: string; rating: number; verified: boolean; assignedAt: number; etaSec: number; secret: string }
+export interface Delegate { name: string; phone: string; plate?: string; code: string; expires: number; createdAt: number; traderVerifiedAt?: number; receivedAt?: number }
 export interface Trade {
   id: string; trader: string; traderFlag: string; give: number; giveCur: string; get: number; getCur: string
   spot: string; when: string; status: TradeStatus; secret: string; createdAt: number
+  /** How the cash changes hands: face to face, a courier sent by the trader, or someone collecting for you. */
+  handover?: 'person' | 'courier' | 'delegate'; courier?: Courier; delegate?: Delegate
 }
 
 export interface State {

@@ -11,6 +11,7 @@ const FAQ: [string, string][] = [
   ['Why do I need to verify my phone and ID?', 'It keeps scammers and fake accounts out. Phone unlocks posting and chatting; ID unlocks money features. Documents are encrypted and only used for verification.'],
   ['How do I post my house?', 'Housing → List a room. If you live there, upload your KIB-TEK or water bill and it goes live instantly. Photos-only posts wait for admin approval.'],
   ['How does Flash help payment work?', 'You accept a fixer’s offer and pay into escrow. The fixer is paid only when you tap “Job done”. Cash is possible but not protected.'],
+  ['Can a driver or friend bring or collect the cash?', 'Yes. In a SafeSwap trade choose “Courier brings the cash” (you verify the courier with a code that changes every 30 seconds) or “Someone collects for me” (you send a one-time pickup code). Escrow is only ever paid to the verified trader, never to the courier.'],
   ['What is Ride Saver?', 'Verified members who opt in get 2 discounted bus/airport tickets per month (₺12 off one-way, ₺14 off return). Tickets are personal with a live QR code.'],
   ['I forgot my PIN or password', 'On the lock screen tap “Forgot PIN? Sign in with password”. For a password, tap “Forgot password?” on the sign-in screen and we’ll email you a code.'],
   ['How do I report a scam or abuse?', 'Use the report button on any post, message or person, or use “Report a problem” below. Repeated reports hide content until our team reviews it.'],
