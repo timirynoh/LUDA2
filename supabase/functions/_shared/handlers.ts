@@ -2,7 +2,7 @@
 // Rules: the server owns every balance and price; money moves only through the SQL
 // functions (atomic, idempotent); deposits are confirmed with the provider before
 // crediting; spending needs the user's PIN; withdrawing and sending need KYC.
-import { hashPin, randomHex, refresh, signIn, signUp, userFromToken, type AuthEnv } from './auth.ts'
+import { hashPin, randomHex, recover, refresh, setPassword, signIn, signUp, userFromToken, type AuthEnv } from './auth.ts'
 import { MoneyError, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
 import { accountMatchesName, idMatchesName, kycEnabled, lookupId, normDate, type KycEnv } from './kyc.ts'
 import { CURRENCIES, LIMITS, convertOut, costIn, depositFee, margin, ngnPerTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
@@ -163,6 +163,19 @@ const routes: Record<string, Route> = {
 
   'POST refresh': async ({ env, d, body }) => {
     try { return { session: await refresh(String(body.refresh_token ?? ''), authEnv(env), d.fetch) } } catch { throw new Fail('Session expired, please sign in again', 401) }
+  },
+
+  'POST recover': async ({ env, d, body }) => {
+    const email = String(body.email ?? '').trim().toLowerCase()
+    if (!EMAIL.test(email)) throw new Fail('Enter a valid email')
+    await recover(email, `${env.APP_URL.replace(/\/$/, '')}/reset`, authEnv(env), d.fetch)
+    return { ok: true }
+  },
+
+  'POST password': async ({ env, d, body }) => {
+    if (typeof body.password !== 'string' || body.password.length < 8) throw new Fail('Password must be at least 8 characters')
+    await setPassword(String(body.access_token ?? ''), body.password, authEnv(env), d.fetch).catch((e) => { throw new Fail(e instanceof Error ? e.message : 'Could not change password') })
+    return { ok: true }
   },
 
   /* ---- signed in ---- */

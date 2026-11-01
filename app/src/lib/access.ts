@@ -1,8 +1,10 @@
+import { LIVE } from './live'
 import type { State } from './store'
 
 /** 0 = Explorer (browse), 1 = phone verified (do & post), 2 = phone + ID verified (money). */
 export type Tier = 0 | 1 | 2
-export const tierOf = (s: Pick<State, 'phoneVerified' | 'verified'>): Tier => (s.phoneVerified ? (s.verified ? 2 : 1) : 0)
+// Live mode: a real server account is level 1 (no SMS provider yet); KYC (NIN/BVN, mirrored from the server) is level 2.
+export const tierOf = (s: Pick<State, 'phoneVerified' | 'verified'>): Tier => (LIVE || s.phoneVerified ? (s.verified ? 2 : 1) : 0)
 
 export const TIERS = [
   { name: 'Explorer', emoji: '👀', how: 'Just signed up', color: 'from-slate-400 to-slate-600' },

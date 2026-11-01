@@ -10,12 +10,12 @@ Luda is an all-in-one, gamified, modern app for Africans (mostly students) livin
 - Daily life: city directory, housing and roommates, jobs, community events (churches and mosques), a university hub (fees, deadlines, timetable OCR), and transport
 - Social and growth: chats, Flash help requests, marketplace, promos, and referrals
 
-**Going live in phases (started 2026-11-01).** Phase 1 = real payments for bus/airport tickets via Paystack + Flutterwave (built; see `docs/GO_LIVE.md`). Everything else is still DEMO: wallet, sending money, P2P exchange, KYC and SMS. The live parts switch on only when `VITE_PAY_API` is set at build time; without it the app is the pure demo.
+**Live mode (owner's decision, 2026-11-01): a real-money wallet.** Paystack/Flutterwave are used ONLY to move money in (top-ups) and out (withdrawals, Paystack only). Everything else (bus/airport tickets, NGN⇄TRY conversion, sending to other users) is paid from the server wallet. The owner chose: NGN + TRY wallets, automatic KYC (Dojah NIN/BVN), sending between users, and users pay both fees. Live mode switches on only when `VITE_PAY_API` is set at build time; without it the app is the pure demo (and the Claude artifact stays demo). In live mode, Exchange (P2P), Bills, Flash, Savings and Market show "Coming soon" (`components/LiveSoon.tsx`) until they're moved onto the real wallet.
 
 ## Owner's rules (always follow)
 1. **Ask before adding features nobody requested.** Offer them as a multi-select question and build only what is picked.
 2. **Nigeria = English only.** Pidgin, Yoruba and Hausa were removed on purpose; do not re-add them. App languages: en, tr, fr, sw, ar.
-3. Real money only where the owner has asked: Phase 1 ticket payments. Don't turn on wallet, transfers or exchange for real until the owner has legal advice (they need CBN licences). Don't add KYC or SMS providers unless asked.
+3. Real money only through the server wallet. Never move live money in client state. Turn on a 'Coming soon' feature for real money only when the owner asks, and only by giving it server endpoints and SQL functions. Remind them once that holding funds, FX and P2P are regulated (they've been told); don't nag.
 4. **No spam or abuse anywhere.** Every posting or action goes through `allow()` (daily limits + duplicate check), moderation (`lib/moderation.ts`) and tier gates.
 5. **Money actions need a double confirmation.** Use `components/Confirm.tsx` (HoldButton, ConfirmSheet, CrossCheck). Never let a single tap move money.
 6. **Explore first, verify to act.** Unverified users can browse everything, and each action shows which tier unlocks it (`lib/access.ts`).
@@ -34,7 +34,7 @@ Luda is an all-in-one, gamified, modern app for Africans (mostly students) livin
 ## Open questions for the owner
 - Does "they give me 5" mean a ₺5 commission per ticket?
 - Business registration is in progress (the owner says live keys are available). Have VirgoBus, Girneliler Seyahat and KIBHAS agreed to accept Luda tickets, and how are they paid?
-- Next phases: **1b** real Luda accounts on Supabase (then Ride Saver can apply to online payments); **2** live keys after CAC; **3** wallet, transfers and exchange after legal advice. Also needed: how the bus companies get paid their TL share.
+- Next steps: move the 'Coming soon' features onto the real wallet (owner picks the order); Ride Saver on real-money tickets (needs server-side counting); a real SMS phone check (e.g. Termii); KYC for non-Nigerian students (Dojah/Smile ID country support); the welcome tour still mentions demo features; reconciliation and admin dashboard. Also: how the bus companies get paid their TL share.
 
 ## Stack
 React 19, Vite 8, TypeScript and Tailwind v4 (`@tailwindcss/vite`; custom classes use `@utility`, not `@apply`; variants are `tab:` and `desk:`). Also used: framer-motion, lucide-react, react-router-dom 7, qrcode.react, and tesseract.js 7 (on-device OCR).
@@ -56,19 +56,33 @@ All code lives in `app/`:
   - P2P handshake codes are 30-second HMAC TOTP-style codes (`lib/crypto.ts`).
   - Text is checked by the profanity and scam filter in `lib/moderation.ts`.
 
-## Live payments (Phase 1)
-- Server: `supabase/`. Migration `migrations/*_payments.sql` (tables `payments` and `payment_events`, RLS on, service-role only). Edge Functions `pay-init`, `pay-verify` and `pay-webhook`; the logic is in `functions/_shared/`:
-  - `handlers.ts`: the request handlers
-  - `providers.ts`: Paystack/Flutterwave API calls and webhook signatures
-  - `pricing.ts`: server-side prices; keep in sync with `app/src/config.ts`
-  - `fx.ts`: TL→NGN rate
-  - `db.ts`: PostgREST access
-- Rules: the server sets the price; the ticket is issued only after the server verifies with the provider (exact amount and currency, else `mismatch`); settled exactly once; webhooks are signature-checked; card data never touches Luda.
-- App: `src/lib/payments.ts`, `components/OnlinePay.tsx` (two-step: quote, then confirm), `screens/PayReturn.tsx` (`/pay/return`). Online-paid tickets have `payRef` and are refunded through support.
-- Tests: `node --test supabase/functions/_shared/payments.test.ts` (no install needed). Type-check with `app/node_modules/.bin/tsc -p supabase/functions/tsconfig.json`.
-- Setup for the owner: `docs/GO_LIVE.md` (browser-only, **live keys**; the owner has live Paystack and Flutterwave accounts).
-- Deploy: the GitHub Action `.github/workflows/deploy-payments.yml` runs the tests, `db push` and deploys the functions (`--no-verify-jwt`) on every push touching `supabase/**`. It needs the repo secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD`.
-- Server secrets (Supabase → Edge Functions → Secrets): `APP_URL`, `PAYSTACK_SECRET_KEY`, `FLW_SECRET_KEY`, `FLW_SECRET_HASH`, `FX_FALLBACK_RATE`, `SELL_OPERATORS` (only operators that agreed to accept Luda tickets); optional `FX_FIXED_RATE`, `FX_MARGIN`, `LUDA_SERVICE_KEY`.
+## Live money (server wallet)
+- `supabase/migrations/`: `*_payments.sql` (payments and payment_events) and `*_wallet.sql`:
+  - Tables: profiles, wallets (NGN/TRY, `balance_minor >= 0`), ledger (unique user/currency/kind/ref), tickets, withdrawals.
+  - SQL functions: `luda_post` (atomic, idempotent, sorted locks, frozen accounts can't be debited), `luda_deposit_paid`, `luda_buy_ticket`, `luda_withdraw`, `luda_withdraw_settle`, `luda_spent`. Execute is revoked from anon and authenticated.
+- Edge Functions:
+  - `api` (all app calls, routed by the last path segment; logic in `functions/_shared/handlers.ts`)
+  - `pay-webhook` (Paystack charge and transfer events, Flutterwave charges; signature checked)
+  - Both are deployed `--no-verify-jwt`; `api` checks the user token itself via Supabase Auth `/user`.
+- API routes:
+  - **Public:** config, username, signup (reserves the username), login (email or username), refresh, recover, password.
+  - **Signed in:** me, pin (PBKDF2, locks for 15 min after 5 wrong tries), rate, deposit plus `GET deposit?ref`, convert (with `expectMinor` quote guard), ticket, user, send (KYC), kyc (Dojah), banks, resolve, withdraw (KYC; account name must match the KYC legal name), `GET withdrawal?ref`.
+- Shared server modules:
+  - `money.ts`: LIMITS, fees, FX; minor units everywhere.
+  - `pricing.ts`: ticket prices; keep in sync with `app/src/config.ts`.
+  - `payouts.ts`: Paystack Transfers. Flutterwave payouts are not used because they need IP whitelisting.
+  - `kyc.ts`: Dojah lookup and name/DOB match.
+  - `auth.ts`: GoTrue REST and the PIN hash.
+- App:
+  - `lib/live.ts`: LIVE flag, session, `api()` with auto-refresh, `money()` formatting.
+  - `lib/liveStore.tsx`: LiveProvider/useLive. Mirrors KYC and frozen state into local state and syncs server tickets.
+  - `screens/LiveWallet.tsx`.
+  - `components/LiveMoney.tsx`: ReviewAndPin (hold, then server PIN), LiveKyc, Deposit/Withdraw/Convert/Send sheets.
+  - `components/LiveTicketPay.tsx`, `screens/PayReturn.tsx` (top-up return).
+  - Auth, Onboarding (server PIN; on a new phone the user re-enters the existing PIN) and Security (PIN change) have LIVE branches. In LIVE, `tierOf` treats a signed-in account as tier 1 (no SMS provider yet).
+- Tests: `cd supabase && npm ci && npm test` runs 15 groups on real Postgres (PGlite) with fake Supabase Auth, Paystack, Flutterwave and Dojah (`tests/harness.ts`). The CI deploy runs them first. For a browser E2E, run a local server with the harness: the same handlers behind `http.createServer`, with `VITE_PAY_API=http://localhost:4300`.
+- Setup for the owner: `docs/GO_LIVE.md` (browser-only). Deploys run through the GitHub Action `.github/workflows/deploy-payments.yml` (repo secrets: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD).
+- Server secrets: APP_URL, PAYSTACK_SECRET_KEY, FLW_SECRET_KEY, FLW_SECRET_HASH, DOJAH_APP_ID, DOJAH_SECRET_KEY, FX_FALLBACK_RATE, SELL_OPERATORS. Optional: FX_MARGIN, FX_FIXED_RATE, WITHDRAW_FEE, DEPOSIT_FEE_*, LUDA_SERVICE_KEY, LUDA_ANON_KEY.
 - Never ask the owner to paste secret keys into chat.
 - `vite.config.ts` uses base `/` for real hosting (deep links work) and `./` only for the embed build.
 

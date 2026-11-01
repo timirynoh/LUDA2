@@ -16,6 +16,8 @@ import { ACTIONS, MAX_SHORTCUTS } from '../lib/actions'
 import { calendarFor, daysUntil, nextClass, UNIVERSITIES } from '../lib/uni'
 import { CITIES, COUNTRIES, CURRENCIES, QUESTS } from '../lib/data'
 import { convert, fmt, useRates } from '../lib/fx'
+import { LIVE } from '../lib/live'
+import { useLive } from '../lib/liveStore'
 import { useStore } from '../lib/store'
 
 export default function Home() {
@@ -30,7 +32,10 @@ export default function Home() {
   const [hide, setHide] = useState(s.security.hideBalances)
   const home = COUNTRIES.find((c) => c.code === s.country)!
   const city = CITIES.find((c) => c.id === s.city)!
-  const total = Object.entries(s.balances).reduce((a, [c, v]) => a + convert(rates, v, c, 'TRY'), 0)
+  const { me } = useLive()
+  // Live mode shows the real wallet (server); the demo shows its local balances.
+  const balances: Record<string, number> = LIVE ? { NGN: (me?.balances.NGN ?? 0) / 100, TRY: (me?.balances.TRY ?? 0) / 100 } : s.balances
+  const total = Object.entries(balances).reduce((a, [c, v]) => a + convert(rates, v, c, 'TRY'), 0)
   const activeTrade = s.trades.find((x) => x.status === 'escrow' || x.status === 'meeting')
 
   const actions = s.shortcuts.map((id) => ACTIONS.find((a) => a.id === id)).filter((a) => a && (!a.admin || s.isAdmin)) as typeof ACTIONS
@@ -71,7 +76,7 @@ export default function Home() {
           </div>
           <p className="mt-1 text-4xl font-extrabold tracking-tight">{hide ? '₺ ••••••' : fmt(total, 'TRY')}</p>
           <div className="mt-4 flex flex-wrap gap-2">
-            {Object.entries(s.balances).map(([c, v]) => (
+            {Object.entries(balances).map(([c, v]) => (
               <span key={c} className="chip bg-black/20 text-emerald-50 backdrop-blur">{CURRENCIES[c]?.flag} {hide ? '•••' : fmt(v, c, { compact: true })}</span>
             ))}
           </div>

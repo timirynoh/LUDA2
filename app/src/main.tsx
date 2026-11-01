@@ -5,6 +5,7 @@ import { MotionConfig } from 'framer-motion'
 import './index.css'
 import App from './App'
 import { StoreProvider } from './lib/store'
+import { LiveProvider } from './lib/liveStore'
 
 // Embedded/sandboxed hosts can't use URL paths, so they route in memory.
 const Router = import.meta.env.VITE_ROUTER === 'memory' ? MemoryRouter : BrowserRouter
@@ -13,9 +14,11 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Router>
       <StoreProvider>
-        <MotionConfig reducedMotion="user">
-          <App />
-        </MotionConfig>
+        <LiveProvider>
+          <MotionConfig reducedMotion="user">
+            <App />
+          </MotionConfig>
+        </LiveProvider>
       </StoreProvider>
     </Router>
   </StrictMode>,

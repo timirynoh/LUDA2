@@ -20,9 +20,16 @@ It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desk
 
 ## Going live
 
-**Phase 1 (built):** real payments for bus tickets and KIBHAS airport seats with **Paystack** and **Flutterwave**. A Supabase server (`supabase/`) sets the price, verifies every payment with the provider, and checks webhook signatures. Card numbers are typed only on the provider's page. Setup steps: [`docs/GO_LIVE.md`](docs/GO_LIVE.md). Without `VITE_PAY_API` the app runs as the full demo.
+**Real-money wallet (built):** Naira and Lira balances held on a Supabase server, with a ledger where nothing is lost or spent twice.
+- **Top-ups:** Paystack or Flutterwave.
+- **Withdrawals:** to your own bank account via Paystack.
+- **Inside Luda:** convert ₦⇄₺, buy bus and airport tickets from the wallet, and send money to other users.
+- **KYC:** automatic NIN/BVN check with Dojah, required for withdrawing and sending.
+- **Every payment:** press-and-hold, then a PIN checked on the server.
 
-Server tests: `node --test supabase/functions/_shared/payments.test.ts`
+Setup steps: [`docs/GO_LIVE.md`](docs/GO_LIVE.md). Without `VITE_PAY_API` the app runs as the full demo.
+
+Server tests (real Postgres, fake providers): `cd supabase && npm ci && npm test`
 
 ## What's inside
 

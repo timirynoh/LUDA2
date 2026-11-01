@@ -41,6 +41,17 @@ export async function refresh(refreshToken: string, env: AuthEnv, f: Fetch = fet
   return r.j as Session
 }
 
+/** Sends a reset link. Always "succeeds" so nobody can probe which emails have accounts. */
+export async function recover(email: string, redirectTo: string, env: AuthEnv, f: Fetch = fetch) {
+  await gt(env, f, `recover?redirect_to=${encodeURIComponent(redirectTo)}`, { body: { email } }).catch(() => {})
+}
+
+/** Sets a new password using the access token from the reset link. */
+export async function setPassword(accessToken: string, password: string, env: AuthEnv, f: Fetch = fetch) {
+  const r = await gt(env, f, 'user', { method: 'PUT', token: accessToken, body: { password } })
+  if (!r.ok) throw new Error(r.status === 401 ? 'This reset link has expired. Ask for a new one.' : friendly(r.j))
+}
+
 function friendly(j: Record<string, any>) {
   const m = String(j.msg ?? j.error_description ?? j.message ?? 'Sign-up failed')
   if (/already registered|exists/i.test(m)) return 'An account with this email already exists. Sign in instead.'

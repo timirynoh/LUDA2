@@ -5,6 +5,7 @@ import { checkLogin, makeAccount, passwordStrength } from '../lib/auth'
 import { hashPin, randomSecret } from '../lib/crypto'
 import { fmt } from '../lib/fx'
 import { useStore } from '../lib/store'
+import { LIVE, api } from '../lib/live'
 import { NotificationSettings } from './Engage'
 
 function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
@@ -107,12 +108,14 @@ function ChangePin({ onClose }: { onClose: () => void }) {
   const { checkPin, set, toast, notify } = useStore()
   const [step, setStep] = useState<'old' | 'new' | 'confirm'>('old')
   const [first, setFirst] = useState('')
+  const [old, setOld] = useState('')
   const [err, setErr] = useState('')
   const done = async (pin: string) => {
     setErr('')
-    if (step === 'old') return (await checkPin(pin)) ? setStep('new') : setErr('Wrong PIN')
+    if (step === 'old') { if (await checkPin(pin)) { setOld(pin); return setStep('new') } return setErr('Wrong PIN') }
     if (step === 'new') { if (/^(\d)\1{3}$|^1234$|^0000$/.test(pin)) return setErr('Too easy to guess. Pick another'); setFirst(pin); return setStep('confirm') }
     if (pin !== first) { setStep('new'); return setErr("PINs didn't match") }
+    if (LIVE) { try { await api('POST', 'pin', { pin, oldPin: old }) } catch (e) { setStep('new'); return setErr(e instanceof Error ? e.message : 'Try again') } }
     const salt = randomSecret(8), pinHash = await hashPin(pin, salt)
     set((p) => ({ ...p, salt, pinHash })); notify('🔑', 'Your PIN was changed'); toast({ title: 'PIN changed', emoji: '🔑' }); onClose()
   }

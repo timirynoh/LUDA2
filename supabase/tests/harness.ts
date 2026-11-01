@@ -90,6 +90,12 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       const user = [...world.users.values()].find((x) => x.email === body.email && x.password === body.password)
       return user ? ok({ access_token: 'tok_' + user.id, refresh_token: 'r_' + user.id, expires_in: 3600, user: { id: user.id, email: user.email } }) : ok({ error_description: 'Invalid login credentials' }, 400)
     }
+    if (url.pathname === '/auth/v1/recover') { world.calls.push('recover:' + body.email + ':' + url.searchParams.get('redirect_to')); return ok({}) }
+    if (url.pathname === '/auth/v1/user' && init?.method === 'PUT') {
+      const user = world.users.get(auth.startsWith('tok_') ? auth.slice(4) : '')
+      if (!user) return ok({ msg: 'invalid' }, 401)
+      user.password = body.password; return ok({ id: user.id })
+    }
     if (url.pathname === '/auth/v1/user') {
       const id = world.tokens.get(auth) ?? (auth.startsWith('tok_') && world.users.has(auth.slice(4)) ? auth.slice(4) : '')
       const user = world.users.get(id)

@@ -14,8 +14,8 @@ import { COUNTRIES, CURRENCIES } from '../lib/data'
 import { uid, useStore } from '../lib/store'
 import { departures, luhn, ticketCode, type Ticket } from '../lib/tickets'
 import { CardPicker } from '../components/Cards'
-import { OnlinePay } from '../components/OnlinePay'
-import { livePay } from '../lib/payments'
+import { LiveTicketPay } from '../components/LiveTicketPay'
+import { LIVE } from '../lib/live'
 import { brandOf } from '../lib/cards'
 import { ERCAN, km, routesFrom, taxiFare } from '../lib/transport'
 
@@ -103,7 +103,7 @@ function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
         {tk.returnDate && <p className="text-xs text-slate-600">Return: {new Date(tk.returnDate + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · {tk.returnTime}</p>}
         <p className="text-xs text-slate-500">Show this QR to the driver · paid {fmt(tk.total, 'TRY')} · saved {fmt(tk.saved, 'TRY')}</p>
       </div>
-      {tk.payRef ? <p className="mt-3 text-center text-xs text-slate-400">Paid online ({tk.payRef.slice(-8)}). To cancel, contact Luda support from Help: refunds go back to your card or bank.</p> :
+      {tk.payRef ? <p className="mt-3 text-center text-xs text-slate-400">Paid from your Luda wallet. To cancel, contact Luda support from Help.</p> :
       <button className="btn-ghost mt-3 w-full text-sm text-rose-300" disabled={tooLate} onClick={refund}>{tooLate ? `Refunds close ${SAVER.noRefundMinutes} min before departure` : 'Cancel & refund'}</button>}
       {!tooLate && tk.saved > 0 && <p className="mt-2 text-center text-[11px] text-slate-500">Refunded Saver tickets still count toward your limits. {Math.max(0, refundsLeft - 1)} refund{refundsLeft - 1 === 1 ? '' : 's'} left this month before Saver pauses.</p>}
     </Sheet>
@@ -185,7 +185,7 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const [made, setMade] = useState<Ticket | null>(null)
 
   const st = saverState(s)
-  const online = livePay && !!trip.opId // real checkout (Paystack / Flutterwave)
+  const online = LIVE && !!trip.opId // real money: paid from the server wallet
   const q = quote(ret ? trip.official.ret : trip.official.single, ret, pax, st.active && !online)
   const official = q.full, total = q.total, saved = q.saved
   const [saverOpen, setSaverOpen] = useState(false)
@@ -248,10 +248,10 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
               <div className="mt-1 flex justify-between text-lg font-extrabold"><span>You pay</span><span>{fmt(total, 'TRY')}</span></div>
               {trip.estimated && <p className="mt-1 text-[11px] text-slate-500">Fare estimated for this route in the demo.</p>}
             </div>
-            {online && <OnlinePay operator={trip.operator} ticketKind={trip.kind} total={total} ready={!!goTime && (!ret || !!(rtime || rtimes[0]))}
+            {online && <LiveTicketPay operator={trip.operator} ticketKind={trip.kind} total={total} ready={!!goTime && (!ret || !!(rtime || rtimes[0]))} onDone={onClose}
               order={{ operatorId: trip.opId!, city: trip.city, return: ret, pax, from: trip.from, to: trip.to, date, time: goTime, returnDate: ret ? rd : undefined, returnTime: ret ? rtime || rtimes[0] : undefined, holder: s.name }} />}
-            {livePay && !online && <p className="text-sm text-slate-400">Online payment isn't available for this route yet.</p>}
-            {!livePay && <>
+            {LIVE && !online && <p className="text-sm text-slate-400">Online payment isn't available for this route yet.</p>}
+            {!LIVE && <>
             <div className={`grid gap-2 ${showHome ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <button onClick={() => setPay('wallet')} className={`glass flex flex-col items-start gap-1 rounded-2xl p-3 text-start ${pay === 'wallet' ? 'border-mint-400/60 bg-mint-400/10' : ''}`}><Wallet size={18} /><span className="text-sm font-semibold">Lira wallet</span><span className="text-xs text-slate-400">{fmt(bal, 'TRY')}</span></button>
               {showHome && <button onClick={() => setPay('home')} className={`glass flex flex-col items-start gap-1 rounded-2xl p-3 text-start ${pay === 'home' ? 'border-mint-400/60 bg-mint-400/10' : ''}`}><span className="text-lg leading-none">{CURRENCIES[hc]?.flag}</span><span className="text-sm font-semibold">{hc} wallet</span><span className="text-xs text-slate-400">{fmt(homeBal, hc, { compact: true })}</span></button>}

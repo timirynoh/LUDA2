@@ -60,6 +60,15 @@ test('sign up, sign in by email or username, profile is created', async () => {
   assert.equal((await call('GET', 'me')).status, 401)
 })
 
+test('forgot password: reset link, then new password works', async () => {
+  assert.equal((await call('POST', 'recover', { email: 'ada@x.com' })).status, 200)
+  assert.ok(world.calls.includes('recover:ada@x.com:https://luda.test/reset'))
+  assert.equal((await call('POST', 'password', { access_token: 'tok_bad', password: 'NewPass2026!' })).status, 400)
+  assert.equal((await call('POST', 'password', { access_token: ada, password: 'NewPass2026!' })).status, 200)
+  assert.equal((await call('POST', 'login', { id: 'ada', password: 'NewPass2026!' })).status, 200)
+  assert.equal((await call('POST', 'login', { id: 'ada', password: 'Lefkosa2026!' })).status, 401)
+})
+
 test('PIN: must be set, not guessable, change needs the old one', async () => {
   assert.match((await call('POST', 'pin', { pin: '1234' }, ada)).j.error, /easy to guess/)
   assert.equal((await call('POST', 'pin', { pin: '4826' }, ada)).status, 200)

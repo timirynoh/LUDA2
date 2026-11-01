@@ -8,6 +8,7 @@ import { hashPin } from '../lib/crypto'
 import { LANGS } from '../lib/data'
 import { checkText } from '../lib/moderation'
 import { useStore } from '../lib/store'
+import { LIVE, api, liveRecover, liveSetPassword, liveSignIn, liveSignUp, type Me } from '../lib/live'
 
 const device = () => {
   const ua = navigator.userAgent
@@ -154,10 +155,12 @@ export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () 
   const [agree, setAgree] = useState(false)
   const [touched, setTouched] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [confirm, setConfirm] = useState(false)
   const strength = passwordStrength(f.password)
   const nameBad = !checkText(`${f.name} ${f.username}`).ok
   const errors = {
-    name: f.name.trim().length < 2 ? 'Enter your name' : nameBad ? 'Please choose a respectful name' : '',
+    name: f.name.trim().length < 2 ? 'Enter your name' : nameBad ? 'Please choose a respectful name' : LIVE && !/\S+\s+\S+/.test(f.name.trim()) ? 'Enter your first and last name exactly as on your ID' : '',
     username: !USERNAME_RE.test(f.username) ? '3–20 characters: lowercase letters, numbers, _ or .' : '',
     email: !EMAIL_RE.test(f.email.trim()) ? 'Enter a valid email' : '',
     password: !strength.ok ? 'At least 8 characters, mixing letters and numbers' : '',
@@ -166,12 +169,18 @@ export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () 
   const submit = async () => {
     setTouched(true)
     if (!valid) return
-    if (s.account && (s.account.email === f.email.trim().toLowerCase() || s.account.username === f.username)) return
-    setBusy(true)
+    if (!LIVE && s.account && (s.account.email === f.email.trim().toLowerCase() || s.account.username === f.username)) return
+    setBusy(true); setErr('')
+    if (LIVE) {
+      try {
+        const r = await liveSignUp({ email: f.email.trim(), username: f.username, fullName: f.name.trim().replace(/\s+/g, ' '), password: f.password, country: s.country })
+        if (r.needsConfirm) { setConfirm(true); setBusy(false); return }
+      } catch (e) { setErr(e instanceof Error ? e.message : 'Could not create your account'); setBusy(false); return }
+    }
     const account = await makeAccount(f.email, f.username, f.password, stay)
     set((p) => ({ ...p, account, signedIn: true, name: f.name.trim().split(' ')[0], logins: [loginEntry('Account created'), ...p.logins].slice(0, 20) }))
   }
-  const taken = s.account && (s.account.email === f.email.trim().toLowerCase() || s.account.username === f.username)
+  const taken = !LIVE && s.account && (s.account.email === f.email.trim().toLowerCase() || s.account.username === f.username)
   return (
     <AuthShell title="Create your account" sub="It takes less than a minute." onBack={onBack}>
       <div className="flex flex-col gap-3">
@@ -190,6 +199,8 @@ export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () 
         )}
         <label className="flex items-center gap-3 ps-1 text-sm text-slate-300"><input type="checkbox" className="size-4 accent-emerald-500" checked={stay} onChange={(e) => setStay(e.target.checked)} /> Keep me signed in on this phone</label>
         <label className="flex items-start gap-3 ps-1 text-xs text-slate-400"><input type="checkbox" className="mt-0.5 size-4 accent-emerald-500" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> I agree to Luda's Terms and Privacy Policy and the community rules (no scams, no hate, no spam).</label>
+        {err && <p className="text-sm text-rose-300">{err}</p>}
+        {confirm && <p className="rounded-2xl bg-mint-400/10 p-3 text-sm text-mint-200">📧 Almost done! We sent a confirmation link to <b>{f.email.trim()}</b>. Open it, then <button className="underline" onClick={onSignIn}>sign in</button>.</p>}
         {taken && <p className="text-sm text-rose-300">That email or username is already registered. <button className="underline" onClick={onSignIn}>Sign in instead</button></p>}
         <button className="btn-primary mt-2 py-4 text-base" disabled={busy} onClick={submit}>{busy ? 'Creating…' : 'Create account'}</button>
         <p className="text-center text-sm text-slate-400">Already have an account? <button className="font-semibold text-mint-300" onClick={onSignIn}>Sign in</button></p>
@@ -213,8 +224,25 @@ export function SignIn({ onBack, onSignUp }: { onBack: () => void; onSignUp: () 
   const [code, setCode] = useState('')
   const locked = tries >= 5
   const finish = () => set((p) => ({ ...p, signedIn: true, account: p.account ? { ...p.account, stay } : p.account, logins: [loginEntry('Password sign-in'), ...p.logins].slice(0, 20), inbox: [{ id: String(Date.now()), ts: Date.now(), emoji: '🔐', title: 'New sign-in to your account. Not you? Freeze your wallet in Security Center', read: false, to: '/security' }, ...p.inbox] }))
+  const [busy, setBusy] = useState(false)
   const submit = async () => {
-    if (locked) return
+    if (locked || busy) return
+    if (LIVE) {
+      setBusy(true); setErr('')
+      try {
+        await liveSignIn(id, pw)
+        const m = await api<Me>('GET', 'me')
+        const same = s.account?.username === m.profile.username
+        set((p) => ({
+          ...p, account: { email: m.profile.email, username: m.profile.username, passHash: '', salt: '', stay },
+          name: same && p.name ? p.name : m.profile.fullName.split(' ')[0],
+          // A different person on this phone starts fresh (new PIN step, no leftover data shown).
+          ...(same ? {} : { onboarded: false, pinHash: '', salt: '', tickets: [], txs: [], inbox: [] }),
+        }))
+        finish()
+      } catch (e) { setTries(tries + 1); setErr(e instanceof Error ? e.message : 'Sign-in failed') } finally { setBusy(false) }
+      return
+    }
     const r = await checkLogin(s.account, id, pw)
     if (r === 'ok') { if (s.security.twoStep) setTwoStep(true); else finish() }
     else { setTries(tries + 1); setErr(r === 'no_account' ? 'No account on this phone yet. Create one first.' : r === 'unknown_user' ? 'We couldn’t find that email or username.' : 'Wrong password. Try again.') }
@@ -233,7 +261,7 @@ export function SignIn({ onBack, onSignUp }: { onBack: () => void; onSignUp: () 
         </div>
         {err && <p className="text-sm text-rose-300">{err}</p>}
         {locked && <p className="text-sm text-rose-300">Too many attempts. For your safety, reset your password to continue.</p>}
-        <button className="btn-primary mt-2 py-4 text-base" disabled={!id || !pw || locked} onClick={submit}>Sign in</button>
+        <button className="btn-primary mt-2 py-4 text-base" disabled={!id || !pw || locked || busy} onClick={submit}>{busy ? 'Signing in…' : 'Sign in'}</button>
         <p className="text-center text-sm text-slate-400">New to Luda? <button className="font-semibold text-mint-300" onClick={onSignUp}>Create an account</button></p>
       </div>
       {forgot && <ForgotPassword onClose={() => { setForgot(false); setTries(0) }} />}
@@ -251,6 +279,51 @@ export function SignIn({ onBack, onSignUp }: { onBack: () => void; onSignUp: () 
 }
 
 function ForgotPassword({ onClose }: { onClose: () => void }) {
+  if (LIVE) return <LiveForgot onClose={onClose} />
+  return <DemoForgot onClose={onClose} />
+}
+
+function LiveForgot({ onClose }: { onClose: () => void }) {
+  const [email, setEmail] = useState('')
+  const [sent, setSent] = useState(false)
+  const [err, setErr] = useState('')
+  const send = async () => { try { await liveRecover(email.trim()); setSent(true) } catch (e) { setErr(e instanceof Error ? e.message : 'Try again') } }
+  return (
+    <Sheet open onClose={onClose} title="Reset your password">
+      {sent ? <p className="text-sm text-slate-300">📧 If <b>{email}</b> has a Luda account, a reset link is on its way. Open it on this phone to choose a new password.</p> : (
+        <div className="flex flex-col gap-3">
+          <input className="input" type="email" placeholder="Your email" value={email} onChange={(e) => { setEmail(e.target.value); setErr('') }} />{err && <p className="text-sm text-rose-300">{err}</p>}
+          <button className="btn-primary py-4" disabled={!EMAIL_RE.test(email.trim())} onClick={send}>Send reset link</button>
+        </div>
+      )}
+    </Sheet>
+  )
+}
+
+/** Opened from the email reset link (live mode): #access_token=…&type=recovery */
+export function ResetPassword({ onDone }: { onDone: () => void }) {
+  const token = new URLSearchParams(window.location.hash.slice(1)).get('access_token') ?? ''
+  const [pw, setPw] = useState('')
+  const [err, setErr] = useState('')
+  const [done, setDone] = useState(false)
+  const strength = passwordStrength(pw)
+  const save = async () => {
+    try { await liveSetPassword(token, pw); setDone(true); history.replaceState(null, '', '/') } catch (e) { setErr(e instanceof Error ? e.message : 'Try again') }
+  }
+  return (
+    <AuthShell title="Choose a new password" sub="Then sign in with it." onBack={onDone}>
+      {done ? <div className="flex flex-col gap-3"><p className="text-sm text-mint-200">✅ Password changed.</p><button className="btn-primary py-4" onClick={onDone}>Sign in</button></div> : (
+        <div className="flex flex-col gap-3">
+          <input className="input" type="password" autoComplete="new-password" placeholder="New password" value={pw} onChange={(e) => { setPw(e.target.value); setErr('') }} />
+          {pw && <p className="text-xs text-slate-400">{strength.label}</p>}{err && <p className="text-sm text-rose-300">{err}</p>}
+          <button className="btn-primary py-4" disabled={!strength.ok || !token} onClick={save}>Save password</button>
+        </div>
+      )}
+    </AuthShell>
+  )
+}
+
+function DemoForgot({ onClose }: { onClose: () => void }) {
   const { s, set } = useStore()
   const [step, setStep] = useState<'email' | 'code' | 'done'>('email')
   const [email, setEmail] = useState('')

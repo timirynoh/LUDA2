@@ -1,17 +1,25 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, Check } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PinPad } from '../components/ui'
 import { hashPin, randomSecret } from '../lib/crypto'
 import { CITIES, COUNTRIES } from '../lib/data'
 import { useStore } from '../lib/store'
+import { LIVE, api, type Me } from '../lib/live'
 
 export default function Onboarding() {
   const { s, set, t, reward } = useStore()
   const [step, setStep] = useState(0)
   const next = () => setStep((x) => x + 1)
 
+  const [pinErr, setPinErr] = useState('')
+  const [hasServerPin, setHasServerPin] = useState(false)
+  useEffect(() => { if (LIVE) api<Me>('GET', 'me').then((m) => setHasServerPin(m.profile.hasPin)).catch(() => {}) }, [])
   const finish = async (pin: string) => {
+    if (LIVE) {
+      // The real PIN lives on the server (it approves every payment). On a new phone, re-enter the existing one.
+      try { await api('POST', 'pin', hasServerPin ? { pin, oldPin: pin } : { pin }) } catch (e) { setPinErr(e instanceof Error ? e.message : 'Try again'); return }
+    }
     const salt = randomSecret(8)
     const pinHash = await hashPin(pin, salt)
     set((p) => ({ ...p, name: p.name || 'Friend', salt, pinHash, onboarded: true, createdAt: Date.now() }))
@@ -46,10 +54,10 @@ export default function Onboarding() {
     </div>,
     <div key="4" className="flex flex-col gap-8">
       <div className="pt-8">
-        <h2 className="text-3xl font-extrabold">{t('onb.pin')}</h2>
-        <p className="mt-2 text-sm text-slate-400">🔐 Hashed on-device. Needed for withdrawals and releasing escrow.</p>
+        <h2 className="text-3xl font-extrabold">{hasServerPin ? 'Enter your Luda PIN' : t('onb.pin')}</h2>
+        <p className="mt-2 text-sm text-slate-400">{LIVE ? (hasServerPin ? '🔐 The PIN you already use for Luda payments.' : '🔐 You\'ll use it to approve every payment. Avoid 1234 or your birthday.') : '🔐 Hashed on-device. Needed for withdrawals and releasing escrow.'}</p>
       </div>
-      <PinPad onDone={finish} />
+      <PinPad error={pinErr} onDone={(p) => { setPinErr(''); return finish(p) }} />
     </div>,
   ]
 

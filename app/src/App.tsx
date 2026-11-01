@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeftRight, Grid2x2, Home as HomeIcon, MessageCircle, Wallet as WalletIcon } from 'lucide-react'
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { Toasts } from './components/ui'
 import { UnlockSheet, useTierCelebration } from './components/Verify'
 import { useKycReview } from './components/Kyc'
@@ -12,7 +12,8 @@ import Housing from './screens/Housing'
 import More from './screens/More'
 import Nearby from './screens/Nearby'
 import Onboarding from './screens/Onboarding'
-import { Landing, LockScreen, SignIn, SignUp, Splash } from './screens/Auth'
+import { Landing, LockScreen, ResetPassword, SignIn, SignUp, Splash } from './screens/Auth'
+import { LIVE, getSession } from './lib/live'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IdleGuard } from './components/IdleGuard'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -42,6 +43,8 @@ import Community from './screens/Community'
 import Jobs from './screens/Jobs'
 import Transport from './screens/Transport'
 import PayReturn from './screens/PayReturn'
+import LiveWallet from './screens/LiveWallet'
+import { LiveSoon } from './components/LiveSoon'
 import Uni from './screens/Uni'
 import { useClassReminders } from './lib/reminders'
 import { useGigProgress } from './lib/gigs'
@@ -82,11 +85,14 @@ export default function App() {
     prev.current = { signedIn: s.signedIn, onboarded: s.onboarded }
   }, [s.signedIn, s.onboarded])
   // Older demo profiles (before accounts existed) keep working.
-  const legacy = !s.account && s.onboarded
-  const authed = legacy || (!!s.account && s.signedIn)
+  // (Never in live mode: real money always needs a real sign-in.)
+  const legacy = !LIVE && !s.account && s.onboarded
+  const authed = legacy || (!!s.account && s.signedIn && (!LIVE || !!getSession()))
+  const [recovery, setRecovery] = useState(() => LIVE && window.location.hash.includes('type=recovery'))
 
   let gateScreen: React.ReactNode = null
-  if (!authed) gateScreen = authView === 'signup'
+  if (recovery) gateScreen = <ResetPassword onDone={() => { setRecovery(false); setAuthView('signin') }} />
+  else if (!authed) gateScreen = authView === 'signup'
     ? <SignUp onBack={() => setAuthView('landing')} onSignIn={() => setAuthView('signin')} />
     : authView === 'signin' ? <SignIn onBack={() => setAuthView('landing')} onSignUp={() => setAuthView('signup')} />
     : <Landing onSignUp={() => setAuthView('signup')} onSignIn={() => setAuthView('signin')} />
@@ -108,11 +114,11 @@ export default function App() {
               <ErrorBoundary key={loc.pathname}>
               <Routes location={loc}>
                 <Route path="/" element={<Home />} />
-                <Route path="/wallet" element={<Wallet />} />
-                <Route path="/exchange" element={<Exchange />} />
+                <Route path="/wallet" element={LIVE ? <LiveWallet /> : <Wallet />} />
+                <Route path="/exchange" element={LIVE ? <LiveSoon title="Exchange" /> : <Exchange />} />
                 <Route path="/nearby" element={<Nearby />} />
                 <Route path="/more" element={<More />} />
-                <Route path="/bills" element={<Bills />} />
+                <Route path="/bills" element={LIVE ? <LiveSoon title="Bills" /> : <Bills />} />
                 <Route path="/housing" element={<Housing />} />
                 <Route path="/jobs" element={<Jobs />} />
                 <Route path="/community" element={<Community />} />
@@ -120,15 +126,15 @@ export default function App() {
                 <Route path="/transport" element={<Transport />} />
                 <Route path="/pay/return" element={<PayReturn />} />
                 <Route path="/admin" element={<Admin />} />
-                <Route path="/flash" element={<Flash />} />
+                <Route path="/flash" element={LIVE ? <LiveSoon title="Flash help" /> : <Flash />} />
                 <Route path="/security" element={<Security />} />
                 <Route path="/inbox" element={<Inbox />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/help" element={<Help />} />
                 <Route path="/disputes" element={<DisputeList />} />
-                <Route path="/send" element={<SendScreen />} />
-                <Route path="/savings" element={<Savings />} />
-                <Route path="/market" element={<Market />} />
+                <Route path="/send" element={LIVE ? <Navigate to="/wallet?a=send" replace /> : <SendScreen />} />
+                <Route path="/savings" element={LIVE ? <LiveSoon title="Savings pots" /> : <Savings />} />
+                <Route path="/market" element={LIVE ? <LiveSoon title="Marketplace" /> : <Market />} />
                 <Route path="/u/:name" element={<Person />} />
                 <Route path="/invite" element={<Invite />} />
                 <Route path="/ambassadors" element={<Ambassadors />} />

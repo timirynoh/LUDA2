@@ -1,0 +1,103 @@
+// Live (real-money) mode: talks to the Luda server (Supabase Edge Function "api").
+// Switched on only when VITE_PAY_API is set at build time; otherwise the app is the demo.
+// The server owns balances, prices, PIN checks, KYC and limits. This file only calls it.
+
+const BASE = (import.meta.env.VITE_PAY_API as string | undefined)?.replace(/\/$/, '') // https://<project>.supabase.co/functions/v1
+const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+export const LIVE = !!BASE
+
+export type Cur = 'NGN' | 'TRY'
+export type Provider = 'paystack' | 'flutterwave'
+export const PROVIDER_LABEL: Record<Provider, string> = { paystack: 'Paystack', flutterwave: 'Flutterwave' }
+
+export interface Session { access_token: string; refresh_token: string; expires_at: number }
+const KEY = 'luda.session'
+export const getSession = (): Session | null => { try { return JSON.parse(localStorage.getItem(KEY) ?? 'null') } catch { return null } }
+function saveSession(s: { access_token: string; refresh_token: string; expires_in?: number }) {
+  localStorage.setItem(KEY, JSON.stringify({ access_token: s.access_token, refresh_token: s.refresh_token, expires_at: Date.now() + (s.expires_in ?? 3600) * 1000 }))
+}
+export function clearSession() { localStorage.removeItem(KEY) }
+
+export class ApiError extends Error { status: number; constructor(m: string, status: number) { super(m); this.status = status } }
+
+let refreshing: Promise<boolean> | null = null
+async function refreshSession(): Promise<boolean> {
+  const s = getSession()
+  if (!s) return false
+  refreshing ??= raw('POST', 'refresh', { refresh_token: s.refresh_token }, false)
+    .then((r: any) => { saveSession(r.session); return true })
+    .catch(() => { clearSession(); window.dispatchEvent(new Event('luda:signedout')); return false })
+    .finally(() => { refreshing = null })
+  return refreshing
+}
+
+async function raw<T>(method: string, route: string, body?: unknown, auth = true): Promise<T> {
+  if (!BASE) throw new ApiError('Live mode is not set up', 0)
+  const s = auth ? getSession() : null
+  let r: Response
+  try {
+    r = await fetch(`${BASE}/api/${route}`, {
+      method, body: body ? JSON.stringify(body) : undefined,
+      headers: { 'content-type': 'application/json', ...(ANON ? { apikey: ANON } : {}), ...(s ? { authorization: `Bearer ${s.access_token}` } : {}) },
+    })
+  } catch { throw new ApiError("Can't reach Luda. Check your internet connection.", 0) }
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok) throw new ApiError(j.error || `Server error (${r.status})`, r.status)
+  return j as T
+}
+
+/** Signed-in API call. Renews the session automatically when it expires. */
+export async function api<T = any>(method: 'GET' | 'POST', route: string, body?: unknown): Promise<T> {
+  const s = getSession()
+  if (s && s.expires_at - Date.now() < 60_000) await refreshSession()
+  try { return await raw<T>(method, route, body) } catch (e) {
+    if (e instanceof ApiError && e.status === 401 && /sign in/i.test(e.message) && (await refreshSession())) return raw<T>(method, route, body)
+    throw e
+  }
+}
+
+export async function liveSignUp(f: { email: string; username: string; fullName: string; password: string; country?: string }) {
+  const r = await raw<{ session: any; needsConfirm: boolean }>('POST', 'signup', f, false)
+  if (r.session) saveSession(r.session)
+  return r
+}
+export async function liveSignIn(id: string, password: string) {
+  const r = await raw<{ session: any }>('POST', 'login', { id, password }, false)
+  saveSession(r.session)
+}
+export const liveRecover = (email: string) => raw('POST', 'recover', { email }, false)
+export async function liveSetPassword(accessToken: string, password: string) {
+  await raw('POST', 'password', { access_token: accessToken, password }, false)
+}
+
+/* ------------------------------- data types ------------------------------- */
+
+export interface LedgerRow { id: number; currency: Cur; amount_minor: number; balance_after: number; kind: string; ref: string; meta: Record<string, any> | null; at: string }
+export interface LiveTicket { id: string; code: string; item: Record<string, any>; base_amount: number; paid_minor: number; paid_currency: Cur; status: string; created_at: string }
+export interface LiveWithdrawal { reference: string; amount_minor: number; fee_minor: number; bank_name: string | null; account_number: string; account_name: string; status: 'processing' | 'paid' | 'failed' | 'reversed'; created_at: string }
+export interface Me {
+  profile: { username: string; fullName: string; email: string; kyc: 'none' | 'verified' | 'failed'; kycName: string | null; hasPin: boolean; frozen: boolean }
+  balances: Record<Cur, number>
+  history: LedgerRow[]
+  tickets: LiveTicket[]
+  withdrawals: LiveWithdrawal[]
+}
+export interface LiveConfig { providers: Provider[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number } }
+
+let cfg: Promise<LiveConfig> | null = null
+export const liveConfig = () => (cfg ??= raw<LiveConfig>('GET', 'config', undefined, false).catch((e) => { cfg = null; throw e }))
+
+/** Formats minor units: 1025000 NGN → ₦10,250 */
+export function money(minor: number, cur: Cur, opts: { sign?: boolean } = {}) {
+  const v = minor / 100
+  const s = (cur === 'NGN' ? '₦' : '₺') + Math.abs(v).toLocaleString('en-GB', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 })
+  return opts.sign ? (minor < 0 ? '−' : '+') + s : (minor < 0 ? '−' : '') + s
+}
+
+export const KIND_LABEL: Record<string, string> = {
+  deposit: 'Top-up', withdraw: 'Withdrawal', withdraw_fee: 'Withdrawal fee', withdraw_reversal: 'Withdrawal refunded',
+  convert: 'Conversion', send: 'Sent', receive: 'Received', ticket: 'Ticket',
+}
+
+/* ----------------------------- pending deposit ----------------------------- */
+export const PENDING_KEY = 'luda.pending.deposit'

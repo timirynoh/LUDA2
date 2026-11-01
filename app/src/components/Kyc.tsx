@@ -5,11 +5,18 @@ import { COUNTRIES } from '../lib/data'
 import { fmt } from '../lib/fx'
 import { DOC_TYPES, KYC_LIMITS, type DocType } from '../lib/kyc'
 import { useStore } from '../lib/store'
+import { LIVE } from '../lib/live'
+import { LiveKyc } from './LiveMoney'
 
 const LIVENESS = ['Look straight at the camera', 'Slowly turn your head left', 'Now turn right', 'Give us a smile 😊']
 
 /** Full KYC: document → front/back → liveness selfie → details → submit for review. */
 export function KycFlow({ onDone }: { onDone?: () => void }) {
+  if (LIVE) return <LiveKyc onDone={onDone} />
+  return <DemoKycFlow onDone={onDone} />
+}
+
+function DemoKycFlow({ onDone }: { onDone?: () => void }) {
   const { s, set, notify } = useStore()
   const [step, setStep] = useState<'intro' | 'doc' | 'front' | 'back' | 'selfie' | 'details' | 'sent'>('intro')
   const [doc, setDoc] = useState<DocType>('passport')
@@ -94,6 +101,7 @@ export function KycFlow({ onDone }: { onDone?: () => void }) {
 /** Status card: what KYC unlocks and where you are. */
 export function KycStatus({ compact }: { compact?: boolean }) {
   const { s } = useStore()
+  if (LIVE) return <LiveKycStatus />
   const st = s.kyc.status
   const L = st === 'verified' ? KYC_LIMITS.verified : KYC_LIMITS.none
   const view = {
@@ -129,4 +137,16 @@ export function useKycReview() {
     }, wait)
     return () => clearTimeout(t)
   }, [s.kyc.status, s.kyc.submittedAt, set, notify, reward])
+}
+
+function LiveKycStatus() {
+  const { s } = useStore()
+  const ok = s.kyc.status === 'verified'
+  return (
+    <div className={`flex items-center gap-3 rounded-2xl border p-3 ${ok ? 'border-mint-400/40 bg-mint-400/10 text-mint-300' : 'border-gold-400/40 bg-gold-400/10 text-gold-300'}`}>
+      {ok ? <BadgeCheck /> : <ShieldCheck />}
+      <div className="flex-1"><p className="text-sm font-bold">{ok ? 'Identity verified' : 'Identity not verified'}</p>
+        <p className="text-xs text-slate-400">{ok ? 'Withdrawals and sending money are unlocked.' : 'You can top up (up to ₦100,000/day) and pay for things. Verify with your NIN or BVN to withdraw and send.'}</p></div>
+    </div>
+  )
 }
