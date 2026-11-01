@@ -10,7 +10,7 @@ export function Header({ title, back, right, sub }: { title: string; back?: bool
   // If this screen was opened directly (no history), "back" goes home instead of doing nothing.
   const goBack = () => (loc.key === 'default' ? nav('/') : nav(-1))
   return (
-    <div className="flex items-center gap-3 px-5 pt-6 pb-4">
+    <div className="pt-safe flex items-center gap-3 px-5 pb-4">
       {back && (
         <button onClick={goBack} className="glass grid size-10 place-items-center rounded-2xl rtl:rotate-180" aria-label="Back">
           <ChevronLeft size={20} />
@@ -32,7 +32,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
         <motion.div className="fixed inset-0 z-50 flex items-end justify-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
           <motion.div
-            className="relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-[2rem] border-t border-fg/10 bg-ink-900 px-5 pt-3 pb-8 shadow-2xl"
+            className="pb-safe relative max-h-[92dvh] w-full max-w-app overflow-y-auto overscroll-contain rounded-t-[2rem] border-t border-fg/10 bg-ink-900 px-5 pt-3 shadow-2xl"
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           >
             <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-fg/15" />

@@ -38,7 +38,7 @@ export default function Market() {
           <div className="flex items-start gap-3 rounded-2xl bg-mint-400/10 p-3 text-xs text-slate-300"><ShieldCheck size={18} className="mt-0.5 shrink-0 text-mint-300" /><span><b>Buy safely:</b> pay into escrow, meet at a Safe Spot, check the item, then release. Never pay before seeing it.</span></div>
           <div className="relative"><Search size={18} className="absolute start-4 top-1/2 -translate-y-1/2 text-slate-500" /><input className="input ps-11" placeholder="Search sofa, phone, books…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <div className="-mx-5 flex gap-2 overflow-x-auto px-5">{CATS.map((c) => <button key={c} onClick={() => setCat(c)} className={`chip shrink-0 px-4 py-2 text-sm ${cat === c ? 'bg-gradient-to-r from-amber-300 to-rose-500 text-ink-950' : 'glass text-slate-300'}`}>{c}</button>)}</div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 tab:grid-cols-3">
             {list.map((i, k) => (
               <motion.button key={i.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(k, 8) * 0.03 }} onClick={() => setOpen(i)} className="card overflow-hidden p-0 text-start">
                 <div className="grid aspect-square place-items-center bg-gradient-to-br from-ink-600 to-ink-800 text-6xl">{i.photos[0] ? <img src={i.photos[0]} alt="" className="size-full object-cover" /> : i.emoji}</div>
@@ -58,7 +58,7 @@ export default function Market() {
           <p className="label mt-2">My listings</p>
           {s.myItems.length ? s.myItems.map((i) => <MyItemRow key={i.id} i={i} />) : <p className="card text-center text-sm text-slate-400">Selling something? Tap "Sell".</p>}
         </>}
-        <div className="pointer-events-none fixed inset-x-0 bottom-28 z-30 mx-auto flex max-w-md justify-end px-5">
+        <div className="pointer-events-none fixed inset-x-0 bottom-28 z-30 mx-auto flex max-w-app justify-end px-5">
           <button onClick={() => gate(1, 'Sell on the marketplace') && setPosting(true)} className="btn-gold pointer-events-auto rounded-full px-5 shadow-2xl"><Plus size={18} /> Sell</button>
         </div>
       </div>

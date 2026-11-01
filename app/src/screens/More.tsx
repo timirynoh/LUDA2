@@ -15,7 +15,7 @@ export default function More() {
   return (
     <div>
       <Header title={t('more.title')} />
-      <div className="grid grid-cols-2 gap-3 px-5">
+      <div className="grid grid-cols-2 gap-3 px-5 tab:grid-cols-3">
         {[...items, { id: 'security', to: '/security', icon: ShieldCheck, key: 'Security Center', c: 'from-emerald-500 to-teal-800' }, { id: 'help', to: '/help', icon: LifeBuoy, key: 'Help & Support', c: 'from-sky-400 to-blue-700' }, { id: 'profile', to: '/profile', icon: User, key: 'profile.title', c: 'from-slate-400 to-slate-600' }].map(({ id, to, icon: Icon, key, c }, i) => (
           <motion.div key={id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
             <Link to={to} className="card flex h-full flex-col gap-3">

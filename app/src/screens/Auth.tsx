@@ -86,7 +86,7 @@ export function Landing({ onSignUp, onSignIn }: { onSignUp: () => void; onSignIn
   useEffect(() => { const t = setInterval(() => setI((x) => (x + 1) % SLIDES.length), 4500); return () => clearInterval(t) }, [])
   const lang = LANGS.find((l) => l.code === s.lang)!
   return (
-    <div className="flex min-h-dvh flex-col px-6 pt-6 pb-8 sm:min-h-[calc(100dvh-3rem)]">
+    <div className="pt-safe pb-safe flex min-h-dvh flex-col px-6 desk:min-h-[calc(100dvh-3rem)]">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2"><LogoMark size={36} /><Wordmark className="text-2xl" /></div>
         <button onClick={() => setLangOpen(true)} className="chip glass py-2 text-slate-300"><Globe size={14} /> {lang.flag} {lang.native}</button>
@@ -136,7 +136,7 @@ function Field({ icon, children, error }: { icon: ReactNode; children: ReactNode
 
 function AuthShell({ title, sub, onBack, children }: { title: string; sub: string; onBack: () => void; children: ReactNode }) {
   return (
-    <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} className="flex min-h-dvh flex-col px-6 pt-6 pb-8 sm:min-h-[calc(100dvh-3rem)]">
+    <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} className="pt-safe pb-safe flex min-h-dvh flex-col px-6 desk:min-h-[calc(100dvh-3rem)]">
       <button onClick={onBack} className="glass grid size-10 place-items-center rounded-2xl rtl:rotate-180" aria-label="Back"><ChevronLeft size={20} /></button>
       <div className="mt-6 mb-8"><LogoMark size={44} /><h1 className="mt-4 text-3xl font-extrabold tracking-tight">{title}</h1><p className="mt-1 text-slate-400">{sub}</p></div>
       {children}
@@ -294,8 +294,8 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   const hour = new Date().getHours()
   const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex min-h-dvh flex-col items-center px-6 pt-16 pb-8 sm:min-h-[calc(100dvh-3rem)]">
-      <LogoMark size={64} />
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-safe flex min-h-dvh flex-col items-center px-6 pt-[max(4rem,env(safe-area-inset-top))] desk:min-h-[calc(100dvh-3rem)]">
+      {s.avatar ? <img src={s.avatar} alt="" className="size-20 rounded-full object-cover ring-4 ring-mint-400/30" /> : <LogoMark size={64} />}
       <p className="mt-6 text-slate-400">{greet},</p>
       <p className="text-3xl font-extrabold">{s.name} 👋🏾</p>
       <p className="mt-2 mb-10 text-sm text-slate-400">Enter your PIN to open Luda</p>

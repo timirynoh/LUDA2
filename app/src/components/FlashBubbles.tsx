@@ -53,7 +53,7 @@ export function FlashPop() {
   const f = others[0]
   const off = () => { setShow(false); set((p) => ({ ...p, flashPop: false })); toast({ title: 'Flash pop-ups off. Turn back on in Profile', emoji: '🔕' }) }
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-28 z-30 mx-auto flex max-w-md justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-28 z-30 mx-auto flex max-w-app justify-center px-4">
       <AnimatePresence>
         {show && f && (
           <motion.div key={f.id} initial={{ y: 80, opacity: 0, scale: 0.9 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 40, opacity: 0 }} transition={{ type: 'spring', damping: 18 }}

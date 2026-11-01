@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Tablets (portrait & landscape iPad etc.): app goes wider and grids gain columns.
+   Phones: full width. Desktop (≥1024px): shown inside a phone frame. */
+@custom-variant tab (@media (min-width: 640px) and (max-width: 1023px));
+@custom-variant desk (@media (min-width: 1024px));
+
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --color-ink-950: #07090f;
@@ -83,3 +88,22 @@ body {
 @utility chip { @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold; }
 @utility label { @apply text-xs font-semibold uppercase tracking-wider text-slate-400; }
 @utility text-gradient { @apply bg-gradient-to-r from-mint-300 via-emerald-300 to-gold-300 bg-clip-text text-transparent; }
+
+
+/* App width used by every full-width layer (page, bottom nav, sheets, overlays). */
+@utility max-w-app {
+  max-width: 28rem;
+  @media (min-width: 640px) and (max-width: 1023px) { max-width: 46rem; }
+}
+
+/* iPhone notch / home bar */
+@utility pt-safe { padding-top: max(1.5rem, env(safe-area-inset-top)); }
+@utility pb-safe { padding-bottom: max(2rem, env(safe-area-inset-bottom)); }
+
+/* iOS zooms into inputs smaller than 16px: keep them at 16px on touch devices. */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px !important; }
+}
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { overflow-x: hidden; overscroll-behavior-y: none; }
+img, svg, video { max-width: 100%; }

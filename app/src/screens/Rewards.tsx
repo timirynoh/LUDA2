@@ -63,7 +63,7 @@ export default function Rewards() {
 
         <section>
           <p className="label mb-3">{t('rewards.badges')} · {s.badges.length}/{Object.keys(BADGES).length}</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 tab:grid-cols-5">
             {Object.entries(BADGES).map(([id, b], i) => {
               const on = s.badges.includes(id)
               return (

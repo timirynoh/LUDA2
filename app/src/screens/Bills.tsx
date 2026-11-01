@@ -51,7 +51,7 @@ export default function Bills() {
   return (
     <div>
       <Header back title={t('bills.title')} sub={`Balance ${fmt(s.balances.TRY ?? 0, 'TRY')} · ${BILL_CASHBACK * 100}% ${t('bills.cashback')}`} />
-      <div className="grid grid-cols-2 gap-3 px-5">
+      <div className="grid grid-cols-2 gap-3 px-5 tab:grid-cols-3">
         {BILLERS.map((x, i) => {
           const Icon = ICONS[x.category]
           return (

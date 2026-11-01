@@ -112,6 +112,7 @@ export const BADGES: Record<string, { name: string; emoji: string; desc: string 
   saver_pot: { name: 'Piggy Bank', emoji: '🐷', desc: 'Reached a savings goal milestone' },
   trader: { name: 'Market Trader', emoji: '🛒', desc: 'Bought or sold on the marketplace' },
   critic: { name: 'Helpful Reviewer', emoji: '⭐', desc: 'Left a review' },
+  allstar: { name: 'All-Star', emoji: '🌟', desc: 'Completed your profile 100%' },
   home_sweet: { name: 'Home Sweet Home', emoji: '🏡', desc: 'Booked a house viewing' },
   good_neighbour: { name: 'Good Neighbour', emoji: '🤝', desc: 'Posted a listing or found a roommate' },
 }

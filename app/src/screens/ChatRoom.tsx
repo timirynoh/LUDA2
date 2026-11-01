@@ -88,7 +88,7 @@ export default function ChatRoom() {
   let lastDay = ''
 
   return (
-    <div className="fixed inset-0 z-40 mx-auto flex max-w-md flex-col bg-ink-950 sm:inset-y-6 sm:rounded-[2.5rem] sm:border sm:border-fg/10 sm:overflow-hidden">
+    <div className="fixed inset-0 z-40 mx-auto flex max-w-app flex-col bg-ink-950 desk:inset-y-6 desk:rounded-[2.5rem] desk:border desk:border-fg/10 desk:overflow-hidden">
       {/* header */}
       <div className="flex items-center gap-3 border-b border-fg/10 bg-ink-900/90 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur-xl">
         <button onClick={() => nav('/chats')} className="grid size-10 place-items-center rounded-xl hover:bg-fg/5 rtl:rotate-180" aria-label="Back"><ChevronLeft size={22} /></button>

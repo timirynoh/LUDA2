@@ -1,5 +1,8 @@
 import { BadgeCheck, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { Avatar, avatarFrom } from '../components/Avatar'
+import { ProfileComplete } from '../components/ProfileComplete'
+import { checkText } from '../lib/moderation'
 import { useState } from 'react'
 import { Header, Sheet } from '../components/ui'
 import { KycFlow, KycStatus } from '../components/Kyc'
@@ -10,6 +13,16 @@ export default function Profile() {
   const { s, set, t, level, reset, gate } = useStore()
   const [kyc, setKyc] = useState(false)
   const [armed, setArmed] = useState(false)
+  const [edit, setEdit] = useState(false)
+  const [photoSheet, setPhotoSheet] = useState(false)
+  const nav = useNavigate()
+  const onStep = (k: string) => {
+    if (k === 'photo') setPhotoSheet(true)
+    else if (k === 'bio') setEdit(true)
+    else if (k === 'phone') gate(1, 'Verify your phone')
+    else if (k === 'kyc') (s.phoneVerified ? setKyc(true) : gate(2, 'KYC verification'))
+    else if (k === 'security') nav('/security')
+  }
   const country = COUNTRIES.find((c) => c.code === s.country)!
 
   return (
@@ -17,12 +30,17 @@ export default function Profile() {
       <Header back title={t('profile.title')} />
       <div className="flex flex-col gap-4 px-5">
         <div className="card flex items-center gap-4">
-          <div className="grid size-16 place-items-center rounded-3xl bg-gradient-to-br from-mint-400 to-gold-400 text-2xl font-black text-ink-950">{s.name[0]?.toUpperCase()}</div>
-          <div className="flex-1">
-            <p className="flex items-center gap-1 text-xl font-bold">{s.name} {s.verified && <BadgeCheck size={18} className="text-mint-400" />}</p>
+          <Avatar size={76} editable />
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-1 truncate text-xl font-bold">{s.name} {s.kyc.status === 'verified' && <BadgeCheck size={18} className="shrink-0 text-mint-400" />}</p>
+            {s.account && <p className="truncate text-xs text-slate-400">@{s.account.username}</p>}
             <p className="text-sm text-slate-400">{country.flag} {country.name} · {level.emoji} {level.name}</p>
+            {s.bio ? <p className="mt-1 line-clamp-2 text-sm text-slate-300">{s.bio}</p> : null}
           </div>
+          <button className="chip shrink-0 bg-fg/5 py-2 text-slate-300" onClick={() => setEdit(true)}>Edit</button>
         </div>
+
+        <ProfileComplete onStep={onStep} />
 
         <button onClick={() => (s.phoneVerified ? setKyc(true) : gate(2, 'KYC verification'))} className="text-start">
           <KycStatus />
@@ -111,9 +129,42 @@ export default function Profile() {
         <button className="btn-ghost text-rose-300" onClick={() => (armed ? reset() : setArmed(true))}>{armed ? 'Tap again to confirm reset' : t('profile.reset')}</button>
       </div>
 
+      {edit && <EditProfile onClose={() => setEdit(false)} />}
+      {photoSheet && (
+        <Sheet open onClose={() => setPhotoSheet(false)} title="Profile photo">
+          <div className="flex flex-col items-center gap-4">
+            <Avatar size={140} editable />
+            <p className="text-center text-sm text-slate-400">Use a clear, real photo of your face: it helps people trust you in trades, jobs and chats. No logos, no group photos.</p>
+            <label className="btn-primary w-full cursor-pointer py-3.5">📸 Take or choose a photo
+              <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { set((p) => ({ ...p, avatar: undefined })); const url = await avatarFrom(f); set((p) => ({ ...p, avatar: url })); setPhotoSheet(false) } }} /></label>
+            {s.avatar && <button className="text-sm text-rose-300" onClick={() => set((p) => ({ ...p, avatar: undefined }))}>Remove photo</button>}
+          </div>
+        </Sheet>
+      )}
       <Sheet open={kyc} onClose={() => setKyc(false)} title="KYC verification">
         <KycFlow />
       </Sheet>
     </div>
+  )
+}
+
+function EditProfile({ onClose }: { onClose: () => void }) {
+  const { s, set, toast } = useStore()
+  const [name, setName] = useState(s.name)
+  const [bio, setBio] = useState(s.bio ?? '')
+  const save = () => {
+    if (!checkText(`${name} ${bio}`).ok) return toast({ title: 'Please keep your profile respectful', emoji: '⚠️' })
+    set((p) => ({ ...p, name: name.trim() || p.name, bio: bio.trim() })); toast({ title: 'Profile saved', emoji: '✅' }); onClose()
+  }
+  return (
+    <Sheet open onClose={onClose} title="Edit profile">
+      <div className="flex flex-col gap-3">
+        <div className="flex justify-center"><Avatar size={96} editable /></div>
+        <label className="grid gap-1 text-xs text-slate-400">Display name<input className="input" maxLength={24} value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="grid gap-1 text-xs text-slate-400">Bio<textarea className="input min-h-24" maxLength={160} placeholder="e.g. Engineering student at NEU 🇳🇬 · I fix phones and love football" value={bio} onChange={(e) => setBio(e.target.value)} /></label>
+        <p className="text-end text-[11px] text-slate-500">{bio.length}/160</p>
+        <button className="btn-primary py-4" onClick={save}>Save</button>
+      </div>
+    </Sheet>
   )
 }

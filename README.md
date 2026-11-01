@@ -58,6 +58,8 @@ It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desk
 | **Marketplace** | Buy & sell student items (photos, condition, category, area), buy safely with escrow at a Safe Spot, chat with seller, release, review, appeal | ✅ demo listings |
 | **Voice notes** | Tap-to-record (≤60 s) voice messages with waveform playback in group chats, trade, job and marketplace chats | ✅ needs mic permission |
 | **More languages** | Nigerian Pidgin (full), Yorùbá and Hausa (core screens; have a native speaker review) | ✅ |
+| **Profile & completeness** | Profile photo (auto square-crop, shown on Home, Profile & lock screen), display name & bio, completeness meter (photo, bio, phone, KYC, account, security) with All-Star badge at 100% | ✅ |
+| **Fits every device** | Phones full-width (tested 320 → 430 px: iPhone SE, 8, 15, 15 Pro Max, Galaxy), tablets get a wider layout with more columns (iPad), desktop shows a phone frame; iPhone notch/home-bar safe areas; no input zoom on iOS; automated overflow check on 20 screens × 7 devices | ✅ |
 | **Gamification** | XP, 5 levels (Newcomer → Legend), daily streaks, 7 quests, 9 badges, redeemable Luda Points and a community leaderboard by country, plus XP toasts and confetti | ✅ |
 | **Languages** | English, Türkçe, Français, Kiswahili, العربية (RTL), Naija Pidgin, Yorùbá, Hausa | ✅ |
 

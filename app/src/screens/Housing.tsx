@@ -123,7 +123,7 @@ function Homes() {
       ))}
       {!list.length && <p className="py-10 text-center text-sm text-slate-400">No places match. Try widening your filters.</p>}
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-28 z-30 mx-auto flex max-w-md justify-end px-5">
+      <div className="pointer-events-none fixed inset-x-0 bottom-28 z-30 mx-auto flex max-w-app justify-end px-5">
         <button onClick={() => gate(1, 'Post your house or room') && setPosting(true)} className="btn-gold pointer-events-auto rounded-full px-5 shadow-2xl"><Plus size={18} /> List a room</button>
       </div>
 

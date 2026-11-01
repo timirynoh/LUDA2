@@ -98,6 +98,8 @@ export interface State {
   pots: Pot[]
   myItems: Item[]
   orders: Order[]
+  avatar?: string
+  bio?: string
   sent: { id: string; to: string; amount: number; cur: string; note: string; ts: number }[]
   recentPosts: { f: string; t: number }[]
   deposits: number

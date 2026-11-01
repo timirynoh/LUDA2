@@ -6,6 +6,7 @@ import { Ring, Sheet } from '../components/ui'
 import { FlashBubbles, FlashPop } from '../components/FlashBubbles'
 import { SaverCard, SaverSheet } from '../components/RideSaver'
 import { UnlockCard, WelcomeTour } from '../components/Verify'
+import { Avatar } from '../components/Avatar'
 import { ACTION_TIER, tierOf } from '../lib/access'
 import { Bell, Lock, Search as SearchIcon } from 'lucide-react'
 import { ACTIONS, MAX_SHORTCUTS } from '../lib/actions'
@@ -32,22 +33,22 @@ export default function Home() {
   const actions = s.shortcuts.map((id) => ACTIONS.find((a) => a.id === id)).filter((a) => a && (!a.admin || s.isAdmin)) as typeof ACTIONS
 
   return (
-    <div className="flex flex-col gap-5 px-5 pt-6">
+    <div className="pt-safe flex flex-col gap-5 px-5">
       {/* top bar */}
-      <div className="flex items-center gap-3">
-        <Link to="/profile">
-          <Ring value={level.progress} size={52} stroke={4}>
-            <div className="grid size-10 place-items-center rounded-full bg-ink-700 text-lg font-bold">{s.name[0]?.toUpperCase()}</div>
+      <div className="flex items-center gap-2 min-[380px]:gap-3">
+        <Link to="/profile" className="shrink-0">
+          <Ring value={level.progress} size={48} stroke={4}>
+            <Avatar size={38} />
           </Ring>
         </Link>
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-slate-400">{t('home.hello')} {home.flag} · {city.name} · <Link to="/rewards" className="text-orange-300"><Flame size={12} className="inline" />{s.streak}</Link></p>
-          <p className="truncate text-lg font-bold">{s.name} <span className="text-sm font-medium text-slate-400">· {level.emoji} {level.name}</span></p>
+          <p className="truncate text-xs text-slate-400 min-[380px]:text-sm">{t('home.hello')} {home.flag} · {city.name}</p>
+          <p className="truncate text-base font-bold min-[380px]:text-lg">{s.name} <span className="text-xs font-medium text-orange-300 min-[380px]:text-sm"><Flame size={12} className="inline" />{s.streak}</span> <span className="text-xs font-medium text-slate-400 max-[379px]:hidden min-[380px]:text-sm">· {level.emoji} {level.name}</span></p>
         </div>
-        <Link to="/search" className="glass grid size-10 place-items-center rounded-2xl" aria-label="Search"><SearchIcon size={18} /></Link>
-        <Link to="/inbox" className="glass relative grid size-10 place-items-center rounded-2xl" aria-label="Notifications"><Bell size={18} />
+        <Link to="/search" className="glass grid size-9 shrink-0 place-items-center rounded-2xl min-[380px]:size-10" aria-label="Search"><SearchIcon size={18} /></Link>
+        <Link to="/inbox" className="glass relative grid size-9 shrink-0 place-items-center rounded-2xl min-[380px]:size-10" aria-label="Notifications"><Bell size={18} />
           {s.inbox.some((n) => !n.read) && <span className="absolute -end-1 -top-1 grid min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{s.inbox.filter((n) => !n.read).length}</span>}</Link>
-        <button onClick={() => set((p) => ({ ...p, theme: isLight ? 'dark' : 'light' }))} className="glass grid size-10 place-items-center rounded-2xl" aria-label="Toggle day / night">
+        <button onClick={() => set((p) => ({ ...p, theme: isLight ? 'dark' : 'light' }))} className="glass grid size-10 shrink-0 place-items-center rounded-2xl max-[379px]:hidden" aria-label="Toggle day / night">
           {isLight ? <Moon size={18} className="text-indigo-500" /> : <Sun size={18} className="text-gold-300" />}
         </button>
 
@@ -119,7 +120,7 @@ export default function Home() {
           <p className="label">{t('home.quick')}</p>
           <button onClick={() => setEditing(true)} className="chip bg-fg/5 py-1.5 text-slate-300"><Pencil size={12} /> Edit</button>
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-4 gap-3 tab:grid-cols-8">
           {actions.map(({ id, to, icon: Icon, key, c }, i) => (
             <motion.div key={id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
               <Link to={to} className="flex flex-col items-center gap-2 text-center">
