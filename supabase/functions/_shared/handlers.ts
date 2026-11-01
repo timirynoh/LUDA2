@@ -147,15 +147,17 @@ async function me(req: Request, env: Env, d: Deps): Promise<Profile> {
 /** Confirms a deposit with the provider and credits the wallet exactly once. Safe to call repeatedly. */
 export async function finalizeDeposit(reference: string, env: Env, d: Deps, source: string): Promise<PaymentRow | null> {
   const p = await d.db.get(reference)
-  if (!p || p.status !== 'pending') return p
+  // Paid is final. Pending, failed and mismatch are always re-verified: the provider has the last word.
+  if (!p || p.status === 'paid') return p
   const v = await verifyPayment(p.provider, reference, env, d.fetch)
   await d.db.log(reference, source, v)
   if (!v.ok) {
-    if (v.status === 'failed') { await d.db.settle(reference, 'failed', v.providerTxId); return { ...p, status: 'failed' } }
+    if (v.status === 'failed' && p.status === 'pending') { await d.db.settle(reference, 'failed', v.providerTxId); return { ...p, status: 'failed' } }
     return p
   }
   // Paid at least what we asked (a provider may add its own fee on top) in the same currency → credit as quoted.
   if (v.reference !== reference || v.currency !== p.currency || v.amountMinor < p.amount_minor) {
+    if (p.status === 'mismatch') return p
     await d.db.settle(reference, 'mismatch', v.providerTxId)
     await d.db.log(reference, 'mismatch', { expected: { amount: p.amount_minor, currency: p.currency }, got: v })
     return { ...p, status: 'mismatch' }
@@ -261,6 +263,10 @@ const routes: Record<string, Route> = {
     // (covers a missed webhook or a closed browser). Each payment is re-checked at most every 2 minutes.
     for (const pay of (await d.db.pendingDeposits(p.user_id, new Date((d.now?.() ?? new Date()).getTime() - 48 * 3600e3).toISOString())).slice(0, 3)) {
       if (await d.db.hit(`recheck:${pay.reference}`, 1, 120)) await finalizeDeposit(pay.reference, env, d, 'recheck').catch(() => {})
+    }
+    // Same for withdrawals whose bank confirmation (webhook) never arrived.
+    if (env.PAYSTACK_SECRET_KEY) for (const w of (await d.db.withdrawals(p.user_id, 5)).filter((x) => x.status === 'processing' && Date.parse(x.created_at) < Date.now() - 120e3)) {
+      if (await d.db.hit(`wrecheck:${w.reference}`, 1, 120)) await settleWithdrawal(w, env, d).catch(() => {})
     }
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
     return {
@@ -587,7 +593,12 @@ export async function handleWebhook(req: Request, env: Env, d: Deps): Promise<Re
   if (req.method !== 'POST') return new Response('ok')
   const raw = await req.text()
   const provider = await checkWebhook(req.headers, raw, env)
-  if (!provider) return new Response('bad signature', { status: 401 })
+  if (!provider) {
+    // Record rejected webhooks (e.g. a wrong Flutterwave secret hash) so the owner's check can spot them.
+    const from = req.headers.get('x-paystack-signature') ? 'paystack' : req.headers.get('verif-hash') || req.headers.get('flutterwave-signature') ? 'flutterwave' : 'unknown'
+    if (await d.db.hit('badsig', 50, 3600).catch(() => false)) await d.db.log('-', 'webhook_bad_signature', { from })
+    return new Response('bad signature', { status: 401 })
+  }
   let body: Record<string, any> = {}
   try { body = JSON.parse(raw) } catch { return new Response('bad body', { status: 400 }) }
   const ev = webhookEvent(provider, body)

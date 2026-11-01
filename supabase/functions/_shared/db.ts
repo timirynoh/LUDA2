@@ -134,7 +134,7 @@ export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
     async withdrawal(ref) { return (await rows<WithdrawalRow>(`withdrawals?reference=eq.${q(ref)}&limit=1`))[0] ?? null },
     withdrawals: (id, n) => rows<WithdrawalRow>(`withdrawals?user_id=eq.${q(id)}&order=created_at.desc&limit=${n}`),
     deposits: (id, n) => rows<PaymentRow>(`payments?user_id=eq.${q(id)}&purpose=eq.deposit&order=created_at.desc&limit=${n}`),
-    pendingDeposits: (id, s) => rows<PaymentRow>(`payments?user_id=eq.${q(id)}&purpose=eq.deposit&status=eq.pending&created_at=gte.${since(s)}&order=created_at.desc&limit=5`),
+    pendingDeposits: (id, s) => rows<PaymentRow>(`payments?user_id=eq.${q(id)}&purpose=eq.deposit&status=in.(pending,mismatch)&created_at=gte.${since(s)}&order=created_at.desc&limit=5`),
     async depositedSince(id, s, cc) {
       const r = await rows<{ credit_minor: number }>(`payments?user_id=eq.${q(id)}&purpose=eq.deposit&credit_currency=eq.${q(cc)}&status=in.(pending,paid)&created_at=gte.${since(s)}&select=credit_minor`)
       return r.reduce((a, x) => a + Number(x.credit_minor ?? 0), 0)

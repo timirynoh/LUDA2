@@ -78,7 +78,7 @@ export default function LiveWallet() {
 
 /* ------------------------------ transactions ------------------------------ */
 
-type Status = 'success' | 'pending' | 'failed' | 'review' | 'refunded'
+type Status = 'success' | 'pending' | 'failed' | 'review' | 'refunded' | 'expired'
 interface Item { key: string; at: string; title: string; sub: string; amountMinor: number; currency: string; status: Status; details: [string, string][]; reference?: string; note?: string }
 
 const PROVIDER = (p?: string) => (p === 'flutterwave' ? 'Flutterwave' : 'Paystack')
@@ -88,11 +88,12 @@ const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(undefi
 function buildItems(me: Me): Item[] {
   const out: Item[] = []
   for (const d of me.deposits ?? []) {
-    const status: Status = d.status === 'paid' ? 'success' : d.status === 'failed' ? 'failed' : d.status === 'mismatch' ? 'review' : 'pending'
+    // A checkout left unpaid for over an hour is shown as "Not completed" (it's still re-checked for 2 days, just in case).
+    const status: Status = d.status === 'paid' ? 'success' : d.status === 'failed' ? 'failed' : d.status === 'mismatch' ? 'review' : Date.now() - Date.parse(d.createdAt) > 3600e3 ? 'expired' : 'pending'
     out.push({
       key: 'dep' + d.reference, at: d.paidAt ?? d.createdAt, title: 'Top-up', sub: `${PROVIDER(d.provider)} · ${money(d.chargeMinor, d.currency)}`,
       amountMinor: d.creditMinor, currency: d.creditCurrency, status, reference: d.reference,
-      note: status === 'pending' ? 'Waiting for the payment to be confirmed. If you paid, it is credited automatically. Tap ↻ at the top to check again.' : status === 'review' ? 'The amount paid didn\'t match. Our team will credit or refund you; share the reference with support.' : status === 'failed' ? 'This payment didn\'t go through. You were not charged.' : undefined,
+      note: status === 'pending' ? 'Waiting for the payment to be confirmed. If you paid, it is credited automatically. Tap ↻ at the top to check again.' : status === 'review' ? 'The amount paid didn\'t match. Our team will credit or refund you; share the reference with support.' : status === 'failed' ? 'This payment didn\'t go through. You were not charged.' : status === 'expired' ? 'This checkout was never completed. If money left your account, it will be credited automatically within 2 days, or contact support with the reference.' : undefined,
       details: [['Status', LABEL[status]], ['Reference', d.reference], ['Started', when(d.createdAt)], ['Completed', when(d.paidAt)], ['Paid with', PROVIDER(d.provider)], ['You paid', money(d.chargeMinor, d.currency)], ['Payment fee', money(d.feeMinor, d.currency)], [`Into your ${d.creditCurrency === 'TRY' ? 'Lira' : 'Naira'} wallet`, money(d.creditMinor, d.creditCurrency)]],
     })
   }
@@ -116,8 +117,8 @@ function buildItems(me: Me): Item[] {
   return out.sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
 }
 
-const LABEL: Record<Status, string> = { success: 'Successful', pending: 'Pending', failed: 'Failed', review: 'Under review', refunded: 'Failed · refunded' }
-const BADGE: Record<Status, string> = { success: 'bg-mint-400/15 text-mint-300', pending: 'bg-gold-400/15 text-gold-300', failed: 'bg-rose-500/15 text-rose-300', review: 'bg-gold-400/15 text-gold-300', refunded: 'bg-rose-500/15 text-rose-300' }
+const LABEL: Record<Status, string> = { success: 'Successful', pending: 'Pending', failed: 'Failed', review: 'Under review', refunded: 'Failed · refunded', expired: 'Not completed' }
+const BADGE: Record<Status, string> = { success: 'bg-mint-400/15 text-mint-300', pending: 'bg-gold-400/15 text-gold-300', failed: 'bg-rose-500/15 text-rose-300', review: 'bg-gold-400/15 text-gold-300', refunded: 'bg-rose-500/15 text-rose-300', expired: 'bg-fg/10 text-slate-400' }
 
 function Row({ it, onOpen }: { it: Item; onOpen: () => void }) {
   const done = it.status === 'success'
@@ -129,7 +130,7 @@ function Row({ it, onOpen }: { it: Item; onOpen: () => void }) {
         <p className="truncate text-xs text-slate-500">{it.sub}{it.sub ? ' · ' : ''}{new Date(it.at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <span className={`text-sm font-bold ${!done ? 'text-slate-400' : it.amountMinor > 0 ? 'text-mint-300' : ''} ${it.status === 'failed' || it.status === 'refunded' ? 'line-through' : ''}`}>{money(it.amountMinor, it.currency, { sign: true })}</span>
+        <span className={`text-sm font-bold ${!done ? 'text-slate-400' : it.amountMinor > 0 ? 'text-mint-300' : ''} ${it.status === 'failed' || it.status === 'refunded' || it.status === 'expired' ? 'line-through' : ''}`}>{money(it.amountMinor, it.currency, { sign: true })}</span>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${BADGE[it.status]}`}>{LABEL[it.status]}</span>
       </div>
     </button>

@@ -332,6 +332,43 @@ test('customer paid Paystack fee on top (amount > asked): still credited as quot
   assert.equal((await bal(ada)).NGN, before + 1_000_00)
 })
 
+test('stuck top-ups heal: an old "mismatch" or "failed" that the provider confirms is credited once', async () => {
+  const before = (await bal(ada)).NGN
+  // like the owner's real case: marked mismatch by the old exact-amount rule, Paystack says success
+  const r = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 1_000_00 }, ada)
+  await q(`update payments set status='mismatch' where reference=$1`, [r.j.reference])
+  world.charges.set(r.j.reference, { status: 'success', amount: r.j.chargeMinor + 15_47, requested: r.j.chargeMinor } as any)
+  assert.equal((await bal(ada)).NGN, before + 1_000_00, 'credited automatically on opening the app')
+  // a real underpayment stays under review
+  const u = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 1_000_00 }, ada)
+  world.charges.set(u.j.reference, { status: 'success', amount: 500 })
+  await call('GET', `deposit?ref=${u.j.reference}`, undefined, ada); await bal(ada)
+  assert.equal((await q(`select status from payments where reference=$1`, [u.j.reference]))[0].status, 'mismatch')
+  // failed, then the customer retried on the same checkout and paid → webhook credits it
+  const f = await call('POST', 'deposit', { provider: 'flutterwave', amountMinor: 1_000_00 }, ada)
+  world.charges.set(f.j.reference, { status: 'failed' }); await call('GET', `deposit?ref=${f.j.reference}`, undefined, ada)
+  world.charges.set(f.j.reference, { status: 'success' })
+  const raw = JSON.stringify({ event: 'charge.completed', data: { tx_ref: f.j.reference } })
+  await hook(raw, { 'verif-hash': 'flwhash' }); await hook(raw, { 'verif-hash': 'flwhash' })
+  assert.equal((await bal(ada)).NGN, before + 2_000_00, 'late success credited, once')
+})
+
+test('rejected webhooks are recorded so a wrong secret hash can be spotted', async () => {
+  await hook(JSON.stringify({ event: 'charge.completed', data: { tx_ref: 'x' } }), { 'verif-hash': 'old-wrong-hash' })
+  const ev = await q(`select payload from payment_events where kind='webhook_bad_signature' order by id desc limit 1`)
+  assert.equal(ev[0].payload.from, 'flutterwave')
+})
+
+test('withdrawal stuck "processing" (webhook missed) settles when the user opens the app', async () => {
+  const before = (await bal(ada)).NGN
+  world.transferReply = 'pending'
+  const w = await call('POST', 'withdraw', { amountMinor: 1_000_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
+  assert.equal(w.j.status, 'processing', JSON.stringify(w.j))
+  await q(`update withdrawals set created_at = now() - interval '5 minutes' where reference=$1`, [w.j.reference])
+  world.transfers.set(w.j.reference, 'failed')
+  assert.equal((await bal(ada)).NGN, before, 'failed payout refunded automatically')
+})
+
 test('books balance: every wallet equals the sum of its ledger', async () => {
   const bad = await q(`select w.user_id from wallets w left join (select user_id, currency, sum(amount_minor) s from ledger group by 1,2) l using (user_id, currency) where w.balance_minor <> coalesce(l.s, 0)`)
   assert.equal(bad.length, 0)

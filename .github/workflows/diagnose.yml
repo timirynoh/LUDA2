@@ -24,5 +24,13 @@ jobs:
           }
           q "Latest top-ups" "select '…'||right(reference,8) as ref, provider, status, amount_minor/100.0 as charged, currency, credit_minor/100.0 as credit, credit_currency, created_at, paid_at from payments order by created_at desc limit 10"
           q "Processing history (latest 25 events)" "select '…'||right(reference,8) as ref, kind, at, left(coalesce(payload::text,''), 220) as detail from payment_events order by id desc limit 25"
+          echo; echo "################ PROBLEMS (empty lists = all good) ################"
+          q "PROBLEM: top-ups under review (paid amount/currency did not match)" "select '…'||right(reference,8) as ref, provider, amount_minor/100.0 as expected, currency, created_at from payments where status = 'mismatch' order by created_at desc limit 20"
+          q "PROBLEM: top-ups still pending after 1 hour (self-healing re-checks them when the user opens the app)" "select '…'||right(reference,8) as ref, provider, amount_minor/100.0 as amount, created_at from payments where status = 'pending' and created_at < now() - interval '1 hour' order by created_at desc limit 20"
+          q "PROBLEM: withdrawals processing for over 30 minutes" "select '…'||right(reference,8) as ref, amount_minor/100.0 as amount, created_at from withdrawals where status = 'processing' and created_at < now() - interval '30 minutes'"
+          q "PROBLEM: rejected webhooks in the last 7 days (wrong secret hash / key?)" "select payload->>'from' as provider, count(*) as rejected, max(at) as last from payment_events where kind = 'webhook_bad_signature' and at > now() - interval '7 days' group by 1"
+          q "PROBLEM: wallets that don't match their ledger (should never happen)" "select '…'||right(w.user_id::text,6) as user_, w.currency, w.balance_minor, coalesce(l.s,0) as ledger_sum from wallets w left join (select user_id, currency, sum(amount_minor) s from ledger group by 1,2) l using (user_id, currency) where w.balance_minor <> coalesce(l.s,0)"
+          echo; echo "################ HEALTH ################"
+          q "Webhooks received in the last 7 days (0 = webhook URL not set or not reaching Luda)" "select coalesce(payload->>'provider','?') as provider, count(*) as received, max(at) as last from payment_events where kind = 'webhook' and at > now() - interval '7 days' group by 1"
           q "Wallet totals" "select currency, count(*) as wallets, sum(balance_minor)/100.0 as total from wallets group by currency"
           q "Accounts" "select count(*) as profiles, count(*) filter (where pin_hash is not null) as with_pin from profiles"
