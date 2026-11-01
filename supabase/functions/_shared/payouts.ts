@@ -7,13 +7,24 @@ const API = 'https://api.paystack.co'
 export interface Bank { code: string; name: string }
 export type TransferStatus = 'processing' | 'paid' | 'failed' | 'reversed'
 
+/** Paystack answered and said no (as opposed to a network problem where we don't know the outcome). */
+export class PaystackRefused extends Error { httpStatus: number; constructor(m: string, s: number) { super(m); this.httpStatus = s } }
+
+/** Turns Paystack's refusal into words a student understands. */
+export function payoutRefusalMessage(m: string) {
+  if (/starter business|third party payouts|not (yet )?(enabled|allowed)/i.test(m)) return 'Withdrawals are paused while Luda\'s payout account is being upgraded. Your money is back in your wallet; please try again later.'
+  if (/balance|insufficient/i.test(m)) return 'Withdrawals are temporarily unavailable. Your money is back in your wallet; please try again in a few hours.'
+  return `The bank transfer could not be started (${m}). Your money is back in your wallet.`
+}
+
 async function ps(f: Fetch, key: string, path: string, body?: unknown) {
   const r = await f(`${API}${path}`, {
     method: body ? 'POST' : 'GET', body: body ? JSON.stringify(body) : undefined,
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' }, signal: AbortSignal.timeout(20000),
   })
   const j = (await r.json().catch(() => ({}))) as Record<string, any>
-  if (!r.ok || j.status === false) throw new Error(j.message || `Paystack error ${r.status}`)
+  // 4xx / status:false = Paystack definitely refused; 5xx = unknown (may or may not have happened)
+  if (!r.ok || j.status === false) { const m = String(j.message || `Paystack error ${r.status}`); throw r.status >= 400 && r.status < 500 ? new PaystackRefused(m, r.status) : new Error(m) }
   return j.data
 }
 

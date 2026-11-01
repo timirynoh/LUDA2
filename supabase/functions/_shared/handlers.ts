@@ -7,7 +7,7 @@ import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion
 import { MoneyError, type CaseRow, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
 import { accountMatchesName, diditDecision, diditEnabled, diditSignatureOk, diditStart, docHash, idMatchesName, kycEnabled, lookupId, nameTokens, normDate, type DiditEnv, type KycEnv } from './kyc.ts'
 import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, depositFee, foreignEnabled, foreignFee, margin, ngnPerTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
-import { checkTransfer, createRecipient, listBanks, resolveAccount, sendTransfer } from './payouts.ts'
+import { PaystackRefused, checkTransfer, createRecipient, listBanks, payoutRefusalMessage, resolveAccount, sendTransfer } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
 import { decodeFile, putFile, signedUrl } from './storage.ts'
 import { checkCode, normPhone, sendCode, smsEnabled, type SmsEnv } from './sms.ts'
@@ -254,7 +254,16 @@ export async function finalizeDeposit(reference: string, env: Env, d: Deps, sour
 /** Asks Paystack for a withdrawal's final status; refunds the wallet if it failed. */
 export async function settleWithdrawal(w: WithdrawalRow, env: Env, d: Deps): Promise<WithdrawalRow['status']> {
   if (w.status !== 'processing' && w.status !== 'paid') return w.status
-  const t = await checkTransfer(env.PAYSTACK_SECRET_KEY!, w.reference, d.fetch)
+  let t
+  try { t = await checkTransfer(env.PAYSTACK_SECRET_KEY!, w.reference, d.fetch) } catch (e) {
+    // Paystack has no such transfer (it was refused before being created): after 5 minutes, give the money back.
+    if (e instanceof PaystackRefused && w.status === 'processing' && !w.transfer_code && Date.now() - Date.parse(w.created_at) > 5 * 60e3) {
+      await d.db.withdrawSettle(w.reference, 'failed', null, 'Paystack has no record of this transfer, refunded')
+      await d.db.log(w.reference, 'withdraw_failed', { reason: e.message })
+      return 'failed'
+    }
+    throw e
+  }
   if (t.reference && t.reference !== w.reference) return w.status
   if (t.status === 'processing' || t.status === w.status) return w.status
   await d.db.withdrawSettle(w.reference, t.status, t.transferCode, null)
@@ -830,6 +839,12 @@ const routes: Record<string, Route> = {
       await d.db.log(reference, 'withdraw_sent', t)
       return { reference, status: t.status === 'failed' ? 'failed' : t.status, accountName: name, feeMinor: fee }
     } catch (e) {
+      if (e instanceof PaystackRefused) {
+        // Paystack said no, so nothing was sent: return the money (and fee) to the wallet right away.
+        await d.db.withdrawSettle(reference, 'failed', null, e.message.slice(0, 200))
+        await d.db.log(reference, 'withdraw_refused', { error: e.message, http: e.httpStatus })
+        return { reference, status: 'failed', accountName: name, feeMinor: fee, message: payoutRefusalMessage(e.message) }
+      }
       // Unknown outcome (network): keep it "processing"; the webhook or a status check settles it.
       await d.db.log(reference, 'withdraw_unknown', { error: String(e) })
       return { reference, status: 'processing', accountName: name, feeMinor: fee }

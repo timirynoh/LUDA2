@@ -141,8 +141,10 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
         return name ? ok({ status: true, data: { account_name: name } }) : ok({ status: false, message: 'Could not resolve account name' }, 422)
       }
       if (url.pathname === '/transferrecipient') return ok({ status: true, data: { recipient_code: 'RCP_' + body.account_number } })
+      if (url.pathname === '/transfer' && world.transferReply === 'starter') return ok({ status: false, message: 'You cannot initiate third party payouts as a starter business' }, 400)
       if (url.pathname === '/transfer') { world.transfers.set(body.reference, world.transferReply); return ok({ status: true, data: { status: world.transferReply, transfer_code: 'TRF_' + body.reference.slice(-4) } }) }
       if (url.pathname.startsWith('/transfer/verify/')) {
+        if (!world.transfers.has(decodeURIComponent(url.pathname.split('/').pop()!))) return ok({ status: false, message: 'Transfer not found' }, 404)
         const ref = decodeURIComponent(url.pathname.split('/').pop()!)
         return ok({ status: true, data: { status: world.transfers.get(ref) ?? 'pending', reference: ref, transfer_code: 'TRF_x' } })
       }

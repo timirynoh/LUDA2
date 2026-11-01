@@ -231,6 +231,7 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
   const [err, setErr] = useState('')
   const [review, setReview] = useState(false)
   const [result, setResult] = useState('')
+  const [resultMsg, setResultMsg] = useState('')
   const fee = 50_00
   const verified = me?.profile.kyc === 'verified'
   useEffect(() => { if (verified) api('GET', 'banks').then((r) => setBanks(r.banks)).catch((e) => setErr(errMsg(e))) }, [verified])
@@ -251,8 +252,8 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
           rows={[['To', <span key="to">{name!.accountName}<br /><span className="text-xs text-slate-400">{bank!.name} · {acct}</span></span>], ['Amount', money(minor, 'NGN')], ['Fee', money(fee, 'NGN')], ['Leaves your wallet', <b key="v">{money(minor + fee, 'NGN')}</b>]]}
           warning="Check the account carefully. Money sent to a bank can't be pulled back by Luda."
           holdLabel="Hold to withdraw"
-          run={async (auth) => { const r = await api('POST', 'withdraw', { amountMinor: minor, account: acct, bankCode: bank!.code, bankName: bank!.name, ...auth }); setResult(r.status); await refresh() }}
-          done={<Success title={result === 'failed' ? 'Withdrawal failed, money returned' : result === 'paid' ? 'Sent to your bank 🎉' : 'Withdrawal on its way'} sub={result === 'processing' ? 'Usually arrives within minutes. You\'ll see the status in your history.' : undefined} onClose={onClose} />}
+          run={async (auth) => { const r = await api('POST', 'withdraw', { amountMinor: minor, account: acct, bankCode: bank!.code, bankName: bank!.name, ...auth }); setResult(r.status); setResultMsg(r.message ?? ''); await refresh() }}
+          done={<Success title={result === 'failed' ? 'Withdrawal didn\'t go through' : result === 'paid' ? 'Sent to your bank 🎉' : 'Withdrawal on its way'} sub={result === 'failed' ? resultMsg || 'Your money is back in your wallet.' : result === 'processing' ? 'Usually arrives within minutes. You\'ll see the status in your history.' : undefined} onClose={onClose} />}
           onClose={() => setReview(false)} />
       ) : (
         <div className="flex flex-col gap-3">
