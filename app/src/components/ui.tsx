@@ -35,10 +35,13 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
             className="pb-safe relative max-h-[92dvh] w-full max-w-app overflow-y-auto overscroll-contain rounded-t-[2rem] border-t border-fg/10 bg-ink-900 px-5 pt-3 shadow-2xl"
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           >
-            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-fg/15" />
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold">{title}</h2>
-              <button onClick={onClose} className="glass grid size-9 place-items-center rounded-xl" aria-label="Close"><X size={18} /></button>
+            {/* Title stays pinned while the sheet scrolls, so Close is always reachable. */}
+            <div className="sticky top-0 z-10 -mx-5 -mt-3 mb-3 bg-ink-900 px-5 pb-3 pt-3">
+              <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-fg/15" />
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-bold">{title}</h2>
+                <button onClick={onClose} className="glass grid size-9 shrink-0 place-items-center rounded-xl" aria-label="Close"><X size={18} /></button>
+              </div>
             </div>
             {children}
           </motion.div>

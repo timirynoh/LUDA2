@@ -127,7 +127,7 @@ function TopUps({ onOpen }: { onOpen: (id: string) => void }) {
       {msg && <p className="text-xs text-slate-300">{msg}</p>}{err && <p className="text-sm text-rose-300">{err}</p>}
       {data?.deposits.map((d) => (
         <div key={d.reference} className="rounded-2xl bg-fg/[0.04] p-3 text-sm">
-          <div className="flex items-center justify-between gap-2"><span className="font-mono text-xs">{d.reference}</span><Badge s={d.status} /></div>
+          <div className="flex items-center justify-between gap-2"><span className="selectable font-mono text-xs">{d.reference}</span><Badge s={d.status} /></div>
           <p className="mt-1 text-xs text-slate-400">{d.provider} · paid {money(Number(d.amount_minor), d.currency)} → {money(Number(d.credit_minor), d.credit_currency ?? 'NGN')} · {when(d.created_at)}</p>
           <div className="mt-2 flex gap-2">
             {d.status !== 'paid' && <button className="chip bg-fg/5 py-1.5 text-xs" onClick={() => recheck(d.reference)}><RefreshCw size={12} /> Re-check with {d.provider}</button>}
@@ -151,7 +151,7 @@ function Payouts({ onOpen }: { onOpen: (id: string) => void }) {
       {msg && <p className="text-xs text-slate-300">{msg}</p>}{err && <p className="text-sm text-rose-300">{err}</p>}
       {data?.withdrawals.map((w) => (
         <div key={w.reference} className="rounded-2xl bg-fg/[0.04] p-3 text-sm">
-          <div className="flex items-center justify-between gap-2"><span className="font-mono text-xs">{w.reference}</span><Badge s={w.status} /></div>
+          <div className="flex items-center justify-between gap-2"><span className="selectable font-mono text-xs">{w.reference}</span><Badge s={w.status} /></div>
           <p className="mt-1 text-xs text-slate-400">{money(Number(w.amount_minor), 'NGN')} + fee {money(Number(w.fee_minor), 'NGN')} → {w.account_name} · {w.bank_name} ••{String(w.account_number).slice(-4)} · {when(w.created_at)}</p>
           {w.note && <p className="text-xs text-slate-500">{w.note}</p>}
           <div className="mt-2 flex gap-2">
@@ -188,7 +188,7 @@ function UserSheet({ id, onClose }: { id: string; onClose: () => void }) {
           <div className="divide-y divide-fg/5 rounded-2xl bg-fg/[0.04] text-sm">
             {([['Username', '@' + u.username], ['Email', u.email], ['Phone', u.phone ? `${u.phone}${u.phoneVerified ? ' ✓' : ''}` : '–'], ['ID check', `${u.kyc}${u.kycName ? ` · ${u.kycName}` : ''}${u.kycType ? ` (${u.kycType}${u.kycCountry ? `, ${u.kycCountry}` : ''}${u.kycLast4 ? ` ••${u.kycLast4}` : ''})` : ''}`],
               ['Status', u.frozen ? `🧊 Frozen by ${u.frozenBy}` : 'Active'], ['Joined', when(u.createdAt)], ['Naira', money(data.balances.NGN ?? 0, 'NGN')], ['Lira', money(data.balances.TRY ?? 0, 'TRY')]] as [string, string][])
-              .map(([k, v]) => <div key={k} className="flex justify-between gap-3 px-4 py-2"><span className="shrink-0 text-slate-400">{k}</span><span className="break-all text-end">{v}</span></div>)}
+              .map(([k, v]) => <div key={k} className="flex justify-between gap-3 px-4 py-2"><span className="shrink-0 text-slate-400">{k}</span><span className="selectable break-all text-end">{v}</span></div>)}
           </div>
           <input className="input text-sm" maxLength={140} placeholder="Reason (saved in the audit log)" value={reason} onChange={(e) => setReason(e.target.value)} />
           <div className="grid grid-cols-2 gap-2">

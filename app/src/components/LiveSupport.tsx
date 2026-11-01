@@ -1,5 +1,5 @@
 // Support cases / appeals (live mode): students explain a problem and attach photos; the Luda team replies.
-import { Camera, FileText, Loader2, MessageCircle, Paperclip, Plus, X } from 'lucide-react'
+import { Camera, FileText, Loader2, MessageCircle, Paperclip, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { errMsg } from './LiveMoney'
 import { Sheet } from './ui'
@@ -73,7 +73,11 @@ const HINT: Partial<Record<CaseCategory, string>> = {
   withdrawal: 'Attach a screenshot of your bank statement, if relevant.',
 }
 
-export function NewCaseSheet({ category: initial = 'other', reference, subject: initialSubject = '', onClose, onCreated }: { category?: CaseCategory; reference?: string; subject?: string; onClose: () => void; onCreated?: () => void }) {
+export function NewCaseSheet(props: { category?: CaseCategory; reference?: string; subject?: string; onClose: () => void; onCreated?: () => void }) {
+  return <Sheet open onClose={props.onClose} title="Get help from the Luda team"><NewCaseForm {...props} /></Sheet>
+}
+
+export function NewCaseForm({ category: initial = 'other', reference, subject: initialSubject = '', onClose, onCreated }: { category?: CaseCategory; reference?: string; subject?: string; onClose: () => void; onCreated?: () => void }) {
   const [category, setCategory] = useState<CaseCategory>(initial)
   const [subject, setSubject] = useState(initialSubject)
   const [message, setMessage] = useState('')
@@ -86,7 +90,7 @@ export function NewCaseSheet({ category: initial = 'other', reference, subject: 
     try { await api('POST', 'case-create', { category, subject, message, reference, files: files.map(({ type, data, name }) => ({ type, data, name })) }); setDone(true); onCreated?.() } catch (e) { setErr(errMsg(e)) } finally { setBusy(false) }
   }
   return (
-    <Sheet open onClose={onClose} title="Get help from the Luda team">
+    <>
       {done ? (
         <div className="flex flex-col items-center gap-3 py-6 text-center"><MessageCircle size={48} className="text-mint-300" /><p className="text-lg font-bold">Sent ✅</p>
           <p className="text-sm text-slate-400">The Luda team will reply here, usually within a few hours. Find it under <b>Help → My cases</b>.</p><button className="btn-primary w-full py-3" onClick={onClose}>OK</button></div>
@@ -104,7 +108,7 @@ export function NewCaseSheet({ category: initial = 'other', reference, subject: 
           <p className="text-center text-[11px] text-slate-500">🔒 Photos are private: only the Luda team can see them.</p>
         </div>
       )}
-    </Sheet>
+    </>
   )
 }
 
@@ -125,35 +129,57 @@ export function Thread({ messages }: { messages: CaseMsg[] }) {
   )
 }
 
-/** Help → My cases. */
-export function MyCases() {
+function useCases(active = true) {
   const [cases, setCases] = useState<UserCase[] | null>(null)
-  const [open, setOpen] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
   const [err, setErr] = useState('')
   const load = useCallback(async () => { try { setCases((await api<{ cases: UserCase[] }>('GET', 'cases')).cases); setErr('') } catch (e) { setErr(errMsg(e)) } }, [])
-  useEffect(() => { void load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
-  const current = cases?.find((c) => c.id === open)
+  useEffect(() => { if (active) void load() }, [load, active]) // eslint-disable-line react-hooks/set-state-in-effect
+  return { cases, err, load }
+}
+const openCount = (cases: UserCase[] | null) => (cases ?? []).filter((c) => c.status === 'open' || c.status === 'waiting_user').length
+const waitingOnMe = (cases: UserCase[] | null) => (cases ?? []).filter((c) => c.status === 'waiting_user').length
+
+/** The appeals pop-up: "My cases" and "New appeal" in one place, with each conversation inside. */
+export function CasesHub({ onClose, start = 'list', category, reference, subject }: { onClose: () => void; start?: 'list' | 'new'; category?: CaseCategory; reference?: string; subject?: string }) {
+  const { cases, err, load } = useCases()
+  const [view, setView] = useState<'list' | 'new'>(start)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const current = cases?.find((c) => c.id === openId)
   return (
-    <section className="card flex flex-col gap-3">
-      <div className="flex items-center justify-between"><p className="font-semibold">My cases & appeals</p>
-        <button className="chip bg-mint-400/15 text-mint-300" onClick={() => setCreating(true)}><Plus size={14} /> New</button></div>
-      <p className="text-xs text-slate-400">Can't verify your ID, a payment didn't show up, or your account is stuck? Tell us here and attach photos.</p>
-      {err && <p className="text-xs text-rose-300">{err}</p>}
-      {cases?.length === 0 && <p className="text-sm text-slate-500">No cases yet.</p>}
-      {cases?.map((c) => (
-        <button key={c.id} className="glass flex items-center gap-3 rounded-2xl p-3 text-start" onClick={() => setOpen(c.id)}>
-          <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{c.subject}</p><p className="truncate text-xs text-slate-500">{CATEGORY_LABEL[c.category]} · {new Date(c.updated_at).toLocaleDateString()}</p></div>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_LABEL[c.status]?.c}`}>{STATUS_LABEL[c.status]?.t}</span>
-        </button>
-      ))}
-      {creating && <NewCaseSheet onClose={() => setCreating(false)} onCreated={load} />}
-      {current && <CaseSheet c={current} onClose={() => setOpen(null)} onChange={load} />}
-    </section>
+    <Sheet open onClose={onClose} title={current ? current.subject : 'Appeals & help'}>
+      {current ? (
+        <CaseThread c={current} onBack={() => setOpenId(null)} onChange={load} />
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="glass grid grid-cols-2 gap-1 rounded-2xl p-1">
+            {(['list', 'new'] as const).map((v) => (
+              <button key={v} onClick={() => setView(v)} className={`rounded-xl py-2.5 text-sm font-semibold transition ${view === v ? 'bg-mint-400 text-ink-950' : 'text-slate-300'}`}>
+                {v === 'list' ? `My cases${openCount(cases) ? ` (${openCount(cases)})` : ''}` : '+ New appeal'}
+              </button>
+            ))}
+          </div>
+          {view === 'new' ? <NewCaseForm category={category} reference={reference} subject={subject} onClose={() => { setView('list'); void load() }} onCreated={load} /> : <>
+            {err && <p className="text-xs text-rose-300">{err}</p>}
+            {!cases && !err && <Loader2 className="mx-auto animate-spin text-slate-500" />}
+            {cases?.length === 0 && (
+              <div className="flex flex-col items-center gap-2 py-6 text-center"><MessageCircle size={36} className="text-slate-500" />
+                <p className="text-sm text-slate-400">No cases yet. If something isn't working (ID check, a payment, your account), open an appeal and the Luda team will help.</p>
+                <button className="btn-primary mt-2 w-full py-3" onClick={() => setView('new')}>Open an appeal</button></div>
+            )}
+            {cases?.map((c) => (
+              <button key={c.id} className="glass flex items-center gap-3 rounded-2xl p-3 text-start" onClick={() => setOpenId(c.id)}>
+                <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{c.subject}</p><p className="truncate text-xs text-slate-500">{CATEGORY_LABEL[c.category]} · {new Date(c.updated_at).toLocaleDateString()}</p></div>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_LABEL[c.status]?.c}`}>{STATUS_LABEL[c.status]?.t}</span>
+              </button>
+            ))}
+          </>}
+        </div>
+      )}
+    </Sheet>
   )
 }
 
-function CaseSheet({ c, onClose, onChange }: { c: UserCase; onClose: () => void; onChange: () => void }) {
+function CaseThread({ c, onBack, onChange }: { c: UserCase; onBack: () => void; onChange: () => void }) {
   const [msg, setMsg] = useState('')
   const [files, setFiles] = useState<Upload[]>([])
   const [busy, setBusy] = useState(false)
@@ -163,18 +189,55 @@ function CaseSheet({ c, onClose, onChange }: { c: UserCase; onClose: () => void;
     try { await api('POST', 'case-reply', { caseId: c.id, message: msg, files: files.map(({ type, data, name }) => ({ type, data, name })) }); setMsg(''); setFiles([]); onChange() } catch (e) { setErr(errMsg(e)) } finally { setBusy(false) }
   }
   return (
-    <Sheet open onClose={onClose} title={c.subject}>
-      <div className="flex flex-col gap-3">
-        <span className={`self-start rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_LABEL[c.status]?.c}`}>{STATUS_LABEL[c.status]?.t}</span>
-        {c.reference && <p className="text-xs text-slate-400">Reference: <span className="font-mono">{c.reference}</span></p>}
-        <Thread messages={c.messages} />
-        {c.status !== 'resolved' && <>
-          <textarea className="input min-h-20" maxLength={2000} placeholder="Write a reply…" value={msg} onChange={(e) => setMsg(e.target.value)} />
-          <Attachments files={files} setFiles={setFiles} />
-          {err && <p className="text-sm text-rose-300">{err}</p>}
-          <button className="btn-primary py-3" disabled={busy || (!msg.trim() && !files.length)} onClick={send}>{busy && <Loader2 size={16} className="animate-spin" />} Send</button>
-        </>}
+    <div className="flex flex-col gap-3">
+      <button className="self-start text-sm text-mint-300" onClick={onBack}>← All cases</button>
+      <span className={`self-start rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_LABEL[c.status]?.c}`}>{STATUS_LABEL[c.status]?.t}</span>
+      {c.reference && <p className="text-xs text-slate-400">Reference: <span className="selectable font-mono">{c.reference}</span></p>}
+      <Thread messages={c.messages} />
+      {c.status !== 'resolved' && <>
+        <textarea className="input min-h-20" maxLength={2000} placeholder="Write a reply…" value={msg} onChange={(e) => setMsg(e.target.value)} />
+        <Attachments files={files} setFiles={setFiles} />
+        {err && <p className="text-sm text-rose-300">{err}</p>}
+        <button className="btn-primary py-3" disabled={busy || (!msg.trim() && !files.length)} onClick={send}>{busy && <Loader2 size={16} className="animate-spin" />} Send</button>
+      </>}
+    </div>
+  )
+}
+
+/** Big, easy-to-tap card on the Help page. */
+export function AppealsCard() {
+  const { cases } = useCases()
+  const [open, setOpen] = useState<null | 'list' | 'new'>(null)
+  const n = openCount(cases), mine = waitingOnMe(cases)
+  return (
+    <>
+      <div className="overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-violet-500 via-indigo-600 to-indigo-900 p-5 text-white shadow-xl shadow-indigo-900/30">
+        <p className="flex items-center gap-2 text-lg font-extrabold"><MessageCircle size={22} /> Appeals & help</p>
+        <p className="mt-1 text-sm text-white/80">ID check not working? Payment missing? Account stuck? Send it to the Luda team, with photos.</p>
+        {mine > 0 && <p className="mt-2 inline-block rounded-full bg-gold-400 px-3 py-1 text-xs font-bold text-ink-950">{mine} case{mine > 1 ? 's' : ''} waiting for your reply</p>}
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button className="rounded-2xl bg-white py-3.5 text-sm font-bold text-indigo-900" onClick={() => setOpen('new')}>+ New appeal</button>
+          <button className="rounded-2xl bg-white/15 py-3.5 text-sm font-bold" onClick={() => setOpen('list')}>My cases{n ? ` (${n})` : ''}</button>
+        </div>
       </div>
-    </Sheet>
+      {open && <CasesHub start={open} onClose={() => setOpen(null)} />}
+    </>
+  )
+}
+
+/** Floating "Appeals & help" button that stays reachable however far you scroll. */
+export function HelpFab() {
+  const { cases } = useCases()
+  const [open, setOpen] = useState(false)
+  const mine = waitingOnMe(cases)
+  return (
+    <>
+      <button onClick={() => setOpen(true)} aria-label="Appeals and help"
+        className="fixed end-4 bottom-[calc(6.5rem+env(safe-area-inset-bottom))] z-40 flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-xl shadow-indigo-900/40 active:scale-95 desk:end-[calc(50%-12rem)]">
+        <MessageCircle size={18} /> Appeals
+        {mine > 0 && <span className="grid size-5 place-items-center rounded-full bg-gold-400 text-[11px] text-ink-950">{mine}</span>}
+      </button>
+      {open && <CasesHub onClose={() => setOpen(false)} />}
+    </>
   )
 }

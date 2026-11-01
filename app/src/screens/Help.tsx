@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { checkText } from '../lib/moderation'
 import { useStore } from '../lib/store'
 import { LIVE } from '../lib/live'
-import { MyCases } from '../components/LiveSupport'
+import { AppealsCard, HelpFab } from '../components/LiveSupport'
 
 const FAQ: [string, string][] = [
   ['Is my money safe in Luda?', 'In the live app, money is held by a licensed payment partner in separate accounts. Every payment needs your PIN, and you can freeze your wallet any time in Security Center.'],
@@ -37,8 +37,9 @@ export default function Help() {
   return (
     <div>
       <Header back title="Help & Support" sub="We're here for you" />
+      {LIVE && <HelpFab />}
       <div className="flex flex-col gap-4 px-5">
-        {LIVE ? <MyCases /> : <>
+        {LIVE ? <AppealsCard /> : <>
         <div className="grid grid-cols-3 gap-2 text-center text-xs">
           <a href="https://wa.me/905000000000" target="_blank" rel="noreferrer" className="card flex flex-col items-center gap-1 py-4"><MessageCircle className="text-emerald-300" /> WhatsApp</a>
           <a href="mailto:support@luda.app" className="card flex flex-col items-center gap-1 py-4"><Mail className="text-sky-300" /> Email</a>

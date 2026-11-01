@@ -148,7 +148,7 @@ function Details({ it, onClose }: { it: Item; onClose: () => void }) {
           <span className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-semibold ${BADGE[it.status]}`}>{LABEL[it.status]}</span></div>
         {it.note && <p className="rounded-2xl bg-fg/[0.04] p-3 text-xs text-slate-300">{it.note}</p>}
         <div className="divide-y divide-fg/5 rounded-2xl bg-fg/[0.04] text-sm">
-          {it.details.map(([k, v]) => <div key={k} className="flex justify-between gap-3 px-4 py-2.5"><span className="shrink-0 text-slate-400">{k}</span><span className="break-all text-end font-medium">{v}</span></div>)}
+          {it.details.map(([k, v]) => <div key={k} className="flex justify-between gap-3 px-4 py-2.5"><span className="shrink-0 text-slate-400">{k}</span><span className="selectable break-all text-end font-medium">{v}</span></div>)}
         </div>
         {it.reference && <button className="btn-ghost text-sm" onClick={() => { navigator.clipboard?.writeText(it.reference!).then(() => setCopied(true)).catch(() => {}) }}>{copied ? '✓ Reference copied' : 'Copy reference'}</button>}
         <button className="btn-ghost text-sm text-gold-200" onClick={() => setReport(true)}>Report a problem with this</button>
