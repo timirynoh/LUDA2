@@ -72,10 +72,10 @@ export async function checkTransfer(key: string, reference: string, f: Fetch = f
 
 const FLW = 'https://api.flutterwave.com/v3'
 
-async function fw(f: Fetch, key: string, path: string, body?: unknown) {
+async function fw(f: Fetch, key: string, path: string, body?: unknown, timeoutMs = 20000) {
   const r = await f(`${FLW}${path}`, {
     method: body ? 'POST' : 'GET', body: body ? JSON.stringify(body) : undefined,
-    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' }, signal: AbortSignal.timeout(20000),
+    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' }, signal: AbortSignal.timeout(timeoutMs),
   })
   const j = (await r.json().catch(() => ({}))) as Record<string, any>
   // Any answer below 500 that isn't "success" is a definite no; 5xx / network = unknown outcome.
@@ -125,7 +125,7 @@ export async function flwSendTransfer(key: string, amountMinor: number, bankCode
   const d = await fw(f, key, '/transfers', {
     account_bank: bankCode, account_number: account, amount: amountMinor / 100, currency: 'NGN', debit_currency: 'NGN',
     narration: 'Luda withdrawal', reference, beneficiary_name: name,
-  })
+  }, 55000) // Flutterwave can take a while to queue a live transfer; waiting longer avoids "unknown" outcomes
   return { status: flwMap(String(d?.status ?? 'NEW')), raw: String(d?.status ?? ''), transferCode: d?.id != null ? String(d.id) : null }
 }
 
