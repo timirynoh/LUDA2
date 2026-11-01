@@ -17,8 +17,11 @@ export interface Profile {
   kyc_status: 'none' | 'verified' | 'failed'; kyc_name?: string | null; kyc_dob?: string | null; kyc_id_type?: string | null; kyc_id_last4?: string | null
   kyc_tries: number; kyc_tries_day?: string | null
   pin_hash?: string | null; pin_salt?: string | null; pin_fails: number; pin_locked_until?: string | null
-  frozen: boolean; created_at?: string
+  frozen: boolean; created_at?: string; bio_challenge?: string | null; bio_challenge_exp?: string | null
+  phone?: string | null; phone_verified_at?: string | null; money_hold_until?: string | null; frozen_by?: 'user' | 'admin' | null
 }
+
+export interface Passkey { id: string; user_id: string; public_key: string; alg: number; counter: number; device?: string | null; created_at?: string }
 
 export interface LedgerRow { id: number; currency: string; amount_minor: number; balance_after: number; kind: string; ref: string; meta: Record<string, unknown> | null; at: string }
 export interface TicketRow { id: string; code: string; item: Record<string, unknown>; base_amount: number; paid_minor: number; paid_currency: string; status: string; created_at: string }
@@ -41,6 +44,10 @@ export interface Db {
   // accounts
   profile(userId: string): Promise<Profile | null>
   profileByUsername(username: string): Promise<Profile | null>
+  profileByEmail(email: string): Promise<Profile | null>
+  profileByPhone(phone: string): Promise<Profile | null>
+  /** Sliding-window rate limit: true = allowed (and counted). */
+  hit(key: string, max: number, seconds: number): Promise<boolean>
   createProfile(p: Pick<Profile, 'user_id' | 'username' | 'full_name' | 'email'> & { country?: string }): Promise<Profile | 'taken'>
   updateProfile(userId: string, patch: Partial<Profile>): Promise<void>
   // reads
@@ -57,6 +64,11 @@ export interface Db {
   withdraw(userId: string, reference: string, amountMinor: number, feeMinor: number, bankCode: string, bankName: string, account: string, name: string, recipient: string): Promise<void>
   withdrawSettle(reference: string, status: 'paid' | 'failed' | 'reversed', transferCode?: string | null, note?: string | null): Promise<void>
   spent(userId: string, currency: string, kinds: string[], hours: number): Promise<number>
+  // fingerprint keys
+  passkeys(userId: string): Promise<Passkey[]>
+  addPasskey(k: Omit<Passkey, 'counter' | 'created_at'>): Promise<void>
+  setPasskeyCounter(id: string, counter: number): Promise<void>
+  removePasskey(userId: string, id: string): Promise<void>
 }
 
 const MONEY_ERRORS = ['insufficient_funds', 'account_frozen']
@@ -100,6 +112,9 @@ export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
     },
     async profile(id) { return (await rows<Profile>(`profiles?user_id=eq.${q(id)}&limit=1`))[0] ?? null },
     async profileByUsername(u) { return (await rows<Profile>(`profiles?username=eq.${q(u)}&limit=1`))[0] ?? null },
+    async profileByPhone(ph) { return (await rows<Profile>(`profiles?phone=eq.${q(ph)}&limit=1`))[0] ?? null },
+    async hit(key, max, seconds) { return Boolean(await rpc('luda_hit', { p_key: key, p_max: max, p_seconds: seconds })) },
+    async profileByEmail(e) { return (await rows<Profile>(`profiles?email=ilike.${q(e.replace(/[%_\\*]/g, ''))}&limit=1`))[0] ?? null },
     async createProfile(p) {
       try {
         const r = await call('profiles', { method: 'POST', headers: { prefer: 'return=representation' }, body: JSON.stringify(p) })
@@ -130,5 +145,9 @@ export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
     },
     async withdrawSettle(ref, status, tc, note) { await rpc('luda_withdraw_settle', { p_reference: ref, p_status: status, p_transfer: tc ?? null, p_note: note ?? null }) },
     async spent(u, cur, kinds, hours) { return Number(await rpc('luda_spent', { p_user: u, p_currency: cur, p_kinds: kinds, p_hours: hours })) },
+    passkeys: (u) => rows<Passkey>(`passkeys?user_id=eq.${q(u)}&order=created_at.asc`),
+    async addPasskey(k) { await call('passkeys', { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(k) }) },
+    async setPasskeyCounter(id, c) { await call(`passkeys?id=eq.${q(id)}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ counter: c }) }) },
+    async removePasskey(u, id) { await call(`passkeys?id=eq.${q(id)}&user_id=eq.${q(u)}`, { method: 'DELETE', headers: { prefer: 'return=minimal' } }) },
   }
 }

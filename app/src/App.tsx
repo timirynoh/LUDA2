@@ -12,7 +12,7 @@ import Housing from './screens/Housing'
 import More from './screens/More'
 import Nearby from './screens/Nearby'
 import Onboarding from './screens/Onboarding'
-import { Landing, LockScreen, ResetPassword, SignIn, SignUp, Splash } from './screens/Auth'
+import { Landing, LockScreen, ResetPassword, SignIn, SignUp, Splash, useOAuthReturn } from './screens/Auth'
 import { LIVE, getSession } from './lib/live'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IdleGuard } from './components/IdleGuard'
@@ -70,6 +70,7 @@ export default function App() {
   useRateAlerts()
   useReferralProgress()
   usePromoConfirms()
+  useOAuthReturn()
   const inRoom = loc.pathname.startsWith('/chats/')
   const [splash, setSplash] = useState(true)
   const [authView, setAuthView] = useState<'landing' | 'signup' | 'signin'>('landing')

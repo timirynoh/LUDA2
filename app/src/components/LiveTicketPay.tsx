@@ -31,8 +31,8 @@ export function LiveTicketPay({ order, total, ready, onDone }: { operator: strin
     <ReviewAndPin
       rows={[['Trip', `${order.from} → ${order.to}`], ['When', `${order.date} · ${order.time}${order.return ? ` (return ${order.returnDate} · ${order.returnTime})` : ''}`], ['Passengers', String(order.pax)], ['You pay', <b key="v">{money(cost, cur)}</b>]]}
       holdLabel="Hold to pay" onClose={() => setReview(false)}
-      run={async (pin) => {
-        const r = await api<{ ticket: LiveTicket }>('POST', 'ticket', { currency: cur, item: order, pin, expectMinor: cost })
+      run={async (auth) => {
+        const r = await api<{ ticket: LiveTicket }>('POST', 'ticket', { currency: cur, item: order, ...auth, expectMinor: cost })
         const tk = toLocalTicket(r.ticket, s.name)
         set((p) => ({ ...p, tickets: [tk, ...p.tickets.filter((x) => x.payRef !== tk.payRef)] }))
         reward(s.quests.includes('ticket') ? 10 : 50, { quest: 'ticket', badge: 'traveller', title: 'Ticket booked' })

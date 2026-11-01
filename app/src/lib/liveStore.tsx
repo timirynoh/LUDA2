@@ -1,6 +1,6 @@
 // Keeps the signed-in user's real wallet (from the server) in React state.
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import { LIVE, api, clearSession, getSession, type Me } from './live'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { LIVE, api, clearSession, getSession, liveConfig, type Me } from './live'
 import { useStore } from './store'
 import { toLocalTicket } from './liveTickets'
 
@@ -22,8 +22,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       setMe(m); setError('')
       // Mirror server identity/KYC into the local app so screens and tier gates agree with the server.
       const kyc = m.profile.kyc === 'verified' ? 'verified' : m.profile.kyc === 'failed' ? 'rejected' : 'none'
-      set((p) => (p.kyc.status === kyc && p.verified === (kyc === 'verified') && p.security.frozen === m.profile.frozen ? p
-        : { ...p, verified: kyc === 'verified', kyc: { ...p.kyc, status: kyc }, security: { ...p.security, frozen: m.profile.frozen } }))
+      // Phone: verified by SMS on the server; if SMS checks aren't switched on yet, a real account counts as level 1.
+      const sms = await liveConfig().then((c) => c.sms).catch(() => false)
+      const phone = m.profile.phoneVerified || !sms
+      set((p) => (p.kyc.status === kyc && p.verified === (kyc === 'verified') && p.security.frozen === m.profile.frozen && p.phoneVerified === phone ? p
+        : { ...p, verified: kyc === 'verified', phoneVerified: phone, kyc: { ...p.kyc, status: kyc }, security: { ...p.security, frozen: m.profile.frozen } }))
       // Tickets bought on another phone appear here too.
       set((p) => {
         const missing = m.tickets.filter((t) => !p.tickets.some((x) => x.payRef === t.id))
@@ -44,9 +47,13 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [s.signedIn, refresh])
 
   // Signing out locally ends the server session too; an expired session signs the app out.
+  // Only on a real sign-out (signed in → signed out), never on first load: a Google sign-in may have just
+  // stored a fresh session before the app state catches up.
+  const wasIn = useRef(s.signedIn)
   useEffect(() => {
     if (!LIVE) return
-    if (!s.signedIn && getSession()) { clearSession(); setMe(null) } // eslint-disable-line react-hooks/set-state-in-effect
+    if (wasIn.current && !s.signedIn && getSession()) { clearSession(); setMe(null) } // eslint-disable-line react-hooks/set-state-in-effect
+    wasIn.current = s.signedIn
     const out = () => set((p) => ({ ...p, signedIn: false }))
     window.addEventListener('luda:signedout', out)
     return () => window.removeEventListener('luda:signedout', out)

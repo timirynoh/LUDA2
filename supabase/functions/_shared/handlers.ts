@@ -3,14 +3,16 @@
 // functions (atomic, idempotent); deposits are confirmed with the provider before
 // crediting; spending needs the user's PIN; withdrawing and sending need KYC.
 import { hashPin, randomHex, recover, refresh, setPassword, signIn, signUp, userFromToken, type AuthEnv } from './auth.ts'
+import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion } from './webauthn.ts'
 import { MoneyError, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
 import { accountMatchesName, idMatchesName, kycEnabled, lookupId, normDate, type KycEnv } from './kyc.ts'
 import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, depositFee, foreignEnabled, foreignFee, margin, ngnPerTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
 import { checkTransfer, createRecipient, listBanks, resolveAccount, sendTransfer } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
+import { checkCode, normPhone, sendCode, smsEnabled, type SmsEnv } from './sms.ts'
 import { checkWebhook, initCheckout, verifyPayment, webhookEvent, type Fetch, type Keys, type Provider } from './providers.ts'
 
-export interface Env extends Keys, FeeEnv, FxEnv, KycEnv {
+export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv {
   APP_URL: string
   ALLOWED_ORIGINS?: string
   SUPABASE_URL: string
@@ -21,6 +23,18 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv {
 export interface Deps { db: Db; fetch?: Fetch; now?: () => Date }
 
 /* --------------------------------- helpers --------------------------------- */
+
+let authSettings: { at: number; google: boolean } | null = null
+/** Is "Continue with Google" switched on in Supabase Auth? (cached 5 min) */
+async function googleEnabled(env: Env, d: Deps) {
+  if (authSettings && Date.now() - authSettings.at < 300e3) return authSettings.google
+  try {
+    const r = await (d.fetch ?? fetch)(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/settings`, { headers: { apikey: env.AUTH_KEY }, signal: AbortSignal.timeout(5000) })
+    const j = (await r.json()) as { external?: Record<string, boolean> }
+    authSettings = { at: Date.now(), google: !!j.external?.google }
+  } catch { authSettings = { at: Date.now(), google: false } }
+  return authSettings.google
+}
 
 class Fail extends Error { status: number; constructor(msg: string, status = 400) { super(msg); this.status = status } }
 
@@ -67,6 +81,45 @@ async function verifyPin(p: Profile, pin: unknown, d: Deps) {
   if (p.pin_fails) await d.db.updateProfile(p.user_id, { pin_fails: 0, pin_locked_until: null })
 }
 
+/** Where fingerprint approvals may come from: the app's own address(es). */
+function webauthnSite(env: Env) {
+  const origins = [env.APP_URL, ...(env.ALLOWED_ORIGINS ?? '').split(',')].map((o) => o.trim().replace(/\/$/, '')).filter(Boolean)
+  return { origins, rpId: new URL(origins[0] || 'https://localhost').hostname }
+}
+
+/** Approve a money action with the PIN, or with this phone's fingerprint (server-verified passkey). */
+async function verifyAuth(p: Profile, body: Body, env: Env, d: Deps) {
+  if (!body.bio) return verifyPin(p, body.pin, d)
+  const a = body.bio as Assertion
+  const now = d.now?.() ?? new Date()
+  if (!p.bio_challenge || !p.bio_challenge_exp || new Date(p.bio_challenge_exp) < now) throw new Fail('Fingerprint check expired. Try again.', 401)
+  const key = (await d.db.passkeys(p.user_id)).find((k) => k.id === a.id)
+  await d.db.updateProfile(p.user_id, { bio_challenge: null, bio_challenge_exp: null }) // single use
+  if (!key) throw new Fail('This fingerprint isn\'t set up for your account. Use your PIN.', 401)
+  try {
+    const count = await verifyAssertion(key, a, { challenge: p.bio_challenge, ...webauthnSite(env) })
+    await d.db.setPasskeyCounter(key.id, count)
+  } catch (e) {
+    if (e instanceof WebAuthnError) throw new Fail('Fingerprint check failed. Use your PIN.', 401)
+    throw e
+  }
+}
+
+/** Caller's IP (for rate limits), as forwarded by Supabase's edge. */
+const clientIp = (req: Request) => (req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown').trim()
+
+async function limit(d: Deps, key: string, max: number, seconds: number, msg = 'Too many attempts. Please wait a few minutes and try again.') {
+  if (!(await d.db.hit(key, max, seconds))) throw new Fail(msg, 429)
+}
+
+/** After a password reset, money can't leave the account for 24 hours (stops account takeovers cashing out). */
+function noHold(p: Profile, d: Deps) {
+  const until = p.money_hold_until ? new Date(p.money_hold_until) : null
+  if (until && until > (d.now?.() ?? new Date())) {
+    throw new Fail(`For your safety, withdrawals and sending are paused until ${until.toUTCString().slice(5, 22)} UTC because your password was just reset.`, 403)
+  }
+}
+
 const needKyc = (p: Profile, what: string) => { if (p.kyc_status !== 'verified') throw new Fail(`Verify your identity to ${what}`, 403) }
 
 /** Loads (or, on first use, creates) the signed-in user's profile. */
@@ -78,13 +131,14 @@ async function me(req: Request, env: Env, d: Deps): Promise<Profile> {
   if (p) return p
   const meta = u.user_metadata ?? {}
   const base = String(meta.username ?? u.email.split('@')[0]).toLowerCase().replace(/[^a-z0-9_.]/g, '').slice(0, 20).padEnd(3, '0')
-  const fullName = String(meta.full_name ?? base).slice(0, 80)
+  const fullName = String(meta.full_name ?? meta.name ?? base).replace(/\s+/g, ' ').trim().slice(0, 80) // Google gives full_name / name
   for (const username of [base, `${base.slice(0, 15)}${randomHex(2)}`, `${base.slice(0, 13)}${randomHex(3)}`]) {
     const made = await d.db.createProfile({ user_id: u.id, username, full_name: fullName.length >= 2 ? fullName : username, email: u.email, country: meta.country ? String(meta.country) : undefined })
     if (made !== 'taken') return made
     const again = await d.db.profile(u.id) // created by a parallel request
     if (again) return again
   }
+  if (await d.db.profileByEmail(u.email)) throw new Fail('An account with this email already exists. Sign in with your password instead.', 409)
   throw new Fail('Could not create your profile, try again')
 }
 
@@ -130,29 +184,45 @@ type Route = (ctx: { req: Request; env: Env; d: Deps; body: Body; url: URL }) =>
 
 const routes: Record<string, Route> = {
   /* ---- public ---- */
-  'GET config': async ({ env }) => ({ providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env) } }),
+  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env) } }),
 
   'GET username': async ({ d, url }) => {
     const u = (url.searchParams.get('u') ?? '').toLowerCase()
     return { free: USERNAME.test(u) && !(await d.db.profileByUsername(u)) }
   },
 
-  'POST signup': async ({ env, d, body }) => {
+  // Live check on the sign-up form: is this username / email already registered?
+  'GET available': async ({ req, d, url }) => {
+    await limit(d, `avail-ip:${clientIp(req)}`, 60, 600)
+    const u = (url.searchParams.get('username') ?? '').trim().toLowerCase().replace(/^@/, '')
+    const e = (url.searchParams.get('email') ?? '').trim().toLowerCase()
+    return {
+      username: u ? (USERNAME.test(u) ? !(await d.db.profileByUsername(u)) : null) : null,
+      email: e ? (EMAIL.test(e) ? !(await d.db.profileByEmail(e)) : null) : null,
+    }
+  },
+
+  'POST signup': async ({ req, env, d, body }) => {
+    await limit(d, `signup-ip:${clientIp(req)}`, 5, 3600, 'Too many new accounts from this network. Try again later.')
     const email = String(body.email ?? '').trim().toLowerCase(), username = String(body.username ?? '').trim().toLowerCase()
     const fullName = String(body.fullName ?? '').trim().replace(/\s+/g, ' ')
     if (!EMAIL.test(email)) throw new Fail('Enter a valid email')
     if (!USERNAME.test(username)) throw new Fail('Username: 3–20 letters, numbers, _ or .')
     if (fullName.length < 3 || !fullName.includes(' ')) throw new Fail('Enter your full name as on your ID (first and last name)')
     if (typeof body.password !== 'string' || body.password.length < 8) throw new Fail('Password must be at least 8 characters')
-    if (await d.db.profileByUsername(username)) throw new Fail('That username is taken')
+    if (await d.db.profileByUsername(username)) throw new Fail('That username is already taken. Try another one.', 409)
+    if (await d.db.profileByEmail(email)) throw new Fail('An account with this email already exists. Sign in instead.', 409)
     const r = await signUp(email, body.password, { username, full_name: fullName, country: body.country ?? null }, authEnv(env), d.fetch).catch((e) => { throw new Fail(e instanceof Error ? e.message : 'Sign-up failed') })
     // Reserve the username now (if two people race for it, the loser gets a suffix on first sign-in).
     if (r.userId) await d.db.createProfile({ user_id: r.userId, username, full_name: fullName, email, country: body.country ? String(body.country).slice(0, 2) : undefined }).catch(() => {})
     return { session: r.session, needsConfirm: !r.session }
   },
 
-  'POST login': async ({ env, d, body }) => {
+  'POST login': async ({ req, env, d, body }) => {
     const id = String(body.id ?? '').trim().toLowerCase().replace(/^@/, '')
+    // Stop password guessing: per account and per network.
+    await limit(d, `login:${id}`, 8, 900, 'Too many sign-in attempts for this account. Wait 15 minutes or reset your password.')
+    await limit(d, `login-ip:${clientIp(req)}`, 30, 900)
     let email = id
     if (!id.includes('@')) {
       const p = USERNAME.test(id) ? await d.db.profileByUsername(id) : null
@@ -166,17 +236,21 @@ const routes: Record<string, Route> = {
     try { return { session: await refresh(String(body.refresh_token ?? ''), authEnv(env), d.fetch) } } catch { throw new Fail('Session expired, please sign in again', 401) }
   },
 
-  'POST recover': async ({ env, d, body }) => {
+  'POST recover': async ({ req, env, d, body }) => {
     const email = String(body.email ?? '').trim().toLowerCase()
     if (!EMAIL.test(email)) throw new Fail('Enter a valid email')
+    await limit(d, `recover:${email}`, 3, 3600); await limit(d, `recover-ip:${clientIp(req)}`, 10, 3600)
     await recover(email, `${env.APP_URL.replace(/\/$/, '')}/reset`, authEnv(env), d.fetch)
     return { ok: true }
   },
 
   'POST password': async ({ env, d, body }) => {
     if (typeof body.password !== 'string' || body.password.length < 8) throw new Fail('Password must be at least 8 characters')
-    await setPassword(String(body.access_token ?? ''), body.password, authEnv(env), d.fetch).catch((e) => { throw new Fail(e instanceof Error ? e.message : 'Could not change password') })
-    return { ok: true }
+    const token = String(body.access_token ?? '')
+    const u = await userFromToken(token, authEnv(env), d.fetch)
+    await setPassword(token, body.password, authEnv(env), d.fetch).catch((e) => { throw new Fail(e instanceof Error ? e.message : 'Could not change password') })
+    if (u) await d.db.updateProfile(u.id, { money_hold_until: new Date((d.now?.() ?? new Date()).getTime() + 24 * 3600e3).toISOString() })
+    return { ok: true, moneyPausedHours: 24 }
   },
 
   /* ---- signed in ---- */
@@ -184,7 +258,7 @@ const routes: Record<string, Route> = {
     const p = await me(req, env, d)
     const [balances, history, tickets, withdrawals] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 10)])
     return {
-      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, frozen: p.frozen },
+      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null },
       balances, history, tickets, withdrawals: withdrawals.map((w) => ({ ...w, account_number: '••••' + w.account_number.slice(-4), recipient_code: undefined })),
     }
   },
@@ -257,7 +331,7 @@ const routes: Record<string, Route> = {
     const from = body.from, to = body.to, amount = int(body.amountMinor)
     if (!isCur(from) || !isCur(to) || from === to) throw new Fail('Pick two different currencies')
     if (!(amount > 0)) throw new Fail('Enter an amount')
-    await verifyPin(p, body.pin, d)
+    await verifyAuth(p, body, env, d)
     if ((await d.db.spent(p.user_id, from, ['convert'], 24)) + amount > LIMITS.convertDay[from]) throw new Fail('Daily conversion limit reached')
     const mid = await ngnPerTry(env, d.fetch), m = margin(env)
     const out = convertOut(from, to, amount, mid, m)
@@ -283,7 +357,7 @@ const routes: Record<string, Route> = {
     const priced = priceTicket({ ...(body.item ?? {}), holder: p.full_name }, d.now?.() ?? new Date())
     const selling = (env.SELL_OPERATORS ?? '').split(',').map((x) => x.trim()).filter(Boolean)
     if (selling.length && !selling.includes(priced.item.operatorId)) throw new Fail('Online tickets for this company are coming soon')
-    await verifyPin(p, body.pin, d)
+    await verifyAuth(p, body, env, d)
     const mid = cur === 'NGN' ? await ngnPerTry(env, d.fetch) : 1
     const cost = costIn(cur, priced.amount, mid, margin(env))
     const seen = int(body.expectMinor)
@@ -304,14 +378,14 @@ const routes: Record<string, Route> = {
 
   'POST send': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
-    needKyc(p, 'send money')
+    needKyc(p, 'send money'); noHold(p, d)
     const cur = body.currency, amount = int(body.amountMinor)
     if (!isCur(cur)) throw new Fail('Pick a wallet')
     if (!(amount >= LIMITS.minSend[cur])) throw new Fail('Amount too small')
     const to = await d.db.profileByUsername(String(body.to ?? '').toLowerCase().replace(/^@/, ''))
     if (!to) throw new Fail('No Luda user with that username', 404)
     if (to.user_id === p.user_id) throw new Fail("You can't send money to yourself")
-    await verifyPin(p, body.pin, d)
+    await verifyAuth(p, body, env, d)
     if ((await d.db.spent(p.user_id, cur, ['send'], 24)) + amount > LIMITS.sendDay[cur]) throw new Fail('Daily sending limit reached')
     const note = String(body.note ?? '').replace(/[<>\u0000-\u001f]/g, '').slice(0, 80)
     const ref = newRef('snd')
@@ -348,6 +422,87 @@ const routes: Record<string, Route> = {
     return { status: 'verified', name: legal }
   },
 
+  // Fingerprint / Face ID: a fresh one-time challenge (and this user's registered phones).
+  'GET bio': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    const challenge = b64u.enc(crypto.getRandomValues(new Uint8Array(32)))
+    await d.db.updateProfile(p.user_id, { bio_challenge: challenge, bio_challenge_exp: new Date((d.now?.() ?? new Date()).getTime() + 120e3).toISOString() })
+    const keys = await d.db.passkeys(p.user_id)
+    return { challenge, rpId: webauthnSite(env).rpId, userId: b64u.enc(new TextEncoder().encode(p.user_id)), username: p.username, fullName: p.full_name, keys: keys.map((k) => ({ id: k.id, device: k.device, created_at: k.created_at })) }
+  },
+
+  // Register this phone's fingerprint. Needs the PIN, so a stolen session can't add its own.
+  'POST bio': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await verifyPin(p, body.pin, d)
+    if (!p.bio_challenge || !p.bio_challenge_exp || new Date(p.bio_challenge_exp) < (d.now?.() ?? new Date())) throw new Fail('Setup expired. Try again.')
+    await d.db.updateProfile(p.user_id, { bio_challenge: null, bio_challenge_exp: null })
+    const id = String(body.id ?? ''), publicKey = String(body.publicKey ?? ''), alg = Number(body.alg)
+    if (!/^[\w-]{16,1400}$/.test(id) || !/^[\w-]{60,2000}$/.test(publicKey) || ![-7, -257].includes(alg)) throw new Fail('This phone\'s fingerprint can\'t be used with Luda')
+    try { checkRegistration(String(body.clientDataJSON ?? ''), { challenge: p.bio_challenge, ...webauthnSite(env) }) } catch { throw new Fail('Fingerprint setup failed. Try again.') }
+    if ((await d.db.passkeys(p.user_id)).length >= 5) throw new Fail('You can use fingerprint on up to 5 phones. Remove one first.')
+    await d.db.addPasskey({ id, user_id: p.user_id, public_key: publicKey, alg, device: String(body.device ?? '').slice(0, 60) })
+    return { ok: true }
+  },
+
+  'POST bio-remove': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await d.db.removePasskey(p.user_id, String(body.id ?? ''))
+    return { ok: true }
+  },
+
+  // Phone number: one Luda account per number, proven by an SMS code (Twilio Verify).
+  'POST phone-start': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    if (!smsEnabled(env)) throw new Fail('Phone checks are not switched on yet', 503)
+    const phone = normPhone(String(body.phone ?? ''))
+    if (!phone) throw new Fail('Enter your number with the country code, e.g. +90 533 123 4567')
+    const owner = await d.db.profileByPhone(phone)
+    if (owner && owner.user_id !== p.user_id) throw new Fail('This phone number is already used by another Luda account', 409)
+    await limit(d, `sms-user:${p.user_id}`, 3, 3600, 'Too many codes requested. Try again in an hour.')
+    await limit(d, `sms-phone:${phone}`, 5, 86400, 'Too many codes sent to this number today.')
+    await sendCode(phone, env, d.fetch).catch((e) => { throw new Fail(e instanceof Error ? e.message : 'Could not send the SMS') })
+    return { ok: true, phone }
+  },
+
+  'POST phone-check': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const phone = normPhone(String(body.phone ?? '')), code = String(body.code ?? '')
+    if (!phone || !/^\d{4,8}$/.test(code)) throw new Fail('Enter the code from the SMS')
+    await limit(d, `sms-check:${p.user_id}`, 8, 3600, 'Too many wrong codes. Try again in an hour.')
+    if (!(await checkCode(phone, code, env, d.fetch))) throw new Fail('That code is wrong or expired', 400)
+    try { await d.db.updateProfile(p.user_id, { phone, phone_verified_at: new Date().toISOString() }) } catch (e) {
+      if (e instanceof MoneyError && e.message === 'conflict') throw new Fail('This phone number is already used by another Luda account', 409)
+      throw e
+    }
+    return { ok: true }
+  },
+
+  // Freeze my wallet: instant, no PIN (for emergencies). Unfreezing needs the PIN, and only works on your own freeze.
+  'POST freeze': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    if (body.freeze !== false) {
+      if (!p.frozen) await d.db.updateProfile(p.user_id, { frozen: true, frozen_by: 'user' })
+      return { frozen: true }
+    }
+    if (!p.frozen) return { frozen: false }
+    if (p.frozen_by !== 'user') throw new Fail('Your account was put on hold by the Luda team. Contact support to lift it.', 403)
+    await verifyPin(p, body.pin, d)
+    await d.db.updateProfile(p.user_id, { frozen: false, frozen_by: null })
+    return { frozen: false }
+  },
+
+  // Change password while signed in (needs the current one).
+  'POST change-password': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    if (typeof body.newPassword !== 'string' || body.newPassword.length < 8) throw new Fail('New password must be at least 8 characters')
+    await limit(d, `login:${p.username}`, 8, 900, 'Too many attempts. Wait 15 minutes.')
+    let s
+    try { s = await signIn(p.email, String(body.oldPassword ?? ''), authEnv(env), d.fetch) } catch { throw new Fail('Your current password is wrong', 401) }
+    await setPassword(s.access_token, body.newPassword, authEnv(env), d.fetch).catch((e) => { throw new Fail(e instanceof Error ? e.message : 'Could not change password') })
+    return { ok: true }
+  },
+
   'GET banks': async ({ req, env, d }) => {
     await me(req, env, d)
     if (!env.PAYSTACK_SECRET_KEY) throw new Fail('Withdrawals are not switched on yet', 503)
@@ -365,12 +520,12 @@ const routes: Record<string, Route> = {
 
   'POST withdraw': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
-    needKyc(p, 'withdraw')
+    needKyc(p, 'withdraw'); noHold(p, d)
     if (!env.PAYSTACK_SECRET_KEY) throw new Fail('Withdrawals are not switched on yet', 503)
     const amount = int(body.amountMinor), account = String(body.account ?? ''), bank = String(body.bankCode ?? '')
     if (!(amount >= LIMITS.minWithdraw) || amount % 100) throw new Fail(`Minimum withdrawal is ${naira(LIMITS.minWithdraw)}`)
     if (!/^\d{10}$/.test(account) || !/^\w{2,10}$/.test(bank)) throw new Fail('Enter a 10-digit account number and pick a bank')
-    await verifyPin(p, body.pin, d)
+    await verifyAuth(p, body, env, d)
     if ((await d.db.spent(p.user_id, 'NGN', ['withdraw'], 24)) + amount > LIMITS.withdrawDay) throw new Fail(`Daily withdrawal limit is ${naira(LIMITS.withdrawDay)}`)
     const key = env.PAYSTACK_SECRET_KEY, f = d.fetch
     const name = await resolveAccount(key, account, bank, f).catch(() => { throw new Fail('Could not find that account. Check the number and bank.') })

@@ -83,6 +83,7 @@ Optional (defaults in brackets):
 | `DEPOSIT_FEE_PCT` / `DEPOSIT_FEE_FLAT` / `DEPOSIT_FEE_FLAT_WAIVE_BELOW` / `DEPOSIT_FEE_CAP` | Naira top-up fee passed to the user (`1.5` / `100` / `2500` / `2000`, matching Paystack's local card fee) |
 | `FOREIGN_CURRENCIES` | which other currencies to offer, e.g. `GHS,USD` (all six) |
 | `FOREIGN_FEE_PCT` | fee passed to the user on other-currency top-ups (`3.8`) |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_VERIFY_SID` | real SMS phone checks (see below) |
 | `FX_TRY_RATES` | your own rates instead of live ones, as units per ₺1, e.g. `{"USD":0.029,"GHS":0.35}` |
 
 ## Step 5: Install the server (2 min)
@@ -120,6 +121,49 @@ Paste the webhook address from step 5 into:
 If something fails, check Supabase → Edge Functions → `api` → **Logs**, and the tables `payment_events` and `withdrawals`. Tell Claude what you see (never the keys).
 
 ---
+
+## Sign-in and security extras
+
+### Continue with Google (about 15 min)
+1. Go to <https://console.cloud.google.com>, create a project called **Luda**, then **APIs & Services → OAuth consent screen**:
+   - Choose **External**.
+   - App name **Luda**, plus your support email.
+   - Save. Then click **Publish app**; while it's in "Testing", only test users can sign in.
+2. Go to **APIs & Services → Credentials → Create credentials → OAuth client ID**, type **Web application**:
+   - **Authorized JavaScript origins:** `https://luda-ct6.pages.dev`
+   - **Authorized redirect URIs:** `https://<your-project-code>.supabase.co/auth/v1/callback`
+   - Click **Create**, then copy the **Client ID** and **Client secret**.
+3. In Supabase, go to **Authentication → Sign In / Providers → Google**. Turn it on, paste the Client ID and secret, and **Save**.
+4. In Supabase, go to **Authentication → URL Configuration → Redirect URLs** and add `https://luda-ct6.pages.dev/**`.
+
+The **Continue with Google** button appears in the app by itself once Google is switched on in Supabase.
+
+### Phone numbers by SMS (Twilio Verify, about 15 min)
+1. Sign up at <https://www.twilio.com> and **upgrade** the account by adding a little credit. Trial accounts can only text numbers you've verified yourself.
+2. In the Twilio Console, go to **Verify → Services → Create new** and name it **Luda**. Copy the **Service SID** (starts `VA`).
+3. In **Verify → Settings → Geo permissions**, allow the countries your students use, at least **Turkey/Northern Cyprus (+90)**, **Nigeria (+234)** and **Ghana (+233)**.
+4. From the Console home page, copy the **Account SID** (`AC…`) and **Auth Token**.
+5. In Supabase, go to **Edge Functions → Secrets** and add `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_VERIFY_SID`.
+
+Once they're set:
+- Every account must prove its phone number with a real SMS code before buying tickets, posting and similar actions.
+- **One Luda account per phone number.**
+
+Until they're set, the phone step is skipped.
+
+### Fingerprint / Face ID
+Nothing to set up. Students switch it on in **Security Center → Fingerprint / Face ID**, and it needs their PIN once. After that they unlock Luda and approve payments with their fingerprint, and the PIN still works as a backup. Each phone is checked by your server; the fingerprint itself never leaves the phone.
+⚠️ Fingerprints are tied to your app's address. If you later move to a custom domain (e.g. `luda.app`), update `APP_URL`; students then switch fingerprint on again once.
+
+### Built-in protections (nothing to do)
+- **Duplicates:** one account per email, per username and per phone number. The sign-up form tells people straight away if one is already taken.
+- **Rate limits:**
+  - Password guessing: 8 tries per account every 15 minutes, plus a per-network limit.
+  - Sign-up spam: 5 per network per hour.
+  - Reset-email spam and SMS spam are limited too.
+- **After a password reset**, withdrawals and sending are **paused for 24 hours**, so someone who steals an email account can't cash out.
+- **Freeze my wallet** works on the server and stops every phone at once. Unfreezing needs the PIN. A freeze set by you (`frozen_by = admin` in `profiles`) can only be lifted by you.
+- **Security headers:** other websites can't embed Luda in a hidden frame to trick taps.
 
 ## Day-to-day
 - **How much you owe users:** Supabase → SQL Editor → `select currency, sum(balance_minor)/100 as total from wallets group by currency;`. Your Paystack balance plus your bank should always cover the Naira total. The Lira total is money you owe in Lira (for tickets you sell).

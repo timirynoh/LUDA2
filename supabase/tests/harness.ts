@@ -33,6 +33,9 @@ export async function makeDb() {
     async recentByEmail(email, since) { return Number((await q(`select count(*) c from payments where email=$1 and created_at >= $2`, [email, since]))[0].c) },
     async log(ref, kind, payload) { await q(`insert into payment_events (reference, kind, payload) values ($1,$2,$3)`, [ref, kind, payload ?? null]) },
     async profile(id) { return ((await q<Profile>(`select * from profiles where user_id=$1`, [id]))[0]) ?? null },
+    async profileByPhone(ph) { return ((await q<Profile>(`select * from profiles where phone=$1`, [ph]))[0]) ?? null },
+    async hit(key, max, seconds) { return (await q(`select luda_hit($1,$2,$3) r`, [key, max, seconds]))[0].r },
+    async profileByEmail(e) { return ((await q<Profile>(`select * from profiles where lower(email)=lower($1)`, [e]))[0]) ?? null },
     async profileByUsername(u) { return ((await q<Profile>(`select * from profiles where username=$1`, [u]))[0]) ?? null },
     async createProfile(p) {
       try { return (await money(() => q<Profile>(`insert into profiles (user_id,username,full_name,email,country) values ($1,$2,$3,$4,$5) returning *`, [p.user_id, p.username, p.full_name, p.email, p.country ?? null])))[0] }
@@ -40,7 +43,7 @@ export async function makeDb() {
     },
     async updateProfile(id, patch) {
       const keys = Object.keys(patch); if (!keys.length) return
-      await q(`update profiles set ${keys.map((k, i) => `${k}=$${i + 2}`).join(',')} where user_id=$1`, [id, ...keys.map((k) => (patch as any)[k])])
+      await money(() => q(`update profiles set ${keys.map((k, i) => `${k}=$${i + 2}`).join(',')} where user_id=$1`, [id, ...keys.map((k) => (patch as any)[k])]))
     },
     async balances(id) { const out: Record<string, number> = { NGN: 0, TRY: 0 }; for (const w of await q(`select currency, balance_minor from wallets where user_id=$1`, [id])) out[w.currency] = Number(w.balance_minor); return out },
     async history(id, l) { return (await q(`select * from ledger where user_id=$1 order by id desc limit ${l}`, [id])).map((r) => ({ ...r, amount_minor: n(r.amount_minor), balance_after: n(r.balance_after) })) },
@@ -53,6 +56,10 @@ export async function makeDb() {
     async buyTicket(u, cur, amt, base, code, item) { return money(async () => (await q(`select luda_buy_ticket($1,$2,$3,$4,$5,$6::jsonb) r`, [u, cur, amt, base, code, JSON.stringify(item)]))[0].r.ticket) },
     async withdraw(u, ref, amt, fee, bank, bankName, acct, name, rcp) { await money(() => q(`select luda_withdraw($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [u, ref, amt, fee, bank, bankName, acct, name, rcp])) },
     async withdrawSettle(ref, st, tc, note) { await money(() => q(`select luda_withdraw_settle($1,$2,$3,$4)`, [ref, st, tc ?? null, note ?? null])) },
+    async passkeys(u) { return (await q(`select * from passkeys where user_id=$1 order by created_at`, [u])).map((r) => ({ ...r, counter: Number(r.counter) })) },
+    async addPasskey(k) { await money(() => q(`insert into passkeys (id,user_id,public_key,alg,device) values ($1,$2,$3,$4,$5)`, [k.id, k.user_id, k.public_key, k.alg, k.device ?? null])) },
+    async setPasskeyCounter(id, c) { await q(`update passkeys set counter=$2 where id=$1`, [id, c]) },
+    async removePasskey(u, id) { await q(`delete from passkeys where id=$2 and user_id=$1`, [u, id]) },
     async spent(u, cur, kinds, hours) { return Number((await q(`select luda_spent($1,$2,$3,$4) s`, [u, cur, kinds, hours]))[0].s) },
   }
   return { pg, q, db }
@@ -75,7 +82,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
   }
   const ok = (j: unknown, status = 200) => new Response(JSON.stringify(j), { status })
   const f = (async (u: string, init?: RequestInit) => {
-    const url = new URL(u), body = init?.body ? JSON.parse(String(init.body)) : {}
+    const url = new URL(u), body = (() => { try { return init?.body ? JSON.parse(String(init.body)) : {} } catch { return {} } })()
     const auth = new Headers(init?.headers).get('authorization')?.replace('Bearer ', '') ?? ''
     world.calls.push(`${init?.method ?? 'GET'} ${url.host}${url.pathname}`)
     // Supabase Auth
@@ -91,6 +98,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       const user = [...world.users.values()].find((x) => x.email === body.email && x.password === body.password)
       return user ? ok({ access_token: 'tok_' + user.id, refresh_token: 'r_' + user.id, expires_in: 3600, user: { id: user.id, email: user.email } }) : ok({ error_description: 'Invalid login credentials' }, 400)
     }
+    if (url.pathname === '/auth/v1/settings') return ok({ external: { google: true, email: true } })
     if (url.pathname === '/auth/v1/recover') { world.calls.push('recover:' + body.email + ':' + url.searchParams.get('redirect_to')); return ok({}) }
     if (url.pathname === '/auth/v1/user' && init?.method === 'PUT') {
       const user = world.users.get(auth.startsWith('tok_') ? auth.slice(4) : '')
@@ -129,6 +137,12 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
         return ok({ status: 'success', data: { status: c.status === 'success' ? 'successful' : c.status, amount: (c.amount ?? world.inits.get(ref)!) / 100, currency: c.currency ?? world.initCur.get(ref) ?? 'NGN', tx_ref: ref, id: 777 } })
       }
     }
+    // Twilio Verify (SMS): code 123456 is right
+    if (url.host === 'verify.twilio.com') {
+      const form = new URLSearchParams(String(init?.body ?? ''))
+      if (url.pathname.endsWith('/Verifications')) { world.calls.push('sms:' + form.get('To')); return ok({ status: 'pending' }, 201) }
+      if (url.pathname.endsWith('/VerificationCheck')) return ok({ status: form.get('Code') === '123456' ? 'approved' : 'pending' })
+    }
     // Dojah
     if (url.host === 'api.dojah.io') {
       const n = url.searchParams.get('nin') ?? url.searchParams.get('bvn') ?? ''
@@ -143,7 +157,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
 export const ENV: Env = {
   APP_URL: 'https://luda.test', SUPABASE_URL: 'https://proj.supabase.co', AUTH_KEY: 'anon',
   PAYSTACK_SECRET_KEY: 'sk_live_test', FLW_SECRET_KEY: 'FLWSECK-x', FLW_SECRET_HASH: 'flwhash',
-  FX_FIXED_RATE: '40', FX_MARGIN: '0.01', FX_TRY_RATES: '{"GHS":0.4,"USD":0.025,"KES":3.2}', DOJAH_APP_ID: 'app', DOJAH_SECRET_KEY: 'sec',
+  FX_FIXED_RATE: '40', FX_MARGIN: '0.01', FX_TRY_RATES: '{"GHS":0.4,"USD":0.025,"KES":3.2}', DOJAH_APP_ID: 'app', DOJAH_SECRET_KEY: 'sec', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_VERIFY_SID: 'VA1',
 }
 
 export const sign = {

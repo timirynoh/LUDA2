@@ -1,5 +1,6 @@
 // Real-money building blocks (live mode): review → hold → PIN, KYC, top-up, withdraw, convert, send.
-import { BadgeCheck, Building2, ExternalLink, Loader2, Lock, Search, ShieldCheck } from 'lucide-react'
+import { BadgeCheck, Building2, ExternalLink, Fingerprint, Loader2, Lock, Search, ShieldCheck } from 'lucide-react'
+import { bioApprove, bioSaved } from '../lib/bio'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { HoldButton } from './Confirm'
 import { PinPad, Segmented, Sheet, Success } from './ui'
@@ -11,24 +12,34 @@ import { useLive } from '../lib/liveStore'
 const parseMinor = (v: string) => Math.round(Number(v.replace(/[^\d.]/g, '') || 0) * 100)
 export const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong')
 
+/** How a money action is approved: the PIN, or this phone's fingerprint (verified by the server). */
+export type Approval = { pin: string } | { bio: Awaited<ReturnType<typeof bioApprove>> }
+
 /**
  * Two deliberate steps before money moves: (1) read the summary and press-and-hold,
- * (2) enter the PIN, which the server checks. Then the action runs once.
+ * (2) fingerprint / Face ID (if set up on this phone) or the PIN, checked by the server.
  */
 export function ReviewAndPin({ rows, warning, holdLabel, run, done, onClose }: {
   rows: [string, ReactNode][]; warning?: ReactNode; holdLabel: string
-  run: (pin: string) => Promise<void>; done: ReactNode; onClose: () => void
+  run: (auth: Approval) => Promise<void>; done: ReactNode; onClose: () => void
 }) {
   const [stage, setStage] = useState<'review' | 'pin' | 'busy' | 'done'>('review')
   const [err, setErr] = useState('')
-  const go = async (pin: string) => {
+  const canBio = !!bioSaved()?.server
+  const go = async (auth: Approval) => {
     setStage('busy'); setErr('')
-    try { await run(pin); setStage('done') } catch (e) { setErr(errMsg(e)); setStage('pin') }
+    try { await run(auth); setStage('done') } catch (e) { setErr(errMsg(e)); setStage('pin') }
   }
+  const fingerprint = async () => {
+    setErr('')
+    try { const bio = await bioApprove(); await go({ bio }) } catch (e) { setErr(`${errMsg(e)}. Use your PIN instead.`); setStage('pin') }
+  }
+  const approve = () => { if (canBio) void fingerprint(); else setStage('pin') }
   if (stage === 'done') return <>{done}</>
   if (stage === 'busy') return <div className="flex flex-col items-center gap-3 py-10"><Loader2 className="animate-spin text-mint-300" size={40} /><p className="text-sm text-slate-400">Processing… don't close Luda</p></div>
   if (stage === 'pin') return (
-    <div className="flex flex-col items-center gap-3"><p className="text-sm text-slate-300">Enter your Luda PIN to approve</p><PinPad error={err} onDone={go} />
+    <div className="flex flex-col items-center gap-3"><p className="text-sm text-slate-300">Enter your Luda PIN to approve</p><PinPad error={err} onDone={(pin) => go({ pin })} />
+      {canBio && <button className="flex items-center gap-2 text-sm text-mint-300" onClick={fingerprint}><Fingerprint size={18} /> Use fingerprint / Face ID</button>}
       <button className="text-xs text-slate-500 underline" onClick={onClose}>Cancel</button></div>
   )
   return (
@@ -37,7 +48,8 @@ export function ReviewAndPin({ rows, warning, holdLabel, run, done, onClose }: {
         {rows.map(([k, v]) => <div key={k} className="flex items-center justify-between gap-3 px-4 py-3 text-sm"><span className="text-slate-400">{k}</span><span className="text-end font-semibold">{v}</span></div>)}
       </div>
       {warning && <div className="rounded-2xl border border-gold-400/30 bg-gold-400/[0.07] p-3 text-xs text-gold-100">{warning}</div>}
-      <HoldButton label={holdLabel} onDone={() => setStage('pin')} />
+      <HoldButton label={holdLabel} onDone={approve} />
+      {canBio && <p className="text-center text-[11px] text-slate-500"><Fingerprint size={12} className="inline" /> You'll approve with your fingerprint / Face ID</p>}
       <button className="btn-ghost text-sm" onClick={onClose}>Go back</button>
     </div>
   )
@@ -189,7 +201,7 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
           rows={[['To', <span key="to">{name!.accountName}<br /><span className="text-xs text-slate-400">{bank!.name} · {acct}</span></span>], ['Amount', money(minor, 'NGN')], ['Fee', money(fee, 'NGN')], ['Leaves your wallet', <b key="v">{money(minor + fee, 'NGN')}</b>]]}
           warning="Check the account carefully. Money sent to a bank can't be pulled back by Luda."
           holdLabel="Hold to withdraw"
-          run={async (pin) => { const r = await api('POST', 'withdraw', { amountMinor: minor, account: acct, bankCode: bank!.code, bankName: bank!.name, pin }); setResult(r.status); await refresh() }}
+          run={async (auth) => { const r = await api('POST', 'withdraw', { amountMinor: minor, account: acct, bankCode: bank!.code, bankName: bank!.name, ...auth }); setResult(r.status); await refresh() }}
           done={<Success title={result === 'failed' ? 'Withdrawal failed, money returned' : result === 'paid' ? 'Sent to your bank 🎉' : 'Withdrawal on its way'} sub={result === 'processing' ? 'Usually arrives within minutes. You\'ll see the status in your history.' : undefined} onClose={onClose} />}
           onClose={() => setReview(false)} />
       ) : (
@@ -234,7 +246,7 @@ export function ConvertSheet({ onClose, initialFrom = 'NGN' }: { onClose: () => 
       {review ? (
         <ReviewAndPin rows={[['You give', money(minor, from)], ['You get', <b key="v">{money(out, to)}</b>], ['Rate', `₺1 = ₦${rate!.ngnPerTry.toFixed(2)} (Luda fee ${(rate!.margin * 100).toFixed(1)}%)`]]}
           holdLabel="Hold to convert" onClose={() => setReview(false)}
-          run={async (pin) => { await api('POST', 'convert', { from, to, amountMinor: minor, expectMinor: out, pin }); await refresh() }}
+          run={async (auth) => { await api('POST', 'convert', { from, to, amountMinor: minor, expectMinor: out, ...auth }); await refresh() }}
           done={<Success title="Converted ✅" sub={`${money(out, to)} added to your ${to === 'NGN' ? 'Naira' : 'Lira'} wallet`} onClose={onClose} />} />
       ) : (
         <div className="flex flex-col gap-3">
@@ -277,7 +289,7 @@ export function SendSheet({ onClose, to: initialTo = '' }: { onClose: () => void
         <ReviewAndPin rows={[['To', <span key="to">{who!.fullName}<br /><span className="text-xs text-slate-400">@{who!.username}</span></span>], ['Amount', <b key="v">{money(minor, cur)}</b>], ...(note ? [['Note', note] as [string, ReactNode]] : [])]}
           warning="Only send to people you know. Luda can't reverse a transfer to another user."
           holdLabel="Hold to send" onClose={() => setReview(false)}
-          run={async (pin) => { await api('POST', 'send', { to: who!.username, currency: cur, amountMinor: minor, note, pin }); await refresh() }}
+          run={async (auth) => { await api('POST', 'send', { to: who!.username, currency: cur, amountMinor: minor, note, ...auth }); await refresh() }}
           done={<Success title="Sent 💸" sub={`${money(minor, cur)} to @${who!.username}`} onClose={onClose} />} />
       ) : (
         <div className="flex flex-col gap-3">

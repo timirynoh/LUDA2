@@ -48,6 +48,7 @@ export default function LiveWallet() {
             </button>
           ))}
         </div>
+        {me?.profile.moneyHoldUntil && new Date(me.profile.moneyHoldUntil) > new Date() && <p className="rounded-2xl bg-gold-400/10 p-3 text-sm text-gold-200">🔐 Your password was just reset, so withdrawals and sending are paused until {new Date(me.profile.moneyHoldUntil).toLocaleString()}. This protects you if someone else reset it. Not you? Contact Luda support now.</p>}
         {me?.profile.frozen && <p className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-300">Your account is on hold. Contact Luda support.</p>}
         {me && !verified && (
           <button className="flex items-center gap-3 rounded-2xl border border-gold-400/40 bg-gold-400/10 p-3 text-start" onClick={() => setOpen('kyc')}>

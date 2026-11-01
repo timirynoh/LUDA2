@@ -1,5 +1,6 @@
 // Full money journey against a real Postgres. Run: cd supabase && npm test
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { before, test } from 'node:test'
 import { handleApi, handleWebhook, type Deps } from '../functions/_shared/handlers.ts'
 import { depositFee, convertOut } from '../functions/_shared/money.ts'
@@ -16,10 +17,11 @@ before(async () => {
   d = { db: m.db, fetch: fw.f, now: () => new Date() }
 })
 
-async function call(method: string, route: string, body?: unknown, token?: string, env = ENV) {
+let ipN = 0
+async function call(method: string, route: string, body?: unknown, token?: string, env = ENV, ip = `10.0.${Math.floor(++ipN / 250)}.${ipN % 250}`) {
   const r = await handleApi(new Request(`https://proj.supabase.co/functions/v1/api/${route}`, {
     method, body: body ? JSON.stringify(body) : undefined,
-    headers: { origin: 'https://luda.test', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    headers: { origin: 'https://luda.test', 'x-forwarded-for': ip, ...(token ? { authorization: `Bearer ${token}` } : {}) },
   }), env, d)
   return { status: r.status, j: (await r.json()) as any }
 }
@@ -65,6 +67,9 @@ test('forgot password: reset link, then new password works', async () => {
   assert.ok(world.calls.includes('recover:ada@x.com:https://luda.test/reset'))
   assert.equal((await call('POST', 'password', { access_token: 'tok_bad', password: 'NewPass2026!' })).status, 400)
   assert.equal((await call('POST', 'password', { access_token: ada, password: 'NewPass2026!' })).status, 200)
+  const hold = (await q(`select money_hold_until from profiles where username='ada'`))[0].money_hold_until
+  assert.ok(new Date(hold).getTime() > Date.now() + 23 * 3600e3, 'money paused 24h after a password reset')
+  await q(`update profiles set money_hold_until = null where username='ada'`)
   assert.equal((await call('POST', 'login', { id: 'ada', password: 'NewPass2026!' })).status, 200)
   assert.equal((await call('POST', 'login', { id: 'ada', password: 'Lefkosa2026!' })).status, 401)
 })
@@ -198,6 +203,113 @@ test('PIN locks after 5 wrong tries; frozen accounts cannot spend', async () => 
   assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, pin: '4826' }, bola)).status, 429)
   await q(`update profiles set pin_locked_until = null, frozen = true where username = 'bola'`)
   assert.match((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, pin: '4826' }, bola)).j.error, /on hold/)
+})
+
+test('no duplicate emails or usernames; live availability check', async () => {
+  const av = (await call('GET', 'available?username=ADA&email=Ada@X.com')).j
+  assert.deepEqual(av, { username: false, email: false })
+  assert.deepEqual((await call('GET', 'available?username=fresh_name&email=new@x.com')).j, { username: true, email: true })
+  assert.equal((await call('GET', 'available?username=a!&email=nope')).j.username, null, 'invalid → no answer')
+  const r = await call('POST', 'signup', { email: 'ADA@x.com', username: 'someone_new', fullName: 'Ada Clone', password: 'Lefkosa2026!' })
+  assert.equal(r.status, 409); assert.match(r.j.error, /email already exists/)
+  const u = await call('POST', 'signup', { email: 'other@x.com', username: 'bola', fullName: 'Other Person', password: 'Lefkosa2026!' })
+  assert.equal(u.status, 409); assert.match(u.j.error, /username is already taken/)
+})
+
+test('Continue with Google: switched on, profile made from Google name', async () => {
+  assert.equal((await call('GET', 'config')).j.google, true)
+  const id = randomUUID(); world.users.set(id, { id, email: 'ama.owusu@gmail.com', password: '', meta: { name: 'Ama Owusu', full_name: 'Ama Owusu' } })
+  await q(`insert into auth.users values ($1,$2)`, [id, 'ama.owusu@gmail.com'])
+  const me = (await call('GET', 'me', undefined, 'tok_' + id)).j.profile
+  assert.equal(me.fullName, 'Ama Owusu'); assert.equal(me.username, 'ama.owusu'); assert.equal(me.hasPin, false)
+})
+
+test('fingerprint: register with PIN, approve payments, refuse replays and fakes', async () => {
+  const { subtle } = globalThis.crypto
+  const enc = (u: ArrayBuffer | Uint8Array) => Buffer.from(u as ArrayBuffer).toString('base64url')
+  const kp = await subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
+  const spki = enc(await subtle.exportKey('spki', kp.publicKey)), credId = enc(Buffer.from('ada-phone-credential-0001'))
+  const cdj = (type: string, challenge: string, origin = 'https://luda.test') => enc(Buffer.from(JSON.stringify({ type, challenge, origin })))
+  const toDer = (raw: Uint8Array) => {
+    const int = (b: Uint8Array) => { let i = 0; while (i < b.length - 1 && b[i] === 0) i++; let v = b.slice(i); if (v[0] & 0x80) v = Uint8Array.from([0, ...v]); return [0x02, v.length, ...v] }
+    const body = [...int(raw.slice(0, 32)), ...int(raw.slice(32))]; return Uint8Array.from([0x30, body.length, ...body])
+  }
+  let counter = 0
+  async function approve(opts: { origin?: string; flags?: number; id?: string } = {}) {
+    const { challenge } = (await call('GET', 'bio', undefined, ada)).j
+    const rp = new Uint8Array(await subtle.digest('SHA-256', Buffer.from('luda.test')))
+    counter++
+    const ad = Uint8Array.from([...rp, opts.flags ?? 0x05, 0, 0, 0, counter])
+    const clientDataJSON = cdj('webauthn.get', challenge, opts.origin)
+    const data = Buffer.concat([ad, Buffer.from(await subtle.digest('SHA-256', Buffer.from(clientDataJSON, 'base64url')))])
+    const sig = toDer(new Uint8Array(await subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, kp.privateKey, data)))
+    return { id: opts.id ?? credId, clientDataJSON, authenticatorData: enc(ad), signature: enc(sig) }
+  }
+  // register: needs a fresh challenge + the PIN
+  let g = (await call('GET', 'bio', undefined, ada)).j
+  assert.equal(g.rpId, 'luda.test')
+  assert.equal((await call('POST', 'bio', { pin: '0000', id: credId, publicKey: spki, alg: -7, clientDataJSON: cdj('webauthn.create', g.challenge) }, ada)).status, 401)
+  g = (await call('GET', 'bio', undefined, ada)).j
+  const reg = await call('POST', 'bio', { pin: '4826', id: credId, publicKey: spki, alg: -7, clientDataJSON: cdj('webauthn.create', g.challenge), device: 'Pixel' }, ada)
+  assert.equal(reg.status, 200, JSON.stringify(reg.j))
+  assert.equal((await call('GET', 'bio', undefined, ada)).j.keys.length, 1)
+  // approve a conversion with the fingerprint (no PIN)
+  const before = await bal(ada)
+  const ok = await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: await approve() }, ada)
+  assert.equal(ok.status, 200, JSON.stringify(ok.j)); assert.equal((await bal(ada)).TRY, before.TRY - 10_00)
+  // the same approval can't be used twice (challenge is single-use)
+  const a1 = await approve(); await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: a1 }, ada)
+  assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: a1 }, ada)).status, 401, 'replay refused')
+  // fakes
+  assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: await approve({ origin: 'https://evil.example' }) }, ada)).status, 401, 'other website')
+  assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: await approve({ flags: 0x01 }) }, ada)).status, 401, 'no fingerprint (user not verified)')
+  assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: await approve({ id: 'unknown-key-xxxxxxxx' }) }, ada)).status, 401, 'unregistered key')
+  assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: await approve() }, bola)).status, 401, "someone else's account")
+  // remove
+  await call('POST', 'bio-remove', { id: credId }, ada)
+  assert.equal((await call('GET', 'bio', undefined, ada)).j.keys.length, 0)
+})
+
+test('phone numbers: SMS-verified, one account per number', async () => {
+  assert.equal((await call('GET', 'config')).j.sms, true)
+  assert.match((await call('POST', 'phone-start', { phone: '12' }, ada)).j.error, /country code/)
+  const st = await call('POST', 'phone-start', { phone: '0533 812 44 55' }, ada)
+  assert.equal(st.j.phone, '+905338124455', JSON.stringify(st.j)); assert.ok(world.calls.includes('sms:+905338124455'))
+  assert.match((await call('POST', 'phone-check', { phone: '+905338124455', code: '000000' }, ada)).j.error, /wrong or expired/)
+  assert.equal((await call('POST', 'phone-check', { phone: '+905338124455', code: '123456' }, ada)).status, 200)
+  const me = (await call('GET', 'me', undefined, ada)).j.profile
+  assert.equal(me.phoneVerified, true); assert.equal(me.phone, '+905•••455', 'number masked')
+  const dup = await call('POST', 'phone-start', { phone: '+90 533 812 4455' }, bola)
+  assert.equal(dup.status, 409); assert.match(dup.j.error, /already used by another Luda account/)
+  assert.equal((await call('POST', 'phone-check', { phone: '+905338124455', code: '123456' }, bola)).status, 409, 'even with a valid code')
+})
+
+test('security: password guessing, sign-up spam and post-reset cash-out are blocked', async () => {
+  for (let i = 0; i < 8; i++) assert.equal((await call('POST', 'login', { id: 'victim_user', password: 'guess' + i })).status, 401)
+  const r = await call('POST', 'login', { id: 'victim_user', password: 'guess9' })
+  assert.equal(r.status, 429); assert.match(r.j.error, /Too many sign-in attempts/)
+  for (let i = 0; i < 5; i++) await call('POST', 'signup', { email: `spam${i}@x.com`, username: `spam_${i}`, fullName: 'Spam Bot', password: 'Lefkosa2026!' }, undefined, ENV, '6.6.6.6')
+  assert.equal((await call('POST', 'signup', { email: 'spam9@x.com', username: 'spam_9', fullName: 'Spam Bot', password: 'Lefkosa2026!' }, undefined, ENV, '6.6.6.6')).status, 429)
+  await q(`update profiles set money_hold_until = now() + interval '1 day' where username='ada'`)
+  const s1 = await call('POST', 'send', { to: 'bola', currency: 'TRY', amountMinor: 10_00, pin: '4826' }, ada)
+  assert.equal(s1.status, 403); assert.match(s1.j.error, /paused/)
+  await q(`update profiles set money_hold_until = null where username='ada'`)
+})
+
+test('freeze my wallet: instant on, PIN to unfreeze, team freezes stay', async () => {
+  assert.equal((await call('POST', 'freeze', {}, ada)).j.frozen, true)
+  assert.match((await call('POST', 'send', { to: 'bola', currency: 'TRY', amountMinor: 10_00, pin: '4826' }, ada)).j.error ?? '', /on hold/)
+  assert.equal((await call('POST', 'freeze', { freeze: false, pin: '0000' }, ada)).status, 401)
+  assert.equal((await call('POST', 'freeze', { freeze: false, pin: '4826' }, ada)).j.frozen, false)
+  await q(`update profiles set frozen = true, frozen_by = 'admin' where username = 'ada'`)
+  assert.equal((await call('POST', 'freeze', { freeze: false, pin: '4826' }, ada)).status, 403, 'only the team lifts a team freeze')
+  await q(`update profiles set frozen = false, frozen_by = null where username = 'ada'`)
+})
+
+test('change password while signed in needs the current one', async () => {
+  assert.equal((await call('POST', 'change-password', { oldPassword: 'wrong-one', newPassword: 'Another2026!' }, ada)).status, 401)
+  assert.equal((await call('POST', 'change-password', { oldPassword: 'NewPass2026!', newPassword: 'Another2026!' }, ada)).status, 200)
+  assert.equal((await call('POST', 'login', { id: 'ada@x.com', password: 'Another2026!' })).status, 200)
 })
 
 test('books balance: every wallet equals the sum of its ledger', async () => {

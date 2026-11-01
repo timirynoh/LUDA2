@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { AtSign, Check, ChevronLeft, Eye, EyeOff, Globe, Lock, Mail, User } from 'lucide-react'
+import { AtSign, Check, ChevronLeft, Eye, EyeOff, Fingerprint, Globe, Lock, Mail, User } from 'lucide-react'
+import { bioOn, bioUnlock } from '../lib/bio'
 import { useEffect, useState, type ReactNode } from 'react'
 import { LogoMark, Wordmark } from '../components/Logo'
 import { PinPad, Sheet } from '../components/ui'
@@ -8,7 +9,7 @@ import { hashPin } from '../lib/crypto'
 import { LANGS } from '../lib/data'
 import { checkText } from '../lib/moderation'
 import { useStore } from '../lib/store'
-import { LIVE, api, liveRecover, liveSetPassword, liveSignIn, liveSignUp, type Me } from '../lib/live'
+import { LIVE, api, checkAvailable, googleSignIn, liveConfig, liveRecover, liveSetPassword, liveSignIn, liveSignUp, takeOAuthReturn, type Me } from '../lib/live'
 
 const device = () => {
   const ua = navigator.userAgent
@@ -109,6 +110,7 @@ export function Landing({ onSignUp, onSignIn }: { onSignUp: () => void; onSignIn
       </div>
       <div className="mt-4 flex gap-1.5">{SLIDES.map((_, k) => <button key={k} onClick={() => setI(k)} aria-label={`Slide ${k + 1}`} className={`h-1.5 rounded-full transition-all ${k === i ? 'w-8 bg-mint-400' : 'w-1.5 bg-fg/20'}`} />)}</div>
       <div className="mt-auto flex flex-col gap-3 pt-8">
+        <GoogleButton />
         <button className="btn-primary py-4 text-base" onClick={onSignUp}>Create free account</button>
         <button className="btn-ghost py-4 text-base" onClick={onSignIn}>I have an account · Sign in</button>
         <p className="text-center text-xs text-slate-500">Made for the African community in North Cyprus 🇳🇬 🇨🇩 🇨🇲 🇿🇼 🇬🇭 🇰🇪 🇸🇩</p>
@@ -126,11 +128,11 @@ export function Landing({ onSignUp, onSignIn }: { onSignUp: () => void; onSignIn
 
 /* ------------------------------ Shared form bits ------------------------------ */
 
-function Field({ icon, children, error }: { icon: ReactNode; children: ReactNode; error?: string }) {
+function Field({ icon, children, error, ok }: { icon: ReactNode; children: ReactNode; error?: string; ok?: string }) {
   return (
     <div>
       <div className="relative"><span className="absolute start-4 top-1/2 -translate-y-1/2 text-slate-500">{icon}</span>{children}</div>
-      {error && <p className="mt-1 ps-1 text-xs text-rose-300">{error}</p>}
+      {error ? <p className="mt-1 ps-1 text-xs text-rose-300">{error}</p> : ok ? <p className="mt-1 ps-1 text-xs text-mint-300">✓ {ok}</p> : null}
     </div>
   )
 }
@@ -147,6 +149,40 @@ function AuthShell({ title, sub, onBack, children }: { title: string; sub: strin
 
 /* ------------------------------ Sign up ------------------------------ */
 
+/** "Continue with Google" (live mode, when switched on in Supabase). */
+export function GoogleButton() {
+  const [on, setOn] = useState(false)
+  useEffect(() => { if (LIVE) liveConfig().then((c) => setOn(!!c.google)).catch(() => {}) }, [])
+  if (!on) return null
+  return (
+    <>
+      <button className="glass flex w-full items-center justify-center gap-3 rounded-2xl py-3.5 text-base font-semibold" onClick={googleSignIn}>
+        <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+        Continue with Google
+      </button>
+      <div className="flex items-center gap-3 text-xs text-slate-500"><span className="h-px flex-1 bg-fg/10" />or<span className="h-px flex-1 bg-fg/10" /></div>
+    </>
+  )
+}
+
+/** Finishes "Continue with Google" when Google sends the user back to the app. */
+export function useOAuthReturn() {
+  const { set } = useStore()
+  useEffect(() => {
+    if (!takeOAuthReturn()) return
+    api<Me>('GET', 'me').then((m) => set((p) => {
+      const same = p.account?.username === m.profile.username
+      if (!same) localStorage.removeItem('luda.bio')
+      return {
+        ...p, signedIn: true, account: { email: m.profile.email, username: m.profile.username, passHash: '', salt: '', stay: true },
+        name: same && p.name ? p.name : m.profile.fullName.split(' ')[0],
+        ...(same ? {} : { onboarded: false, pinHash: '', salt: '', tickets: [], txs: [], inbox: [] }),
+        logins: [loginEntry('Google sign-in'), ...p.logins].slice(0, 20),
+      }
+    })).catch(() => {})
+  }, [set])
+}
+
 export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () => void }) {
   const { s, set } = useStore()
   const [f, setF] = useState({ name: '', username: '', email: '', password: '' })
@@ -157,12 +193,21 @@ export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () 
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [confirm, setConfirm] = useState(false)
+  const [avail, setAvail] = useState<{ username: boolean | null; email: boolean | null }>({ username: null, email: null })
+  // Tell people straight away if the username or email is already registered.
+  useEffect(() => {
+    if (!LIVE) return
+    const u = USERNAME_RE.test(f.username) ? f.username : '', e = EMAIL_RE.test(f.email.trim()) ? f.email.trim() : ''
+    if (!u && !e) return
+    const t = setTimeout(() => { checkAvailable(u, e).then(setAvail).catch(() => {}) }, 450)
+    return () => clearTimeout(t)
+  }, [f.username, f.email])
   const strength = passwordStrength(f.password)
   const nameBad = !checkText(`${f.name} ${f.username}`).ok
   const errors = {
     name: f.name.trim().length < 2 ? 'Enter your name' : nameBad ? 'Please choose a respectful name' : LIVE && !/\S+\s+\S+/.test(f.name.trim()) ? 'Enter your first and last name exactly as on your ID' : '',
-    username: !USERNAME_RE.test(f.username) ? '3–20 characters: lowercase letters, numbers, _ or .' : '',
-    email: !EMAIL_RE.test(f.email.trim()) ? 'Enter a valid email' : '',
+    username: !USERNAME_RE.test(f.username) ? '3–20 characters: lowercase letters, numbers, _ or .' : avail.username === false ? 'This username is already taken' : '',
+    email: !EMAIL_RE.test(f.email.trim()) ? 'Enter a valid email' : avail.email === false ? 'An account with this email already exists' : '',
     password: !strength.ok ? 'At least 8 characters, mixing letters and numbers' : '',
   }
   const valid = !Object.values(errors).some(Boolean) && agree
@@ -184,9 +229,10 @@ export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () 
   return (
     <AuthShell title="Create your account" sub="It takes less than a minute." onBack={onBack}>
       <div className="flex flex-col gap-3">
+        <GoogleButton />
         <Field icon={<User size={18} />} error={touched ? errors.name : ''}><input className="input ps-11" placeholder="Full name" autoComplete="name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-        <Field icon={<AtSign size={18} />} error={touched ? errors.username : ''}><input className="input ps-11" placeholder="username" autoComplete="username" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value.toLowerCase().replace(/\s/g, '') })} /></Field>
-        <Field icon={<Mail size={18} />} error={touched ? errors.email : ''}><input className="input ps-11" type="email" placeholder="Email" autoComplete="email" inputMode="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+        <Field icon={<AtSign size={18} />} error={touched || avail.username === false ? errors.username : ''} ok={LIVE && avail.username === true && !errors.username ? 'Username available' : ''}><input className="input ps-11" placeholder="username" autoComplete="username" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value.toLowerCase().replace(/\s/g, '') })} /></Field>
+        <Field icon={<Mail size={18} />} error={touched || avail.email === false ? errors.email : ''}><input className="input ps-11" type="email" placeholder="Email" autoComplete="email" inputMode="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
         <Field icon={<Lock size={18} />} error={touched ? errors.password : ''}>
           <input className="input ps-11 pe-12" type={show ? 'text' : 'password'} placeholder="Password" autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} />
           <button className="absolute end-4 top-1/2 -translate-y-1/2 text-slate-500" onClick={() => setShow(!show)} aria-label="Show password">{show ? <EyeOff size={18} /> : <Eye size={18} />}</button>
@@ -237,7 +283,7 @@ export function SignIn({ onBack, onSignUp }: { onBack: () => void; onSignUp: () 
           ...p, account: { email: m.profile.email, username: m.profile.username, passHash: '', salt: '', stay },
           name: same && p.name ? p.name : m.profile.fullName.split(' ')[0],
           // A different person on this phone starts fresh (new PIN step, no leftover data shown).
-          ...(same ? {} : { onboarded: false, pinHash: '', salt: '', tickets: [], txs: [], inbox: [] }),
+          ...(same ? {} : (localStorage.removeItem('luda.bio'), { onboarded: false, pinHash: '', salt: '', tickets: [], txs: [], inbox: [] })),
         }))
         finish()
       } catch (e) { setTries(tries + 1); setErr(e instanceof Error ? e.message : 'Sign-in failed') } finally { setBusy(false) }
@@ -250,6 +296,7 @@ export function SignIn({ onBack, onSignUp }: { onBack: () => void; onSignUp: () 
   return (
     <AuthShell title="Welcome back" sub="Sign in with your email or username." onBack={onBack}>
       <div className="flex flex-col gap-3">
+        <GoogleButton />
         <Field icon={<AtSign size={18} />}><input className="input ps-11" placeholder="Email or username" autoComplete="username" value={id} onChange={(e) => { setId(e.target.value); setErr('') }} /></Field>
         <Field icon={<Lock size={18} />}>
           <input className="input ps-11 pe-12" type={show ? 'text' : 'password'} placeholder="Password" autoComplete="current-password" value={pw} onChange={(e) => { setPw(e.target.value); setErr('') }} onKeyDown={(e) => e.key === 'Enter' && submit()} />
@@ -312,7 +359,7 @@ export function ResetPassword({ onDone }: { onDone: () => void }) {
   }
   return (
     <AuthShell title="Choose a new password" sub="Then sign in with it." onBack={onDone}>
-      {done ? <div className="flex flex-col gap-3"><p className="text-sm text-mint-200">✅ Password changed.</p><button className="btn-primary py-4" onClick={onDone}>Sign in</button></div> : (
+      {done ? <div className="flex flex-col gap-3"><p className="text-sm text-mint-200">✅ Password changed. For your safety, withdrawals and sending are paused for 24 hours.</p><button className="btn-primary py-4" onClick={onDone}>Sign in</button></div> : (
         <div className="flex flex-col gap-3">
           <input className="input" type="password" autoComplete="new-password" placeholder="New password" value={pw} onChange={(e) => { setPw(e.target.value); setErr('') }} />
           {pw && <p className="text-xs text-slate-400">{strength.label}</p>}{err && <p className="text-sm text-rose-300">{err}</p>}
@@ -357,6 +404,13 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   const { s, set } = useStore()
   const [err, setErr] = useState('')
   const [fails, setFails] = useState(0)
+  const [bioErr, setBioErr] = useState('')
+  const unlockWithBio = async () => {
+    setBioErr('')
+    try { if (await bioUnlock()) { set((p) => ({ ...p, logins: [loginEntry('Fingerprint unlock'), ...p.logins].slice(0, 20) })); onUnlock() } } catch (e) { setBioErr(e instanceof Error ? e.message : 'Try your PIN') }
+  }
+  // Offer the fingerprint straight away when it's set up on this phone.
+  useEffect(() => { if (bioOn()) void unlockWithBio() }, []) // eslint-disable-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   const tryPin = async (pin: string) => {
     if ((await hashPin(pin, s.salt)) === s.pinHash) { set((p) => ({ ...p, logins: [loginEntry('PIN unlock'), ...p.logins].slice(0, 20) })); return onUnlock() }
     const n = fails + 1
@@ -373,6 +427,8 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
       <p className="text-3xl font-extrabold">{s.name} 👋🏾</p>
       <p className="mt-2 mb-10 text-sm text-slate-400">Enter your PIN to open Luda</p>
       <PinPad error={err} onDone={tryPin} />
+      {bioOn() && <button className="mt-5 flex items-center gap-2 rounded-2xl bg-mint-400/10 px-4 py-3 text-sm font-semibold text-mint-300" onClick={unlockWithBio}><Fingerprint size={20} /> Unlock with fingerprint / Face ID</button>}
+      {bioErr && <p className="mt-2 text-xs text-slate-500">{bioErr}</p>}
       <button className="mt-auto pt-8 text-sm text-slate-400" onClick={() => set((p) => ({ ...p, signedIn: false }))}>Forgot PIN? <span className="text-mint-300">Sign in with password</span></button>
       <p className="mt-2 text-xs text-slate-600">Not {s.name}? <button className="underline" onClick={() => set((p) => ({ ...p, signedIn: false }))}>Switch account</button></p>
     </motion.div>

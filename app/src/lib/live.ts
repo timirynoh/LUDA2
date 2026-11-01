@@ -65,6 +65,30 @@ export async function liveSignIn(id: string, password: string) {
   const r = await raw<{ session: any }>('POST', 'login', { id, password }, false)
   saveSession(r.session)
 }
+/** Supabase project address, derived from the API address (…/functions/v1). */
+const SUPABASE_URL = BASE?.replace(/\/functions\/v1$/, '')
+
+/** Continue with Google: Supabase Auth sends the user to Google and back to this app with a session. */
+export function googleSignIn() {
+  if (!SUPABASE_URL) return
+  window.location.assign(`${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(window.location.origin + '/')}`)
+}
+
+/** After Google sends the user back (#access_token=…), keep the session and clean the address bar. */
+export function takeOAuthReturn(): boolean {
+  if (!LIVE || !window.location.hash.includes('access_token=') || window.location.hash.includes('type=recovery')) return false
+  const h = new URLSearchParams(window.location.hash.slice(1))
+  const access_token = h.get('access_token'), refresh_token = h.get('refresh_token')
+  history.replaceState(null, '', window.location.pathname)
+  if (!access_token || !refresh_token) return false
+  saveSession({ access_token, refresh_token, expires_in: Number(h.get('expires_in') ?? 3600) })
+  return true
+}
+
+/** Live check for the sign-up form: true = free, false = already registered, null = not valid yet. */
+export const checkAvailable = (username: string, email: string) =>
+  raw<{ username: boolean | null; email: boolean | null }>('GET', `available?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}`, undefined, false)
+
 export const liveRecover = (email: string) => raw('POST', 'recover', { email }, false)
 export async function liveSetPassword(accessToken: string, password: string) {
   await raw('POST', 'password', { access_token: accessToken, password }, false)
@@ -76,13 +100,13 @@ export interface LedgerRow { id: number; currency: Cur; amount_minor: number; ba
 export interface LiveTicket { id: string; code: string; item: Record<string, any>; base_amount: number; paid_minor: number; paid_currency: Cur; status: string; created_at: string }
 export interface LiveWithdrawal { reference: string; amount_minor: number; fee_minor: number; bank_name: string | null; account_number: string; account_name: string; status: 'processing' | 'paid' | 'failed' | 'reversed'; created_at: string }
 export interface Me {
-  profile: { username: string; fullName: string; email: string; kyc: 'none' | 'verified' | 'failed'; kycName: string | null; hasPin: boolean; frozen: boolean }
+  profile: { username: string; fullName: string; email: string; kyc: 'none' | 'verified' | 'failed'; kycName: string | null; hasPin: boolean; frozen: boolean; frozenBy: 'user' | 'admin' | null; phone: string | null; phoneVerified: boolean; moneyHoldUntil: string | null }
   balances: Record<Cur, number>
   history: LedgerRow[]
   tickets: LiveTicket[]
   withdrawals: LiveWithdrawal[]
 }
-export interface LiveConfig { providers: Provider[]; foreign: string[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number } }
+export interface LiveConfig { google: boolean; sms: boolean; providers: Provider[]; foreign: string[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number } }
 
 let cfg: Promise<LiveConfig> | null = null
 export const liveConfig = () => (cfg ??= raw<LiveConfig>('GET', 'config', undefined, false).catch((e) => { cfg = null; throw e }))
