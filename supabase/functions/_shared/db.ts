@@ -18,7 +18,7 @@ export interface Profile {
   kyc_tries: number; kyc_tries_day?: string | null
   pin_hash?: string | null; pin_salt?: string | null; pin_fails: number; pin_locked_until?: string | null
   frozen: boolean; created_at?: string; bio_challenge?: string | null; bio_challenge_exp?: string | null
-  phone?: string | null; phone_verified_at?: string | null; money_hold_until?: string | null; frozen_by?: 'user' | 'admin' | null
+  phone?: string | null; phone_verified_at?: string | null; money_hold_until?: string | null; frozen_by?: 'user' | 'admin' | null; is_admin?: boolean
 }
 
 export interface Passkey { id: string; user_id: string; public_key: string; alg: number; counter: number; device?: string | null; created_at?: string }
@@ -67,6 +67,12 @@ export interface Db {
   withdraw(userId: string, reference: string, amountMinor: number, feeMinor: number, bankCode: string, bankName: string, account: string, name: string, recipient: string): Promise<void>
   withdrawSettle(reference: string, status: 'paid' | 'failed' | 'reversed', transferCode?: string | null, note?: string | null): Promise<void>
   spent(userId: string, currency: string, kinds: string[], hours: number): Promise<number>
+  // owner admin
+  adminOverview(): Promise<Record<string, any>>
+  searchProfiles(q: string, limit: number): Promise<Profile[]>
+  listDeposits(status: string | null, q: string | null, limit: number): Promise<PaymentRow[]>
+  listWithdrawals(status: string | null, limit: number): Promise<WithdrawalRow[]>
+  refundTicket(ticketId: string): Promise<{ ok: boolean; reason?: string }>
   // fingerprint keys
   passkeys(userId: string): Promise<Passkey[]>
   addPasskey(k: Omit<Passkey, 'counter' | 'created_at'>): Promise<void>
@@ -151,6 +157,18 @@ export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
     },
     async withdrawSettle(ref, status, tc, note) { await rpc('luda_withdraw_settle', { p_reference: ref, p_status: status, p_transfer: tc ?? null, p_note: note ?? null }) },
     async spent(u, cur, kinds, hours) { return Number(await rpc('luda_spent', { p_user: u, p_currency: cur, p_kinds: kinds, p_hours: hours })) },
+    async adminOverview() { return rpc('luda_admin_overview', {}) },
+    searchProfiles(qs, n) {
+      const s = qs.replace(/[^\w@.+ -]/g, '').trim()
+      const filter = s ? `&or=(username.ilike.*${q(s)}*,email.ilike.*${q(s)}*,full_name.ilike.*${q(s)}*,phone.ilike.*${q(s)}*)` : ''
+      return rows<Profile>(`profiles?select=*${filter}&order=created_at.desc&limit=${n}`)
+    },
+    listDeposits(st, qs, n) {
+      const s = (qs ?? '').replace(/[^\w@.-]/g, '')
+      return rows<PaymentRow>(`payments?purpose=eq.deposit${st ? `&status=eq.${q(st)}` : ''}${s ? `&or=(reference.ilike.*${q(s)}*,email.ilike.*${q(s)}*)` : ''}&order=created_at.desc&limit=${n}`)
+    },
+    listWithdrawals: (st, n) => rows<WithdrawalRow>(`withdrawals?${st ? `status=eq.${q(st)}&` : ''}order=created_at.desc&limit=${n}`),
+    async refundTicket(id) { return rpc('luda_refund_ticket', { p_ticket: id }) },
     passkeys: (u) => rows<Passkey>(`passkeys?user_id=eq.${q(u)}&order=created_at.asc`),
     async addPasskey(k) { await call('passkeys', { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(k) }) },
     async setPasskeyCounter(id, c) { await call(`passkeys?id=eq.${q(id)}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ counter: c }) }) },

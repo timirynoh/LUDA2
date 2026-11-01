@@ -22,6 +22,7 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv {
   // Set to match each dashboard's "who pays the fee" setting, so the customer never pays it twice.
   // Paystack defaults to true (the owner's setting: customer pays); Flutterwave defaults to false.
   PAYSTACK_CUSTOMER_PAYS_FEE?: string; FLW_CUSTOMER_PAYS_FEE?: string
+  ADMIN_EMAILS?: string // comma-separated Luda account emails that can open the owner's admin page
 }
 export interface Deps { db: Db; fetch?: Fetch; now?: () => Date }
 
@@ -157,6 +158,19 @@ async function kycSync(p: Profile, env: Env, d: Deps): Promise<{ status: Profile
   }
   return { status: 'verified' }
 }
+
+const isAdmin = (p: Profile, env: Env) => !!p.is_admin || (env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean).includes(p.email.toLowerCase())
+async function admin(req: Request, env: Env, d: Deps) {
+  const p = await me(req, env, d)
+  if (!isAdmin(p, env)) throw new Fail('Not found', 404) // don't reveal the admin page exists
+  return p
+}
+/** What the admin page shows about a person (never PIN data, full document numbers or payout recipient codes). */
+const adminProfile = (u: Profile) => ({
+  userId: u.user_id, username: u.username, fullName: u.full_name, email: u.email, phone: u.phone ?? null, phoneVerified: !!u.phone_verified_at,
+  kyc: u.kyc_status, kycName: u.kyc_name ?? null, kycType: u.kyc_id_type ?? null, kycLast4: u.kyc_id_last4 ?? null, kycCountry: u.kyc_country ?? null,
+  frozen: u.frozen, frozenBy: u.frozen_by ?? null, moneyHoldUntil: u.money_hold_until ?? null, isAdmin: !!u.is_admin, createdAt: u.created_at,
+})
 
 const needKyc = (p: Profile, what: string) => { if (p.kyc_status !== 'verified') throw new Fail(`Verify your identity to ${what}`, 403) }
 
@@ -313,7 +327,7 @@ const routes: Record<string, Route> = {
     }
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
     return {
-      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null },
+      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: isAdmin(p, env), frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null },
       // Every top-up attempt with its status (pending / paid / failed / mismatch), so the app can show all of them.
       deposits: deposits.map((x) => ({ reference: x.reference, provider: x.provider, status: x.status, chargeMinor: Number(x.amount_minor), currency: x.currency, feeMinor: Number(x.fee_minor ?? 0), creditMinor: Number(x.credit_minor ?? 0), creditCurrency: x.credit_currency ?? 'NGN', createdAt: x.created_at, paidAt: x.paid_at ?? null })),
       balances, history, tickets, withdrawals: withdrawals.map((w) => ({ ...w, account_number: '••••' + w.account_number.slice(-4), recipient_code: undefined })),
@@ -579,6 +593,83 @@ const routes: Record<string, Route> = {
     let s
     try { s = await signIn(p.email, String(body.oldPassword ?? ''), authEnv(env), d.fetch) } catch { throw new Fail('Your current password is wrong', 401) }
     await setPassword(s.access_token, body.newPassword, authEnv(env), d.fetch).catch((e) => { throw new Fail(e instanceof Error ? e.message : 'Could not change password') })
+    return { ok: true }
+  },
+
+  /* ---- owner admin ---- */
+  'GET admin-overview': async ({ req, env, d }) => { await admin(req, env, d); return d.db.adminOverview() },
+
+  'GET admin-users': async ({ req, env, d, url }) => {
+    await admin(req, env, d)
+    const list = await d.db.searchProfiles((url.searchParams.get('q') ?? '').slice(0, 60), 30)
+    return { users: list.map(adminProfile) }
+  },
+
+  'GET admin-user': async ({ req, env, d, url }) => {
+    await admin(req, env, d)
+    const u = await d.db.profile(url.searchParams.get('id') ?? '')
+    if (!u) throw new Fail('User not found', 404)
+    const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(u.user_id), d.db.history(u.user_id, 50), d.db.tickets(u.user_id, 20), d.db.withdrawals(u.user_id, 20), d.db.deposits(u.user_id, 20)])
+    return { user: adminProfile(u), balances, history, tickets, withdrawals: withdrawals.map((w) => ({ ...w, recipient_code: undefined })), deposits }
+  },
+
+  'GET admin-deposits': async ({ req, env, d, url }) => {
+    await admin(req, env, d)
+    return { deposits: await d.db.listDeposits(url.searchParams.get('status') || null, url.searchParams.get('q') || null, 50) }
+  },
+
+  'GET admin-withdrawals': async ({ req, env, d, url }) => {
+    await admin(req, env, d)
+    return { withdrawals: (await d.db.listWithdrawals(url.searchParams.get('status') || null, 50)).map((w) => ({ ...w, recipient_code: undefined })) }
+  },
+
+  // Ask Paystack/Flutterwave again about a top-up or withdrawal (safe: it only settles what the provider confirms).
+  'POST admin-recheck': async ({ req, env, d, body }) => {
+    const a = await admin(req, env, d)
+    const ref = String(body.reference ?? '')
+    await d.db.log(ref, 'admin_recheck', { by: a.username })
+    if (ref.startsWith('wdr_')) { const w = await d.db.withdrawal(ref); if (!w) throw new Fail('Not found', 404); return { status: await settleWithdrawal(w, env, d) } }
+    const r = await finalizeDeposit(ref, env, d, 'admin-recheck')
+    if (!r) throw new Fail('Not found', 404)
+    return { status: r.status }
+  },
+
+  // Changes to someone's account: always needs the admin's PIN or fingerprint, and is written to the audit log.
+  'POST admin-action': async ({ req, env, d, body }) => {
+    const a = await admin(req, env, d)
+    await verifyAuth(a, body, env, d)
+    const u = await d.db.profile(String(body.userId ?? ''))
+    if (!u) throw new Fail('User not found', 404)
+    const action = String(body.action ?? ''), reason = String(body.reason ?? '').replace(/[<>\u0000-\u001f]/g, '').slice(0, 140)
+    const audit = (extra: Record<string, unknown> = {}) => d.db.log(u.user_id, `admin_${action}`, { by: a.username, user: u.username, reason, ...extra })
+    switch (action) {
+      case 'freeze': await d.db.updateProfile(u.user_id, { frozen: true, frozen_by: 'admin' }); break
+      case 'unfreeze': await d.db.updateProfile(u.user_id, { frozen: false, frozen_by: null }); break
+      case 'kyc-reset': await d.db.updateProfile(u.user_id, { kyc_status: 'none', kyc_session_id: null, kyc_doc_hash: null, kyc_tries: 0 } as Partial<Profile>); break
+      case 'kyc-approve': {
+        const legal = String(body.legalName ?? '').trim().replace(/\s+/g, ' ').toUpperCase()
+        if (nameTokens(legal).length < 2 || !reason) throw new Fail('Enter the legal name exactly as on the ID, and a reason')
+        await d.db.updateProfile(u.user_id, { kyc_status: 'verified', kyc_name: legal, kyc_id_type: 'manual', kyc_at: new Date().toISOString() } as Partial<Profile>)
+        break
+      }
+      case 'adjust': {
+        const cur = body.currency, amt = int(body.amountMinor)
+        if (!isCur(cur) || !amt || Math.abs(amt) > 10_000_000_00) throw new Fail('Pick a wallet and a non-zero amount')
+        if (!reason) throw new Fail('A reason is required for balance corrections')
+        if (u.user_id === a.user_id) throw new Fail("You can't change your own balance")
+        const ref = newRef('adj')
+        try { await d.db.post([{ user_id: u.user_id, currency: cur, amount_minor: amt, kind: 'adjustment', ref, meta: { reason, by: a.username } }]) } catch (e) { moneyMsg(e) }
+        await audit({ currency: cur, amountMinor: amt, ref })
+        return { ok: true, ref }
+      }
+      case 'ticket-refund': {
+        const r = await d.db.refundTicket(String(body.ticketId ?? '')).catch((e) => moneyMsg(e))
+        if (!r.ok) throw new Fail('This ticket was already refunded or used')
+        break
+      }
+      default: throw new Fail('Unknown action')
+    }
+    await audit()
     return { ok: true }
   },
 

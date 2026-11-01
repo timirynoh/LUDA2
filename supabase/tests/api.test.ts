@@ -426,6 +426,46 @@ test('Paystack "customer pays the fee": Luda adds no fee of its own (no double f
   assert.ok(f.j.feeMinor > 0, JSON.stringify(f.j) + ' Flutterwave: Luda still adds the fee unless FLW_CUSTOMER_PAYS_FEE is set')
 })
 
+test('owner admin page: hidden from others, every change needs the PIN and is audited', async () => {
+  const AENV = { ...ENV, ADMIN_EMAILS: 'b@x.com' } // bola is the admin
+  assert.equal((await call('GET', 'admin-overview', undefined, ada, AENV)).status, 404, 'not an admin → looks like nothing is there')
+  assert.equal((await call('GET', 'me', undefined, bola, AENV)).j.profile.isAdmin, true)
+  const ov = (await call('GET', 'admin-overview', undefined, bola, AENV)).j
+  assert.ok(ov.users >= 2 && ov.balances.NGN > 0 && ov.problems && 'webhooks7d' in ov, JSON.stringify(ov))
+  const found = (await call('GET', 'admin-users?q=okafor', undefined, bola, AENV)).j.users
+  assert.equal(found[0].username, 'ada'); assert.ok(!('pin_hash' in found[0]))
+  const adaId = found[0].userId
+  const det = (await call('GET', `admin-user?id=${adaId}`, undefined, bola, AENV)).j
+  assert.ok(det.history.length > 0 && det.deposits.length > 0)
+  assert.ok((await call('GET', 'admin-deposits?status=paid', undefined, bola, AENV)).j.deposits.length > 0)
+  // changes need the admin's PIN
+  assert.equal((await call('POST', 'admin-action', { action: 'freeze', userId: adaId }, bola, AENV)).status, 401)
+  const before = (await bal(ada)).NGN
+  assert.match((await call('POST', 'admin-action', { action: 'adjust', userId: adaId, currency: 'NGN', amountMinor: 500_00, pin: '4826' }, bola, AENV)).j.error, /reason/)
+  assert.equal((await call('POST', 'admin-action', { action: 'adjust', userId: adaId, currency: 'NGN', amountMinor: 500_00, reason: 'Refund for duplicate charge', pin: '4826' }, bola, AENV)).status, 200)
+  assert.equal((await bal(ada)).NGN, before + 500_00)
+  const bolaId = (await call('GET', 'admin-users?q=bola', undefined, bola, AENV)).j.users[0].userId
+  assert.match((await call('POST', 'admin-action', { action: 'adjust', userId: bolaId, currency: 'NGN', amountMinor: 1_00, reason: 'x', pin: '4826' }, bola, AENV)).j.error, /own balance/)
+  // freeze / unfreeze
+  await call('POST', 'admin-action', { action: 'freeze', userId: adaId, reason: 'checking', pin: '4826' }, bola, AENV)
+  assert.equal((await call('GET', 'me', undefined, ada, AENV)).j.profile.frozenBy, 'admin')
+  assert.equal((await call('POST', 'freeze', { freeze: false, pin: '4826' }, ada, AENV)).status, 403, 'user cannot lift a team freeze')
+  await call('POST', 'admin-action', { action: 'unfreeze', userId: adaId, pin: '4826' }, bola, AENV)
+  // ticket refund, once
+  const t = (await call('GET', 'me', undefined, ada, AENV)).j.tickets.find((x: any) => x.status === 'valid')
+  const tb = (await bal(ada))[t.paid_currency]
+  assert.equal((await call('POST', 'admin-action', { action: 'ticket-refund', userId: adaId, ticketId: t.id, pin: '4826' }, bola, AENV)).status, 200)
+  assert.equal((await bal(ada))[t.paid_currency], tb + Number(t.paid_minor))
+  assert.equal((await call('POST', 'admin-action', { action: 'ticket-refund', userId: adaId, ticketId: t.id, pin: '4826' }, bola, AENV)).status, 400)
+  // manual KYC
+  assert.equal((await call('POST', 'admin-action', { action: 'kyc-reset', userId: adaId, pin: '4826' }, bola, AENV)).status, 200)
+  assert.equal((await call('POST', 'admin-action', { action: 'kyc-approve', userId: adaId, legalName: 'Ada Chioma Okafor', reason: 'Checked passport on video call', pin: '4826' }, bola, AENV)).status, 200)
+  assert.equal((await call('GET', 'me', undefined, ada, AENV)).j.profile.kyc, 'verified')
+  // audit trail
+  const log = await q(`select kind, payload->>'by' as by from payment_events where kind like 'admin_%' order by id`)
+  assert.ok(log.some((x: any) => x.kind === 'admin_adjust' && x.by === 'bola') && log.some((x: any) => x.kind === 'admin_freeze'))
+})
+
 test('books balance: every wallet equals the sum of its ledger', async () => {
   const bad = await q(`select w.user_id from wallets w left join (select user_id, currency, sum(amount_minor) s from ledger group by 1,2) l using (user_id, currency) where w.balance_minor <> coalesce(l.s, 0)`)
   assert.equal(bad.length, 0)

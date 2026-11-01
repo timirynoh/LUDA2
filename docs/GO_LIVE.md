@@ -168,6 +168,15 @@ Built-in rules:
 - Luda stores only the verified name, date of birth, country and the last 4 characters of the document number.
 - Nigerians can still use NIN/BVN if Dojah is set up.
 
+### Your admin page
+In Supabase → **Edge Functions → Secrets**, add `ADMIN_EMAILS` = the email of **your own Luda account** (comma-separate several). Then in the app go to **Profile → Open admin page**. It has:
+- **Overview:** users, money held, top-ups and payouts, webhooks, and anything stuck.
+- **Users:** search, balances, activity, ID status.
+- **Actions:** freeze or unfreeze, reset or approve an ID check, correct a balance (a reason is required, and you can't change your own), refund a ticket.
+- **Top-ups / Payouts:** filter, and re-check any payment with Paystack or Flutterwave.
+
+Every change needs your PIN or fingerprint and is written to the audit log (`payment_events`, kinds `admin_*`). Nobody else can see the page.
+
 ### Fingerprint / Face ID
 Nothing to set up. Students switch it on in **Security Center → Fingerprint / Face ID**, and it needs their PIN once. After that they unlock Luda and approve payments with their fingerprint, and the PIN still works as a backup. Each phone is checked by your server; the fingerprint itself never leaves the phone.
 ⚠️ Fingerprints are tied to your app's address. If you later move to a custom domain (e.g. `luda.app`), update `APP_URL`; students then switch fingerprint on again once.

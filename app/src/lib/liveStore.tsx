@@ -25,8 +25,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       // Phone: verified by SMS on the server; if SMS checks aren't switched on yet, a real account counts as level 1.
       const sms = await liveConfig().then((c) => c.sms).catch(() => false)
       const phone = m.profile.phoneVerified || !sms
-      set((p) => (p.kyc.status === kyc && p.verified === (kyc === 'verified') && p.security.frozen === m.profile.frozen && p.phoneVerified === phone ? p
-        : { ...p, verified: kyc === 'verified', phoneVerified: phone, kyc: { ...p.kyc, status: kyc }, security: { ...p.security, frozen: m.profile.frozen } }))
+      const adm = !!m.profile.isAdmin // the admin menu shows only for server-confirmed admins
+      set((p) => (p.kyc.status === kyc && p.verified === (kyc === 'verified') && p.security.frozen === m.profile.frozen && p.phoneVerified === phone && p.isAdmin === adm ? p
+        : { ...p, isAdmin: adm, shortcuts: adm ? (p.shortcuts.includes('admin') ? p.shortcuts : [...p.shortcuts.slice(0, 7), 'admin']) : p.shortcuts.filter((x) => x !== 'admin'), verified: kyc === 'verified', phoneVerified: phone, kyc: { ...p.kyc, status: kyc }, security: { ...p.security, frozen: m.profile.frozen } }))
       // Tickets bought on another phone appear here too.
       set((p) => {
         const missing = m.tickets.filter((t) => !p.tickets.some((x) => x.payRef === t.id))

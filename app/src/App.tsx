@@ -45,6 +45,7 @@ import Transport from './screens/Transport'
 import PayReturn from './screens/PayReturn'
 import LiveWallet from './screens/LiveWallet'
 import KycReturn from './screens/KycReturn'
+import LiveAdmin from './screens/LiveAdmin'
 import { LiveSoon } from './components/LiveSoon'
 import Uni from './screens/Uni'
 import { useClassReminders } from './lib/reminders'
@@ -128,7 +129,7 @@ export default function App() {
                 <Route path="/transport" element={<Transport />} />
                 <Route path="/pay/return" element={<PayReturn />} />
                 <Route path="/kyc/return" element={<KycReturn />} />
-                <Route path="/admin" element={<Admin />} />
+                <Route path="/admin" element={LIVE ? <LiveAdmin /> : <Admin />} />
                 <Route path="/flash" element={LIVE ? <LiveSoon title="Flash help" /> : <Flash />} />
                 <Route path="/security" element={<Security />} />
                 <Route path="/inbox" element={<Inbox />} />

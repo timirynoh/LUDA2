@@ -8,6 +8,7 @@ import { Header, Sheet } from '../components/ui'
 import { KycFlow, KycStatus } from '../components/Kyc'
 import { CITIES, COUNTRIES, LANGS } from '../lib/data'
 import { useStore } from '../lib/store'
+import { LIVE } from '../lib/live'
 
 export default function Profile() {
   const { s, set, t, level, reset, gate } = useStore()
@@ -113,18 +114,18 @@ export default function Profile() {
           </label>
         </section>
 
-        <section className="card">
+        {(!LIVE || s.isAdmin) && <section className="card">
           <div className="flex items-center gap-3">
             <ShieldCheck className={s.isAdmin ? 'text-mint-300' : 'text-slate-500'} />
             <div className="flex-1"><p className="font-semibold">Admin mode (app owner)</p><p className="text-xs text-slate-400">Review posts & post as Luda Official. In the live app this is a role on your account, not a switch.</p></div>
-            <button onClick={() => set((p) => ({ ...p, isAdmin: !p.isAdmin, shortcuts: !p.isAdmin && !p.shortcuts.includes('admin') ? [...p.shortcuts.slice(0, 7), 'admin'] : p.shortcuts.filter((x) => x !== 'admin') }))}
+            {!LIVE && <button onClick={() => set((p) => ({ ...p, isAdmin: !p.isAdmin, shortcuts: !p.isAdmin && !p.shortcuts.includes('admin') ? [...p.shortcuts.slice(0, 7), 'admin'] : p.shortcuts.filter((x) => x !== 'admin') }))}
               className={`relative h-7 w-12 shrink-0 rounded-full transition ${s.isAdmin ? 'bg-mint-400' : 'bg-fg/15'}`} aria-label="Toggle admin">
               <span className={`absolute top-1 size-5 rounded-full bg-white shadow transition-all ${s.isAdmin ? 'start-6' : 'start-1'}`} />
-            </button>
+            </button>}
           </div>
-          {s.isAdmin && <Link to="/admin" className="btn-primary mt-3 w-full py-2.5 text-sm">Open admin console</Link>}
+          {s.isAdmin && <Link to="/admin" className="btn-primary mt-3 w-full py-2.5 text-sm">{LIVE ? 'Open admin page' : 'Open admin console'}</Link>}
           <p className="mt-2 text-xs text-slate-500">Phone: {s.phoneVerified ? '✅ verified' : 'not verified'} · Poster docs: {s.proofs.housing || s.proofs.business ? '✅ on file' : 'none yet'}</p>
-        </section>
+        </section>}
 
         <button className="btn-ghost text-rose-300" onClick={() => (armed ? reset() : setArmed(true))}>{armed ? 'Tap again to confirm reset' : t('profile.reset')}</button>
       </div>
