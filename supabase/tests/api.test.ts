@@ -412,6 +412,20 @@ test('Didit ID check: document + selfie for any nationality, verified from Didit
   assert.equal((await call('GET', 'me', undefined, ama)).j.profile.kyc, 'verified')
 })
 
+test('Paystack "customer pays the fee": Luda adds no fee of its own (no double fee)', async () => {
+  const env2 = { ...ENV, PAYSTACK_CUSTOMER_PAYS_FEE: undefined } // owner's default
+  const r = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 1_000_00 }, ada, env2)
+  assert.equal(r.j.feeMinor, 0); assert.equal(r.j.chargeMinor, 1_000_00); assert.equal(r.j.providerAddsFee, true); assert.ok(r.j.estFeeMinor > 0)
+  assert.equal(world.inits.get(r.j.reference), 1_000_00, 'Paystack is asked for ₦1,000; it adds its own fee')
+  const before = (await bal(ada)).NGN
+  world.charges.set(r.j.reference, { status: 'success', amount: 1_016_00, requested: 1_000_00 } as any) // Paystack added ₦16
+  assert.equal((await call('GET', `deposit?ref=${r.j.reference}`, undefined, ada, env2)).j.status, 'paid')
+  assert.equal((await bal(ada)).NGN, before + 1_000_00)
+  const fresh = (await call('POST', 'signup', { email: 'fee@x.com', username: 'fee_user', fullName: 'Fee Tester', password: 'Lefkosa2026!' })).j.session.access_token
+  const f = await call('POST', 'deposit', { provider: 'flutterwave', amountMinor: 1_000_00 }, fresh, env2)
+  assert.ok(f.j.feeMinor > 0, JSON.stringify(f.j) + ' Flutterwave: Luda still adds the fee unless FLW_CUSTOMER_PAYS_FEE is set')
+})
+
 test('books balance: every wallet equals the sum of its ledger', async () => {
   const bad = await q(`select w.user_id from wallets w left join (select user_id, currency, sum(amount_minor) s from ledger group by 1,2) l using (user_id, currency) where w.balance_minor <> coalesce(l.s, 0)`)
   assert.equal(bad.length, 0)

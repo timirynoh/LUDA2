@@ -169,7 +169,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
 export const ENV: Env = {
   APP_URL: 'https://luda.test', SUPABASE_URL: 'https://proj.supabase.co', AUTH_KEY: 'anon',
   PAYSTACK_SECRET_KEY: 'sk_live_test', FLW_SECRET_KEY: 'FLWSECK-x', FLW_SECRET_HASH: 'flwhash',
-  FX_FIXED_RATE: '40', FX_MARGIN: '0.01', FX_TRY_RATES: '{"GHS":0.4,"USD":0.025,"KES":3.2}', DOJAH_APP_ID: 'app', DOJAH_SECRET_KEY: 'sec', DIDIT_API_KEY: 'didit_key', DIDIT_WORKFLOW_ID: 'wf_free_kyc', DIDIT_WEBHOOK_SECRET: 'didit_secret', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_VERIFY_SID: 'VA1',
+  FX_FIXED_RATE: '40', FX_MARGIN: '0.01', FX_TRY_RATES: '{"GHS":0.4,"USD":0.025,"KES":3.2}', DOJAH_APP_ID: 'app', DOJAH_SECRET_KEY: 'sec', PAYSTACK_CUSTOMER_PAYS_FEE: 'false', DIDIT_API_KEY: 'didit_key', DIDIT_WORKFLOW_ID: 'wf_free_kyc', DIDIT_WEBHOOK_SECRET: 'didit_secret', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_VERIFY_SID: 'VA1',
 }
 
 export const sign = {

@@ -19,6 +19,9 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv {
   AUTH_KEY: string // key used to talk to Supabase Auth
   SELL_OPERATORS?: string
   FOREIGN_CURRENCIES?: string; FOREIGN_FEE_PCT?: string; FX_TRY_RATES?: string
+  // Set to match each dashboard's "who pays the fee" setting, so the customer never pays it twice.
+  // Paystack defaults to true (the owner's setting: customer pays); Flutterwave defaults to false.
+  PAYSTACK_CUSTOMER_PAYS_FEE?: string; FLW_CUSTOMER_PAYS_FEE?: string
 }
 export interface Deps { db: Db; fetch?: Fetch; now?: () => Date }
 
@@ -340,12 +343,16 @@ const routes: Record<string, Route> = {
     const verified = p.kyc_status === 'verified', more = verified ? '' : '. Verify your identity to raise it.'
     if ((await d.db.recentByEmail(p.email, new Date(now.getTime() - 3600e3).toISOString())) >= 10) throw new Fail('Too many top-up attempts. Try again in an hour.', 429)
     let credit: number, creditCur: Cur, fee: number, rate = 1, paymentOptions: string | undefined
+    const flag = (v: string | undefined, d: boolean) => (v === undefined || v === '' ? d : /^(1|true|yes)$/i.test(v))
+    // When the provider itself charges its fee to the customer, Luda must not add it again.
+    const providerAddsFee = provider === 'paystack' ? flag(env.PAYSTACK_CUSTOMER_PAYS_FEE, true) : flag(env.FLW_CUSTOMER_PAYS_FEE, false)
+    let estFee = 0
     if (cur === 'NGN') {
       if (!(amount >= LIMITS.minDeposit) || amount > LIMITS.maxDepositOnce || amount % 100) throw new Fail(`Enter a whole amount between ${naira(LIMITS.minDeposit)} and ${naira(LIMITS.maxDepositOnce)}`)
       const lim = verified ? LIMITS.verified : LIMITS.unverified
       if ((await d.db.depositedSince(p.user_id, dayAgo, 'NGN')) + amount > lim.depositDay) throw new Fail(`Daily top-up limit is ${naira(lim.depositDay)}${more}`)
       if ((await d.db.balances(p.user_id)).NGN + amount > lim.maxBalanceNGN) throw new Fail(`Your Naira wallet can hold up to ${naira(lim.maxBalanceNGN)}${more}`)
-      credit = amount; creditCur = 'NGN'; fee = depositFee(amount, env)
+      credit = amount; creditCur = 'NGN'; estFee = depositFee(amount, env); fee = providerAddsFee ? 0 : estFee
     } else {
       if (!FOREIGN[cur] || !foreignEnabled(env).includes(cur)) throw new Fail('Top-ups in that currency are not available')
       if (provider !== 'flutterwave') throw new Fail(`${FOREIGN[cur].name} top-ups go through Flutterwave`)
@@ -357,7 +364,7 @@ const routes: Record<string, Route> = {
       if (credit < LIMITS.foreign.minCreditTRY) throw new Fail(`Minimum top-up is about ${lira(LIMITS.foreign.minCreditTRY)}`)
       if ((await d.db.depositedSince(p.user_id, dayAgo, 'TRY')) + credit > lim.depositDayTRY) throw new Fail(`Daily top-up limit is ${lira(lim.depositDayTRY)}${more}`)
       if ((await d.db.balances(p.user_id)).TRY + credit > lim.maxBalanceTRY) throw new Fail(`Your Lira wallet can hold up to ${lira(lim.maxBalanceTRY)}${more}`)
-      fee = foreignFee(amount, env); paymentOptions = FOREIGN[cur].options
+      estFee = foreignFee(amount, env); fee = providerAddsFee ? 0 : estFee; paymentOptions = FOREIGN[cur].options
     }
     const reference = newRef('dep')
     await d.db.insert({
@@ -367,7 +374,7 @@ const routes: Record<string, Route> = {
     const callbackUrl = `${env.APP_URL.replace(/\/$/, '')}/pay/return?provider=${provider}&ref=${reference}`
     const checkoutUrl = await initCheckout(provider, { reference, amountMinor: amount + fee, currency: cur, email: p.email, callbackUrl, title: 'Luda wallet top-up', meta: { purpose: 'deposit', username: p.username }, paymentOptions }, env, d.fetch)
     await d.db.log(reference, 'init', { provider, cur, amount, fee, credit, creditCur })
-    return { reference, checkoutUrl, currency: cur, amountMinor: amount, feeMinor: fee, chargeMinor: amount + fee, creditMinor: credit, creditCurrency: creditCur }
+    return { reference, checkoutUrl, currency: cur, amountMinor: amount, feeMinor: fee, chargeMinor: amount + fee, creditMinor: credit, creditCurrency: creditCur, providerAddsFee, estFeeMinor: estFee }
   },
 
   'GET deposit': async ({ req, env, d, url }) => {

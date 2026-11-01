@@ -141,7 +141,7 @@ export function DepositSheet({ onClose }: { onClose: () => void }) {
   const [amt, setAmt] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const [quote, setQuote] = useState<{ reference: string; checkoutUrl: string; currency: string; creditMinor: number; creditCurrency: Cur; feeMinor: number; chargeMinor: number } | null>(null)
+  const [quote, setQuote] = useState<{ reference: string; checkoutUrl: string; currency: string; creditMinor: number; creditCurrency: Cur; feeMinor: number; chargeMinor: number; providerAddsFee?: boolean; estFeeMinor?: number } | null>(null)
   useEffect(() => {
     liveConfig().then((c) => {
       setCfg(c)
@@ -168,8 +168,13 @@ export function DepositSheet({ onClose }: { onClose: () => void }) {
         <div className="flex flex-col gap-3">
           <div className="divide-y divide-fg/5 rounded-2xl bg-fg/[0.04] text-sm">
             <div className="flex justify-between px-4 py-3"><span className="text-slate-400">Top-up</span><span>{money(quote.chargeMinor - quote.feeMinor, quote.currency)}</span></div>
-            <div className="flex justify-between px-4 py-3"><span className="text-slate-400">{PROVIDER_LABEL[provider]} fee</span><span>{money(quote.feeMinor, quote.currency)}</span></div>
-            <div className="flex justify-between px-4 py-3 text-base"><span>You pay</span><b>{money(quote.chargeMinor, quote.currency)}</b></div>
+            {quote.providerAddsFee ? <>
+              <div className="flex justify-between gap-3 px-4 py-3"><span className="text-slate-400">{PROVIDER_LABEL[provider]} fee</span><span className="text-end">added by {PROVIDER_LABEL[provider]} at checkout{quote.estFeeMinor ? <><br /><span className="text-xs text-slate-400">about {money(quote.estFeeMinor, quote.currency)}</span></> : null}</span></div>
+              <div className="flex justify-between px-4 py-3 text-base"><span>You pay</span><b>{money(quote.chargeMinor, quote.currency)} + fee</b></div>
+            </> : <>
+              <div className="flex justify-between px-4 py-3"><span className="text-slate-400">{PROVIDER_LABEL[provider]} fee</span><span>{money(quote.feeMinor, quote.currency)}</span></div>
+              <div className="flex justify-between px-4 py-3 text-base"><span>You pay</span><b>{money(quote.chargeMinor, quote.currency)}</b></div>
+            </>}
             <div className="flex justify-between px-4 py-3"><span className="text-slate-400">Lands in your {quote.creditCurrency === 'TRY' ? 'Lira' : 'Naira'} wallet</span><b className="text-mint-300">{money(quote.creditMinor, quote.creditCurrency)}</b></div>
           </div>
           {quote.creditCurrency === 'TRY' && <p className="text-[11px] text-slate-500">Converted to Lira at today's rate. Spend it on tickets in Cyprus or send it to friends.</p>}

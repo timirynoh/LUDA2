@@ -81,6 +81,8 @@ Optional (defaults in brackets):
 | `FX_FIXED_RATE` | use your own fixed rate instead of the live one |
 | `WITHDRAW_FEE` | Naira per withdrawal (`50`) |
 | `DEPOSIT_FEE_PCT` / `DEPOSIT_FEE_FLAT` / `DEPOSIT_FEE_FLAT_WAIVE_BELOW` / `DEPOSIT_FEE_CAP` | Naira top-up fee passed to the user (`1.5` / `100` / `2500` / `2000`, matching Paystack's local card fee) |
+| `PAYSTACK_CUSTOMER_PAYS_FEE` | `true` (default) if Paystack is set to make the customer pay its fee, so Luda doesn't add the fee again. Set `false` if you switch Paystack to "charge me" |
+| `FLW_CUSTOMER_PAYS_FEE` | same for Flutterwave (default `false`: Luda adds the fee itself) |
 | `FOREIGN_CURRENCIES` | which other currencies to offer, e.g. `GHS,USD` (all six) |
 | `FOREIGN_FEE_PCT` | fee passed to the user on other-currency top-ups (`3.8`) |
 | `DIDIT_API_KEY` / `DIDIT_WORKFLOW_ID` / `DIDIT_WEBHOOK_SECRET` | ID document + selfie checks (see below) |
