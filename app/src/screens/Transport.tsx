@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeftRight, ArrowRight, BadgePercent, Bus, Car, Clock, CreditCard, ExternalLink, MapPin, Minus, Plane, Plus, Share2, Ticket as TicketIcon, Wallet } from 'lucide-react'
+import { ArrowLeftRight, BadgePercent, Bus, Car, CreditCard, ExternalLink, Minus, Plane, Plus, Share2, Ticket as TicketIcon, Wallet } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -18,7 +18,7 @@ import { LiveTicketPay } from '../components/LiveTicketPay'
 import { LIVE } from '../lib/live'
 import { KibhasLive } from '../components/KibhasBooking'
 import { brandOf } from '../lib/cards'
-import { ERCAN, km, routesFrom, taxiFare } from '../lib/transport'
+import { ERCAN, km, taxiFare } from '../lib/transport'
 
 type Tab = 'tickets' | 'airport' | 'taxi'
 
@@ -120,8 +120,6 @@ function BusTickets() {
   const [trip, setTrip] = useState<Trip | null>(null)
   const [dir, setDir] = useState<'gl' | 'lg'>(s.city === 'lefkosa' ? 'lg' : 'gl')
   const from = dir === 'gl' ? 'Girne' : 'Lefkoşa', to = dir === 'gl' ? 'Lefkoşa' : 'Girne'
-  const others = useMemo(() => routesFrom(s.city).filter((r) => !(['girne', 'lefkosa'].includes(s.city) && ['girne', 'lefkosa'].includes(r.to.id))), [s.city])
-  const city = CITIES.find((c) => c.id === s.city)!
   const active = saverState(s).active
   const price = (official: number, ret: boolean) => (active ? official - (ret ? TICKET_DISCOUNT.return : TICKET_DISCOUNT.single) : official)
 
@@ -149,13 +147,6 @@ function BusTickets() {
         </button>
       ))}
 
-      <p className="label mt-3">Other routes from {city.name}</p>
-      {others.map((r) => (
-        <button key={r.to.id} onClick={() => gate(1, 'Buy bus tickets') && setTrip({ from: city.name, to: r.to.name, operator: 'Intercity bus', official: { single: r.fare, ret: r.fare * 2 - 20 }, every: r.every.includes('15') ? 30 : 60, estimated: true, kind: 'bus', first: '07:00', last: '19:00' })} className="card text-start">
-          <div className="flex items-center gap-2 font-semibold">{city.name} <ArrowRight size={14} className="text-slate-500 rtl:rotate-180" /> {r.to.name}<span className="ms-auto font-extrabold text-mint-300">₺{price(r.fare, false)}</span></div>
-          <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-400"><span><Clock size={11} className="inline" /> ~{r.mins} min</span><span>{r.every}</span><span><MapPin size={11} className="inline" /> {r.from}</span></p>
-        </button>
-      ))}
       {trip && <BookSheet trip={trip} onClose={() => setTrip(null)} />}
     </div>
   )
