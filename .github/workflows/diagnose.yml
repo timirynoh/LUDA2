@@ -24,6 +24,11 @@ jobs:
             jq -c '.[]? // .' /tmp/out.json 2>/dev/null || cat /tmp/out.json
             sleep 2 # stay under the Management API rate limit
           }
+          echo; echo "=== Live server switches (public /api/config)"
+          curl -sS "https://$REF.supabase.co/functions/v1/api/config" | jq -c '{providers, foreign, payouts, kyc, didit, nin, google, sms}' || true
+          echo; echo "=== Secrets that are set (names only, values are never shown)"
+          curl -sS "https://api.supabase.com/v1/projects/$REF/secrets" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | jq -r '.[].name' | sort | tr '\n' ' ' || true
+          echo; sleep 2
           q "Latest top-ups" "select '…'||right(reference,8) as ref, provider, status, amount_minor/100.0 as charged, currency, credit_minor/100.0 as credit, credit_currency, created_at, paid_at from payments order by created_at desc limit 10"
           q "Processing history (latest 25 events)" "select '…'||right(reference,8) as ref, kind, at, left(coalesce(payload::text,''), 220) as detail from payment_events order by id desc limit 25"
           echo; echo "################ PROBLEMS (empty lists = all good) ################"
