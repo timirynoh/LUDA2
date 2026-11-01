@@ -218,3 +218,12 @@ Nothing to set up. Students switch it on in **Security Center → Fingerprint / 
 
 ## Still demo in live mode (switched off with "Coming soon")
 Exchange (P2P), Bills, Flash help, Savings pots, Marketplace. They'll be connected to the real wallet one by one. **Ride Saver** discounts aren't applied to real-money tickets yet. **Phone (SMS) verification** isn't real yet: it needs an SMS provider (e.g. Termii). **Identity checks are Nigeria-only (NIN/BVN)**, so students from other countries can top up and spend but can't withdraw or send yet.
+
+
+## Bills, savings, marketplace and Flash help (real money)
+- **Bills (assisted):** a student picks KIB-TEK, water, phone, internet or rent, types the number from the bill and the amount. The amount + a ₺10 service fee leave their Lira wallet. You open **Admin → Bills**: the amount and number are already there with **Copy** buttons. Pay it on the official site or your bank app, attach the receipt, tap **Mark as paid** (PIN). If you can't pay, tap **Can't pay**, pick a reason, and they get everything back.
+- **Savings pots:** students move money between their wallet and pots (optionally locked).
+- **Marketplace:** the buyer's money is held by Luda until they tap **I received it**; then the seller is paid (minus 2%). Sellers must be ID-verified.
+- **Flash help:** the reward is held when a job is posted; the helper is paid when the poster taps **Job done** (minus 5%).
+- If nobody confirms, money is released automatically (7 days marketplace, 3 days Flash) unless someone opened a case. Decide disputes in **Admin → Held money**.
+- Fees are secrets you can change: `BILL_FEE` (lira, default `10`), `MARKET_FEE_PCT` (default `0.02`), `FLASH_FEE_PCT` (default `0.05`).

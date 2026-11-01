@@ -3,7 +3,7 @@
 import { PGlite } from '@electric-sql/pglite'
 import { createHmac, randomUUID } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
-import { MoneyError, type Db, type Entry, type Profile } from '../functions/_shared/db.ts'
+import { MONEY_ERRORS, MoneyError, type Db, type Entry, type Profile } from '../functions/_shared/db.ts'
 import type { Env } from '../functions/_shared/handlers.ts'
 
 export async function makeDb() {
@@ -15,8 +15,7 @@ export async function makeDb() {
   const money = async <T>(fn: () => Promise<T>) => {
     try { return await fn() } catch (e: any) {
       const m = String(e?.message ?? e)
-      if (m.includes('insufficient_funds')) throw new MoneyError('insufficient_funds')
-      if (m.includes('account_frozen')) throw new MoneyError('account_frozen')
+      const known = MONEY_ERRORS.find((x) => m.includes(x)); if (known) throw new MoneyError(known)
       if (e?.code === '23505') throw new MoneyError('conflict')
       throw e
     }
@@ -58,6 +57,12 @@ export async function makeDb() {
     async depositPaid(ref, tx) { await money(() => q(`select luda_deposit_paid($1,$2)`, [ref, tx])) },
     async buyTicket(u, cur, amt, base, code, item) { return money(async () => (await q(`select luda_buy_ticket($1,$2,$3,$4,$5,$6::jsonb) r`, [u, cur, amt, base, code, JSON.stringify(item)]))[0].r.ticket) },
     async withdraw(u, ref, amt, fee, bank, bankName, acct, name, rcp) { await money(() => q(`select luda_withdraw($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [u, ref, amt, fee, bank, bankName, acct, name, rcp])) },
+    async fn(name, args) {
+      const k = Object.keys(args)
+      const cast = (v: unknown) => (Array.isArray(v) ? '::text[]' : v !== null && typeof v === 'object' ? '::jsonb' : '')
+      const vals = k.map((x) => { const v = (args as any)[x]; return v !== null && typeof v === 'object' && !Array.isArray(v) ? JSON.stringify(v) : v })
+      return money(async () => (await q(`select ${name}(${k.map((x, i) => `${x} => $${i + 1}${cast((args as any)[x])}`).join(', ')}) r`, vals))[0].r)
+    },
     async setWithdrawal(ref, patch) { const k = Object.keys(patch); if (k.length) await q(`update withdrawals set ${k.map((x, i) => `${x}=$${i + 2}`).join(',')}, updated_at=now() where reference=$1`, [ref, ...k.map((x) => (patch as any)[x])]) },
     async withdrawSettle(ref, st, tc, note) { await money(() => q(`select luda_withdraw_settle($1,$2,$3,$4)`, [ref, st, tc ?? null, note ?? null])) },
     async createCase(c) { return (await q(`insert into cases (user_id,category,subject,reference) values ($1,$2,$3,$4) returning *`, [c.user_id, c.category, c.subject, c.reference]))[0] },

@@ -47,6 +47,7 @@ export function foreignFee(amountMinor: number, env: { FOREIGN_FEE_PCT?: string 
 
 export interface FeeEnv {
   DEPOSIT_FEE_PCT?: string; DEPOSIT_FEE_FLAT?: string; DEPOSIT_FEE_FLAT_WAIVE_BELOW?: string; DEPOSIT_FEE_CAP?: string; WITHDRAW_FEE?: string
+  BILL_FEE?: string; MARKET_FEE_PCT?: string; FLASH_FEE_PCT?: string
 }
 const num = (v: string | undefined, d: number) => (v === undefined || v === '' || !Number.isFinite(Number(v)) ? d : Number(v))
 
@@ -62,6 +63,8 @@ export function depositFee(creditMinor: number, env: FeeEnv) {
   return Math.min(cap, gross - creditMinor)
 }
 export const withdrawFee = (env: FeeEnv) => Math.round(num(env.WITHDRAW_FEE, 50) * 100)
+/** Wallet features (TRY): flat bill-pay service fee; marketplace/Flash fee taken from what the seller/helper receives. */
+export const featureFees = (env: FeeEnv) => ({ billMinor: Math.round(num(env.BILL_FEE, 10) * 100), marketPct: num(env.MARKET_FEE_PCT, 0.02), flashPct: num(env.FLASH_FEE_PCT, 0.05) })
 
 export interface FxEnv { FX_FIXED_RATE?: string; FX_FALLBACK_RATE?: string; FX_MARGIN?: string }
 

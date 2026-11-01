@@ -10,37 +10,73 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, max: number) {
   return lines.flatMap((l) => { if (ctx.measureText(l).width <= max) return [l]; const out: string[] = []; let cur = ''; for (const ch of l) { if (ctx.measureText(cur + ch).width > max) { out.push(cur); cur = ch } else cur += ch } if (cur) out.push(cur); return out })
 }
 
+const FONT = 'Inter, "SF Pro Display", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+const loadImg = (src: string) => new Promise<HTMLImageElement | null>((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src })
+const tone = (st: string) => /success|paid|complete|valid|done/i.test(st) ? { fg: '#059669', bg: '#d1fae5', mark: 'ok' }
+  : /fail|closed|not|revers|refund/i.test(st) ? { fg: '#e11d48', bg: '#ffe4e6', mark: 'bad' } : { fg: '#b45309', bg: '#fef3c7', mark: 'wait' }
+
+/** A clean, modern receipt card (light, printable) drawn on a canvas at 2× phone width. */
 export async function receiptPng(d: ReceiptData): Promise<Blob> {
-  const W = 1080, pad = 72
+  const W = 1080, M = 64, P = 72, CW = W - M * 2
   const c = document.createElement('canvas'), ctx = c.getContext('2d')!
-  // measure height first
-  ctx.font = '600 34px system-ui, sans-serif'
-  const rowLines = d.rows.map(([, v]) => wrap(ctx, v, W - pad * 2 - 360))
-  const H = 620 + rowLines.reduce((a, l) => a + Math.max(1, l.length) * 46 + 40, 0) + 200
+  ctx.font = `600 32px ${FONT}`
+  const valMax = CW - P * 2 - 330
+  const rowLines = d.rows.map(([, v]) => wrap(ctx, v, valMax))
+  const rowsH = rowLines.reduce((a, l) => a + Math.max(1, l.length) * 42 + 46, 0)
+  const cardTop = 150, headH = 640, H = cardTop + headH + rowsH + 300
   c.width = W; c.height = H
-  ctx.fillStyle = '#0b0f14'; ctx.fillRect(0, 0, W, H)
-  const g = ctx.createLinearGradient(0, 0, W, 360); g.addColorStop(0, '#10b981'); g.addColorStop(1, '#065f46')
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, 360)
-  ctx.fillStyle = '#ffffff'; ctx.font = '800 64px system-ui, sans-serif'; ctx.fillText('luda.', pad, 120)
-  ctx.font = '500 32px system-ui, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText('Transaction receipt', pad, 172)
-  ctx.font = '800 92px system-ui, sans-serif'; ctx.fillStyle = '#ffffff'; ctx.fillText(d.amount, pad, 300)
-  ctx.font = '700 40px system-ui, sans-serif'; ctx.fillStyle = '#e5e7eb'; ctx.fillText(d.title, pad, 440)
-  ctx.font = '600 30px system-ui, sans-serif'
-  const st = d.status, sw = ctx.measureText(st).width + 48
-  ctx.fillStyle = /success/i.test(st) ? 'rgba(16,185,129,.2)' : /fail|closed|not/i.test(st) ? 'rgba(244,63,94,.2)' : 'rgba(251,191,36,.2)'
-  ctx.beginPath(); ctx.roundRect(pad, 470, sw, 56, 28); ctx.fill()
-  ctx.fillStyle = /success/i.test(st) ? '#6ee7b7' : /fail|closed|not/i.test(st) ? '#fda4af' : '#fcd34d'; ctx.fillText(st, pad + 24, 508)
-  let y = 600
+  // backdrop
+  const bg = ctx.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#ecfdf5'); bg.addColorStop(0.55, '#f8fafc'); bg.addColorStop(1, '#fef9c3')
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H)
+  const blob = (x: number, y: number, r: number, col: string) => { const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, col); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2) }
+  blob(120, 80, 420, 'rgba(52,211,153,.35)'); blob(W - 80, H - 120, 460, 'rgba(251,191,36,.25)')
+  // brand row
+  const logo = await loadImg(`${import.meta.env.BASE_URL}favicon.svg`)
+  if (logo) ctx.drawImage(logo, M, 44, 72, 72)
+  ctx.fillStyle = '#0f172a'; ctx.font = `800 52px ${FONT}`; ctx.fillText('luda', M + (logo ? 92 : 0), 98)
+  ctx.fillStyle = '#10b981'; ctx.fillText('.', M + (logo ? 92 : 0) + ctx.measureText('luda').width, 98)
+  ctx.fillStyle = '#64748b'; ctx.font = `600 28px ${FONT}`; const lbl = 'PAYMENT RECEIPT'; ctx.fillText(lbl, W - M - ctx.measureText(lbl).width, 92)
+  // card with ticket notches
+  const cardH = H - cardTop - 110, sepY = cardTop + headH - 40
+  ctx.save(); ctx.shadowColor = 'rgba(15,23,42,.12)'; ctx.shadowBlur = 60; ctx.shadowOffsetY = 20
+  ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.roundRect(M, cardTop, CW, cardH, 44); ctx.fill(); ctx.restore()
+  ctx.save(); ctx.globalCompositeOperation = 'destination-out'
+  for (const x of [M, W - M]) { ctx.beginPath(); ctx.arc(x, sepY, 30, 0, Math.PI * 2); ctx.fill() }
+  ctx.restore()
+  ctx.save(); ctx.globalCompositeOperation = 'destination-over'; ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); ctx.restore()
+  // status mark
+  const t = tone(d.status), cx = W / 2, cy = cardTop + 130
+  ctx.fillStyle = t.bg; ctx.beginPath(); ctx.arc(cx, cy, 70, 0, Math.PI * 2); ctx.fill()
+  ctx.fillStyle = t.fg; ctx.beginPath(); ctx.arc(cx, cy, 48, 0, Math.PI * 2); ctx.fill()
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath()
+  if (t.mark === 'ok') { ctx.moveTo(cx - 20, cy + 1); ctx.lineTo(cx - 5, cy + 16); ctx.lineTo(cx + 22, cy - 14) }
+  else if (t.mark === 'bad') { ctx.moveTo(cx - 16, cy - 16); ctx.lineTo(cx + 16, cy + 16); ctx.moveTo(cx + 16, cy - 16); ctx.lineTo(cx - 16, cy + 16) }
+  else { ctx.moveTo(cx, cy - 20); ctx.lineTo(cx, cy + 2); ctx.lineTo(cx + 14, cy + 12) }
+  ctx.stroke()
+  // amount + title + status
+  const center = (txt: string, y: number) => ctx.fillText(txt, (W - ctx.measureText(txt).width) / 2, y)
+  ctx.fillStyle = '#0f172a'; ctx.font = `800 104px ${FONT}`; center(d.amount, cardTop + 330)
+  ctx.fillStyle = '#334155'; ctx.font = `600 38px ${FONT}`; center(d.title.length > 42 ? d.title.slice(0, 41) + '…' : d.title, cardTop + 400)
+  ctx.font = `700 28px ${FONT}`; const sw = ctx.measureText(d.status).width + 56
+  ctx.fillStyle = t.bg; ctx.beginPath(); ctx.roundRect((W - sw) / 2, cardTop + 440, sw, 58, 29); ctx.fill()
+  ctx.fillStyle = t.fg; center(d.status, cardTop + 479)
+  // dashed separator
+  ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 3; ctx.setLineDash([14, 12]); ctx.beginPath(); ctx.moveTo(M + 48, sepY); ctx.lineTo(W - M - 48, sepY); ctx.stroke(); ctx.setLineDash([])
+  // rows
+  let y = sepY + 70
   d.rows.forEach(([k], i) => {
-    ctx.fillStyle = '#9ca3af'; ctx.font = '500 32px system-ui, sans-serif'; ctx.fillText(k, pad, y + 34)
-    ctx.fillStyle = '#f3f4f6'; ctx.font = '600 34px system-ui, sans-serif'
-    rowLines[i].forEach((l, j) => { const w = ctx.measureText(l).width; ctx.fillText(l, W - pad - w, y + 34 + j * 46) })
-    y += Math.max(1, rowLines[i].length) * 46 + 40
-    ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(pad, y - 20, W - pad * 2, 2)
+    ctx.fillStyle = '#64748b'; ctx.font = `500 30px ${FONT}`; ctx.fillText(k, M + P, y)
+    ctx.fillStyle = '#0f172a'; ctx.font = `${k === 'Reference' ? '600 28px ui-monospace, Menlo, monospace' : `650 32px ${FONT}`}`
+    rowLines[i].forEach((l, j) => { const w = ctx.measureText(l).width; ctx.fillText(l, W - M - P - w, y + j * 42) })
+    y += Math.max(1, rowLines[i].length) * 42 + 46
   })
-  ctx.fillStyle = '#6b7280'; ctx.font = '500 28px system-ui, sans-serif'
-  ctx.fillText(`${d.name ? d.name + ' · ' : ''}Generated ${new Date().toLocaleString()}`, pad, H - 110)
-  ctx.fillText('Keep the reference for support. Luda never asks for your PIN.', pad, H - 66)
+  // footer inside card
+  const fy = cardTop + cardH - 70
+  ctx.fillStyle = '#ecfdf5'; ctx.beginPath(); ctx.roundRect(M + P, fy - 60, CW - P * 2, 84, 24); ctx.fill()
+  ctx.fillStyle = '#047857'; ctx.font = `600 26px ${FONT}`; center('🔒 Secured by Luda · we never ask for your PIN', fy - 8)
+  // below card
+  ctx.fillStyle = '#94a3b8'; ctx.font = `500 24px ${FONT}`
+  center(`${d.name ? d.name + ' · ' : ''}Generated ${new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, H - 50)
   return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Could not create the receipt'))), 'image/png'))
 }
 

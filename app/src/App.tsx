@@ -47,7 +47,10 @@ import LiveWallet from './screens/LiveWallet'
 import KycReturn from './screens/KycReturn'
 import LiveAdmin from './screens/LiveAdmin'
 import LiveExchange from './screens/LiveExchange'
-import { LiveSoon } from './components/LiveSoon'
+import LiveBills from './screens/LiveBills'
+import LiveSavings from './screens/LiveSavings'
+import LiveMarket from './screens/LiveMarket'
+import LiveFlash from './screens/LiveFlash'
 import Uni from './screens/Uni'
 import { useClassReminders } from './lib/reminders'
 import { useGigProgress } from './lib/gigs'
@@ -122,7 +125,7 @@ export default function App() {
                 <Route path="/exchange" element={LIVE ? <LiveExchange /> : <Exchange />} />
                 <Route path="/nearby" element={<Nearby />} />
                 <Route path="/more" element={<More />} />
-                <Route path="/bills" element={LIVE ? <LiveSoon title="Bills" /> : <Bills />} />
+                <Route path="/bills" element={LIVE ? <LiveBills /> : <Bills />} />
                 <Route path="/housing" element={<Housing />} />
                 <Route path="/jobs" element={<Jobs />} />
                 <Route path="/community" element={<Community />} />
@@ -131,15 +134,15 @@ export default function App() {
                 <Route path="/pay/return" element={<PayReturn />} />
                 <Route path="/kyc/return" element={<KycReturn />} />
                 <Route path="/admin" element={LIVE ? <LiveAdmin /> : <Admin />} />
-                <Route path="/flash" element={LIVE ? <LiveSoon title="Flash help" /> : <Flash />} />
+                <Route path="/flash" element={LIVE ? <LiveFlash /> : <Flash />} />
                 <Route path="/security" element={<Security />} />
                 <Route path="/inbox" element={<Inbox />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/help" element={<Help />} />
                 <Route path="/disputes" element={<DisputeList />} />
                 <Route path="/send" element={LIVE ? <Navigate to="/wallet?a=send" replace /> : <SendScreen />} />
-                <Route path="/savings" element={LIVE ? <LiveSoon title="Savings pots" /> : <Savings />} />
-                <Route path="/market" element={LIVE ? <LiveSoon title="Marketplace" /> : <Market />} />
+                <Route path="/savings" element={LIVE ? <LiveSavings /> : <Savings />} />
+                <Route path="/market" element={LIVE ? <LiveMarket /> : <Market />} />
                 <Route path="/u/:name" element={<Person />} />
                 <Route path="/invite" element={<Invite />} />
                 <Route path="/ambassadors" element={<Ambassadors />} />

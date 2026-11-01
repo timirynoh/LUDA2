@@ -1,42 +1,28 @@
 // Owner's admin page (live mode). Only accounts the server marks as admin can load any of this.
-import { AlertTriangle, RefreshCw, Search, ShieldCheck, Snowflake, Users } from 'lucide-react'
+import {
+  AlertTriangle, ArrowDownToLine, ArrowUpFromLine, BadgeCheck, Banknote, Check, ChevronRight, Copy, ExternalLink, Gavel, Home as HomeIcon,
+  Inbox, LifeBuoy, Receipt, RefreshCw, Search, ShieldCheck, Snowflake, Ticket, Undo2, Users, Wallet, type LucideIcon,
+} from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { BILL_ICON, BILL_TINT } from '../components/LiveBillCard'
 import { ReviewAndPin, errMsg, type Approval } from '../components/LiveMoney'
-import { Header, Segmented, Sheet, Success } from '../components/ui'
+import { Attachments, CATEGORY_LABEL, STATUS_LABEL, Thread, type CaseCategory, type Upload } from '../components/LiveSupport'
+import { Header, Sheet, Success } from '../components/ui'
 import { KIND_LABEL, api, money, type Cur } from '../lib/live'
-import { CATEGORY_LABEL, STATUS_LABEL, Thread, type CaseCategory } from '../components/LiveSupport'
 import { useLive } from '../lib/liveStore'
 
-type Tab = 'overview' | 'cases' | 'users' | 'topups' | 'withdrawals'
+type Tab = 'overview' | 'bills' | 'cases' | 'disputes' | 'users' | 'topups' | 'withdrawals'
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–')
+const waited = (iso: string) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d` }
 const short = (ref: string) => '…' + ref.slice(-8)
+const lira = (minor: number) => money(Number(minor), 'TRY')
 const BADGE: Record<string, string> = {
-  paid: 'bg-mint-400/15 text-mint-300', verified: 'bg-mint-400/15 text-mint-300', valid: 'bg-mint-400/15 text-mint-300',
-  pending: 'bg-gold-400/15 text-gold-300', processing: 'bg-gold-400/15 text-gold-300', mismatch: 'bg-gold-400/15 text-gold-300',
-  failed: 'bg-rose-500/15 text-rose-300', reversed: 'bg-rose-500/15 text-rose-300', refunded: 'bg-fg/10 text-slate-400', none: 'bg-fg/10 text-slate-400',
+  paid: 'bg-mint-400/15 text-mint-300', verified: 'bg-mint-400/15 text-mint-300', valid: 'bg-mint-400/15 text-mint-300', released: 'bg-mint-400/15 text-mint-300',
+  pending: 'bg-gold-400/15 text-gold-300', processing: 'bg-gold-400/15 text-gold-300', mismatch: 'bg-gold-400/15 text-gold-300', held: 'bg-gold-400/15 text-gold-300',
+  failed: 'bg-rose-500/15 text-rose-300', reversed: 'bg-rose-500/15 text-rose-300', refunded: 'bg-sky-400/15 text-sky-300', none: 'bg-fg/10 text-slate-400',
 }
-const Badge = ({ s }: { s: string }) => <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${BADGE[s] ?? 'bg-fg/10 text-slate-300'}`}>{s}</span>
-
-export default function LiveAdmin() {
-  const { me } = useLive()
-  const [tab, setTab] = useState<Tab>('overview')
-  const [userId, setUserId] = useState<string | null>(null)
-  if (me && !me.profile.isAdmin) return <div><Header back title="Admin" /><p className="px-6 pt-10 text-center text-sm text-slate-400">This page is only for the Luda team.</p></div>
-  return (
-    <div className="pb-6">
-      <Header back title="Admin" sub="Owner tools · every change needs your PIN and is logged" />
-      <div className="px-5 pb-3"><Segmented value={tab} onChange={setTab} options={[{ value: 'overview', label: 'Home' }, { value: 'cases', label: 'Cases' }, { value: 'users', label: 'Users' }, { value: 'topups', label: 'Top-ups' }, { value: 'withdrawals', label: 'Payouts' }]} /></div>
-      <div className="px-5">
-        {tab === 'overview' && <Overview />}
-        {tab === 'cases' && <CasesTab />}
-        {tab === 'users' && <UsersTab onOpen={setUserId} />}
-        {tab === 'topups' && <TopUps onOpen={setUserId} />}
-        {tab === 'withdrawals' && <Payouts onOpen={setUserId} />}
-      </div>
-      {userId && <UserSheet id={userId} onClose={() => setUserId(null)} />}
-    </div>
-  )
-}
+const Badge = ({ s }: { s: string }) => <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${BADGE[s] ?? 'bg-fg/10 text-slate-300'}`}>{s}</span>
+const Avatar = ({ name }: { name?: string }) => <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-mint-400/30 to-emerald-700/40 text-sm font-bold text-mint-100">{(name ?? '?').replace('@', '').slice(0, 2).toUpperCase()}</span>
 
 function useLoad<T>(path: string) {
   const [data, setData] = useState<T | null>(null)
@@ -50,46 +36,257 @@ function useLoad<T>(path: string) {
   return { data, err, loading, load }
 }
 
-const Card = ({ label, value, sub, warn }: { label: string; value: ReactNode; sub?: string; warn?: boolean }) => (
-  <div className={`rounded-2xl p-3 ${warn ? 'bg-rose-500/10 ring-1 ring-rose-400/40' : 'bg-fg/[0.04]'}`}><p className="text-[11px] text-slate-400">{label}</p><p className="text-lg font-extrabold">{value}</p>{sub && <p className="text-[11px] text-slate-500">{sub}</p>}</div>
+/** Copies text and briefly shows "Copied". */
+function CopyBtn({ text, label }: { text: string; label?: string }) {
+  const [ok, setOk] = useState(false)
+  return (
+    <button className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition ${ok ? 'bg-mint-400/25 text-mint-100' : 'bg-fg/[0.07] text-slate-200'}`}
+      onClick={() => { void navigator.clipboard?.writeText(text).then(() => { setOk(true); setTimeout(() => setOk(false), 1500) }) }}>
+      {ok ? <Check size={14} /> : <Copy size={14} />} {ok ? 'Copied' : label ?? 'Copy'}
+    </button>
+  )
+}
+
+export default function LiveAdmin() {
+  const { me } = useLive()
+  const [tab, setTab] = useState<Tab>('overview')
+  const [userId, setUserId] = useState<string | null>(null)
+  const { data: o, load } = useLoad<Record<string, any>>('admin-overview')
+  if (me && !me.profile.isAdmin) return <div><Header back title="Admin" /><p className="px-6 pt-10 text-center text-sm text-slate-400">This page is only for the Luda team.</p></div>
+  const tabs: { v: Tab; l: string; i: LucideIcon; n?: number }[] = [
+    { v: 'overview', l: 'Home', i: HomeIcon }, { v: 'bills', l: 'Bills', i: Receipt, n: o?.billsPending }, { v: 'cases', l: 'Cases', i: Inbox, n: o?.openCases },
+    { v: 'disputes', l: 'Held money', i: Gavel }, { v: 'users', l: 'Users', i: Users }, { v: 'topups', l: 'Top-ups', i: ArrowDownToLine }, { v: 'withdrawals', l: 'Payouts', i: ArrowUpFromLine },
+  ]
+  const go = (t: Tab) => { setTab(t); void load() }
+  return (
+    <div className="pb-10">
+      <Header back title="Luda HQ" sub="Every money action needs your PIN and is logged" right={<button className="glass grid size-10 place-items-center rounded-2xl" onClick={() => void load()} aria-label="Refresh"><RefreshCw size={17} /></button>} />
+      <nav className="-mx-0 mb-4 flex gap-2 overflow-x-auto px-5 pb-1" aria-label="Admin sections">
+        {tabs.map(({ v, l, i: I, n }) => (
+          <button key={v} onClick={() => go(v)} className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-3.5 py-2.5 text-sm font-semibold transition ${tab === v ? 'bg-mint-400 text-ink-950 shadow-lg shadow-emerald-500/20' : 'glass text-slate-300'}`}>
+            <I size={15} /> {l}{n ? <span className={`rounded-full px-1.5 text-[10px] ${tab === v ? 'bg-ink-950/20' : 'bg-gold-400 text-ink-950'}`}>{n}</span> : null}
+          </button>
+        ))}
+      </nav>
+      <div className="px-5">
+        {tab === 'overview' && <Overview o={o} go={go} />}
+        {tab === 'bills' && <BillsTab onChange={load} />}
+        {tab === 'cases' && <CasesTab />}
+        {tab === 'disputes' && <DisputesTab onChange={load} />}
+        {tab === 'users' && <UsersTab onOpen={setUserId} />}
+        {tab === 'topups' && <TopUps onOpen={setUserId} />}
+        {tab === 'withdrawals' && <Payouts onOpen={setUserId} />}
+      </div>
+      {userId && <UserSheet id={userId} onClose={() => setUserId(null)} />}
+    </div>
+  )
+}
+
+/* --------------------------------- home --------------------------------- */
+
+const Stat = ({ icon: I, label, value, sub, tint }: { icon: LucideIcon; label: string; value: ReactNode; sub?: string; tint: string }) => (
+  <div className="glass flex flex-col gap-2 rounded-3xl p-4">
+    <span className={`grid size-9 place-items-center rounded-xl bg-gradient-to-br ${tint} text-white`}><I size={17} /></span>
+    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+    <p className="text-xl font-extrabold leading-none">{value}</p>
+    {sub && <p className="text-[11px] text-slate-500">{sub}</p>}
+  </div>
 )
 
-function Overview() {
-  const { data: o, err, loading, load } = useLoad<Record<string, any>>('admin-overview')
-  if (err) return <p className="text-sm text-rose-300">{err}</p>
+function Overview({ o, go }: { o: Record<string, any> | null; go: (t: Tab) => void }) {
   if (!o) return <p className="text-sm text-slate-500">Loading…</p>
   const p = o.problems ?? {}
-  const issues = [
-    p.mismatch && `${p.mismatch} top-up(s) under review (amount didn't match)`,
-    p.pendingOld && `${p.pendingOld} top-up(s) unpaid for over 1 hour (usually abandoned checkouts)`,
-    p.withdrawalsStuck && `${p.withdrawalsStuck} payout(s) processing for over 30 min`,
-    p.badWebhooks7d && `${p.badWebhooks7d} rejected webhook(s) this week: check secret keys/hash`,
-    p.ledgerMismatch && `${p.ledgerMismatch} wallet(s) don't match their ledger: contact your developer`,
-    o.openCases && `${o.openCases} support case(s) waiting for you (Cases tab)`,
-  ].filter(Boolean) as string[]
+  type Todo = { n: number; text: string; tab: Tab; icon: LucideIcon }
+  const todo = ([
+    { n: o.billsPending ?? 0, text: `bill${o.billsPending === 1 ? '' : 's'} to pay · ${lira(o.billsPendingMinor ?? 0)}`, tab: 'bills', icon: Receipt },
+    { n: o.openCases ?? 0, text: `support case${o.openCases === 1 ? '' : 's'} waiting for a reply`, tab: 'cases', icon: Inbox },
+    { n: p.withdrawalsStuck ?? 0, text: 'payout(s) processing for over 30 min', tab: 'withdrawals', icon: ArrowUpFromLine },
+    { n: p.mismatch ?? 0, text: "top-up(s) under review (amount didn't match)", tab: 'topups', icon: ArrowDownToLine },
+  ] as Todo[]).filter((x) => x.n > 0)
+  const warn = [p.badWebhooks7d && `${p.badWebhooks7d} rejected webhook(s) this week: check secret keys/hash`, p.ledgerMismatch && `${p.ledgerMismatch} wallet(s) don't match their ledger: contact your developer`].filter(Boolean) as string[]
   const wh = o.webhooks7d ?? {}
+  const hour = new Date().getHours()
   return (
-    <div className="flex flex-col gap-3">
-      <button className="self-end text-xs text-slate-400" onClick={load}><RefreshCw size={12} className={`inline ${loading ? 'animate-spin' : ''}`} /> Refresh</button>
-      <div className="grid grid-cols-2 gap-2">
-        <Card label="Users" value={o.users} sub={`+${o.newUsers7d} this week`} />
-        <Card label="ID verified" value={o.verified} sub={`${o.kycPending} in review · ${o.frozen} frozen`} />
-        <Card label="Money held (Naira)" value={money(o.balances?.NGN ?? 0, 'NGN')} sub="must be covered by Paystack + bank" />
-        <Card label="Money held (Lira)" value={money(o.balances?.TRY ?? 0, 'TRY')} />
-        <Card label="Top-ups today" value={o.deposits24h?.count ?? 0} sub={`${money(o.deposits24h?.NGN ?? 0, 'NGN')} · ${money(o.deposits24h?.TRY ?? 0, 'TRY')}`} />
-        <Card label="Top-ups 7 days" value={o.deposits7d?.count ?? 0} sub={`${money(o.deposits7d?.NGN ?? 0, 'NGN')} · ${money(o.deposits7d?.TRY ?? 0, 'TRY')}`} />
-        <Card label="Payouts today" value={o.withdrawals24h?.count ?? 0} sub={money(o.withdrawals24h?.NGN ?? 0, 'NGN')} />
-        <Card label="Payouts 7 days" value={o.withdrawals7d?.count ?? 0} sub={`${money(o.withdrawals7d?.NGN ?? 0, 'NGN')} · fees ${money(o.fees7d?.withdrawNGN ?? 0, 'NGN')}`} />
-        <Card label="Tickets 7 days" value={o.tickets7d ?? 0} />
-        <Card label="Webhooks 7 days" value={Object.values(wh).reduce((a: number, b) => a + Number(b), 0)} sub={Object.keys(wh).length ? Object.entries(wh).map(([k, v]) => `${k} ${v}`).join(' · ') : 'none received yet'} warn={!Object.keys(wh).length && (o.deposits7d?.count ?? 0) > 0} />
+    <div className="flex flex-col gap-4">
+      <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-500 via-teal-700 to-ink-900 p-5">
+        <div className="absolute -end-10 -top-10 size-44 rounded-full bg-gold-300/20 blur-3xl" />
+        <p className="text-sm text-white/80">Good {hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'}{o.admin ? `, ${o.admin}` : ''} 👋</p>
+        <p className="mt-1 text-2xl font-extrabold text-white">{todo.length ? `${todo.reduce((a, t) => a + t.n, 0)} things need you` : 'All clear ✨'}</p>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-white">
+          <div className="rounded-2xl bg-black/20 p-3"><p className="text-[11px] text-white/70">Users hold (Naira)</p><p className="text-lg font-extrabold">{money(o.balances?.NGN ?? 0, 'NGN')}</p></div>
+          <div className="rounded-2xl bg-black/20 p-3"><p className="text-[11px] text-white/70">Users hold (Lira)</p><p className="text-lg font-extrabold">{money(o.balances?.TRY ?? 0, 'TRY')}</p></div>
+        </div>
       </div>
-      <div className={`rounded-2xl p-3 ${issues.length ? 'bg-gold-400/10' : 'bg-mint-400/10'}`}>
-        <p className="flex items-center gap-2 text-sm font-bold">{issues.length ? <><AlertTriangle size={16} className="text-gold-300" /> Needs attention</> : <><ShieldCheck size={16} className="text-mint-300" /> All good: nothing stuck</>}</p>
-        {issues.map((i) => <p key={i} className="mt-1 text-xs text-slate-300">• {i}</p>)}
+
+      {todo.length > 0 && <div className="flex flex-col gap-2">
+        <p className="label">To do</p>
+        {todo.map(({ n, text, tab, icon: I }) => (
+          <button key={tab + text} onClick={() => go(tab)} className="glass flex items-center gap-3 rounded-2xl p-3 text-start">
+            <span className="grid size-10 place-items-center rounded-xl bg-gold-400/15 text-gold-300"><I size={18} /></span>
+            <span className="flex-1 text-sm"><b className="text-base">{n}</b> {text}</span><ChevronRight size={18} className="text-slate-500" />
+          </button>
+        ))}
+      </div>}
+      {(o.escrowHeld ?? 0) > 0 && <button onClick={() => go('disputes')} className="flex items-center gap-3 rounded-2xl bg-fg/[0.04] p-3 text-start text-xs text-slate-400">
+        <Gavel size={16} className="shrink-0" /><span className="flex-1"><b className="text-slate-200">{lira(o.escrowHeldMinor ?? 0)}</b> held for {o.escrowHeld} marketplace / Flash payment{o.escrowHeld === 1 ? '' : 's'}. Nothing to do unless someone opens a case.</span><ChevronRight size={16} /></button>}
+      {warn.map((w) => <p key={w} className="flex items-start gap-2 rounded-2xl bg-rose-500/10 p-3 text-xs text-rose-200"><AlertTriangle size={15} className="shrink-0" /> {w}</p>)}
+
+      <p className="label">This week</p>
+      <div className="grid grid-cols-2 gap-2.5 tab:grid-cols-3">
+        <Stat icon={Users} tint="from-sky-400 to-indigo-500" label="Users" value={o.users} sub={`+${o.newUsers7d} new · ${o.verified} verified`} />
+        <Stat icon={ArrowDownToLine} tint="from-mint-400 to-emerald-600" label="Top-ups" value={o.deposits7d?.count ?? 0} sub={`${money(o.deposits7d?.NGN ?? 0, 'NGN')} · ${money(o.deposits7d?.TRY ?? 0, 'TRY')}`} />
+        <Stat icon={ArrowUpFromLine} tint="from-violet-400 to-fuchsia-600" label="Payouts" value={o.withdrawals7d?.count ?? 0} sub={money(o.withdrawals7d?.NGN ?? 0, 'NGN')} />
+        <Stat icon={Ticket} tint="from-amber-400 to-orange-600" label="Bus tickets" value={o.tickets7d ?? 0} />
+        <Stat icon={Banknote} tint="from-gold-300 to-amber-500" label="Fees earned" value={money(o.fees7d?.withdrawNGN ?? 0, 'NGN')} sub="withdrawal fees" />
+        <Stat icon={ShieldCheck} tint={Object.keys(wh).length ? 'from-mint-400 to-teal-600' : 'from-rose-400 to-rose-600'} label="Webhooks" value={Object.values(wh).reduce((a: number, b) => a + Number(b), 0)} sub={Object.keys(wh).length ? Object.entries(wh).map(([k, v]) => `${k} ${v}`).join(' · ') : 'none received yet'} />
       </div>
     </div>
   )
 }
+
+/* ------------------------------- bills to pay ------------------------------- */
+
+interface AdminBill { id: string; username: string; type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: string; note: string | null; created_at: string; photoUrls: (string | null)[]; receiptUrls: (string | null)[] }
+
+function BillsTab({ onChange }: { onChange: () => void }) {
+  const [status, setStatus] = useState('pending')
+  const { data, err, load } = useLoad<{ bills: AdminBill[] }>(`admin-bills?status=${status}`)
+  const [open, setOpen] = useState<AdminBill | null>(null)
+  const bills = data?.bills ?? []
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex gap-2">{[['pending', 'To pay'], ['paid', 'Paid'], ['refunded', 'Refunded']].map(([v, l]) => <button key={v} onClick={() => setStatus(v)} className={`chip py-2 ${status === v ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}>{l}</button>)}</div>
+      {status === 'pending' && bills.length > 0 && <p className="text-xs text-slate-400">Oldest first. Total to pay: <b className="text-slate-200">{lira(bills.reduce((a, b) => a + Number(b.amount_minor), 0))}</b></p>}
+      {err && <p className="text-sm text-rose-300">{err}</p>}
+      {data && bills.length === 0 && <p className="rounded-3xl border border-dashed border-fg/10 py-10 text-center text-sm text-slate-400">{status === 'pending' ? 'No bills waiting 🎉' : 'Nothing here.'}</p>}
+      {(status === 'pending' ? bills : [...bills].reverse()).map((b) => { const I = BILL_ICON[b.type] ?? Receipt; return (
+        <button key={b.id} onClick={() => setOpen(b)} className="glass flex items-center gap-3 rounded-3xl p-4 text-start">
+          <span className={`grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${BILL_TINT[b.type] ?? BILL_TINT.other} text-white`}><I size={22} /></span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-bold">{b.provider}</p>
+            <p className="truncate font-mono text-sm text-slate-300">{b.account_ref}</p>
+            <p className="text-[11px] text-slate-500">@{b.username} · {status === 'pending' ? `waiting ${waited(b.created_at)}` : when(b.created_at)}</p>
+          </div>
+          <div className="flex flex-col items-end gap-1"><p className="text-xl font-extrabold">{lira(b.amount_minor)}</p>{status !== 'pending' && <Badge s={b.status} />}</div>
+        </button>
+      ) })}
+      {open && <BillPaySheet b={open} onClose={() => setOpen(null)} onDone={() => { void load(); onChange() }} />}
+    </div>
+  )
+}
+
+const REFUSE = ['Customer number not found', 'Amount on the bill is different', 'Provider site is down, try again later', 'Bill already paid']
+
+/** Everything the team needs to pay one bill, already filled in: copy the number and amount, pay, attach the receipt. */
+function BillPaySheet({ b, onClose, onDone }: { b: AdminBill; onClose: () => void; onDone: () => void }) {
+  const [files, setFiles] = useState<Upload[]>([])
+  const [mode, setMode] = useState<'pay' | 'refuse'>('pay')
+  const [note, setNote] = useState('')
+  const [review, setReview] = useState(false)
+  const amount = (Number(b.amount_minor) / 100).toFixed(2).replace(/\.00$/, '')
+  const search = `https://www.google.com/search?q=${encodeURIComponent(`${b.provider} online ödeme`)}`
+  const run = async (auth: Approval) => { await api('POST', 'admin-bill', { billId: b.id, paid: mode === 'pay', note, files: files.map(({ name, type, data }) => ({ name, type, data })), ...auth }); onDone() }
+  if (b.status !== 'pending') return (
+    <Sheet open onClose={onClose} title={b.provider}>
+      <div className="flex flex-col gap-3 pb-4 text-sm"><p>{lira(b.amount_minor)} for @{b.username} · <Badge s={b.status} /></p>{b.note && <p className="text-slate-400">{b.note}</p>}
+        {b.receiptUrls.filter(Boolean).map((u, i) => <a key={i} href={u!} target="_blank" rel="noreferrer" className="btn-ghost py-3 text-sm"><Receipt size={15} /> Open receipt {i + 1}</a>)}</div>
+    </Sheet>
+  )
+  return (
+    <Sheet open onClose={onClose} title={`Pay ${b.provider}`}>
+      {review ? (
+        <ReviewAndPin holdLabel={mode === 'pay' ? 'Hold to mark as paid' : 'Hold to refund'} onClose={() => setReview(false)} run={run}
+          rows={mode === 'pay' ? [['Bill', b.provider], ['Number', b.account_ref], ['Amount paid', <b key="a">{lira(b.amount_minor)}</b>], ['Receipt', `${files.length} file(s)`], ['For', `@${b.username}`]]
+            : [['Refund to', `@${b.username}`], ['Amount + fee', lira(Number(b.amount_minor) + Number(b.fee_minor))], ['Reason (sent to user)', note]]}
+          done={<Success title={mode === 'pay' ? 'Marked as paid ✅' : 'Refunded'} sub={mode === 'pay' ? `@${b.username} can now see the receipt.` : 'The full amount and fee are back in their wallet.'} onClose={onClose} />} />
+      ) : (
+        <div className="flex flex-col gap-4 pb-4">
+          <div className="rounded-3xl bg-gradient-to-br from-fg/[0.07] to-fg/[0.02] p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pay exactly</p>
+            <div className="mt-1 flex items-center justify-between gap-3"><p className="text-3xl font-extrabold">{lira(b.amount_minor)}</p><CopyBtn text={amount} label="Amount" /></div>
+            <div className="my-3 h-px bg-fg/10" />
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Customer / subscriber number</p>
+            <div className="mt-1 flex items-center justify-between gap-3"><p className="selectable break-all font-mono text-xl font-bold">{b.account_ref}</p><CopyBtn text={b.account_ref} label="Number" /></div>
+            <p className="mt-3 text-xs text-slate-400">For @{b.username} · sent {when(b.created_at)} · fee earned {lira(b.fee_minor)}</p>
+          </div>
+          {b.photoUrls.filter(Boolean).length > 0 && <div className="flex gap-2">{b.photoUrls.filter(Boolean).map((u, i) => <a key={i} href={u!} target="_blank" rel="noreferrer"><img src={u!} alt="Bill" className="size-20 rounded-2xl object-cover ring-1 ring-fg/10" /></a>)}<p className="self-center text-xs text-slate-400">The user's photo of the bill. Tap to zoom.</p></div>}
+
+          <div className="flex rounded-2xl bg-fg/[0.05] p-1">{(['pay', 'refuse'] as const).map((m) => <button key={m} onClick={() => setMode(m)} className={`flex-1 rounded-xl py-2.5 text-sm font-semibold ${mode === m ? 'bg-fg/10 text-slate-100' : 'text-slate-400'}`}>{m === 'pay' ? '✅ I paid it' : "↩️ Can't pay"}</button>)}</div>
+          {mode === 'pay' ? <>
+            <ol className="flex flex-col gap-2 text-sm">
+              <li className="flex items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400/20 text-xs font-bold text-mint-200">1</span><span className="flex-1">Pay on the official site or your bank app</span><a href={search} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-xl bg-fg/[0.07] px-3 py-2 text-xs font-semibold"><ExternalLink size={13} /> Find site</a></li>
+              <li className="flex items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400/20 text-xs font-bold text-mint-200">2</span><span className="flex-1">Screenshot or save the receipt, then attach it</span></li>
+            </ol>
+            <Attachments files={files} setFiles={setFiles} />
+            <button className="btn-primary py-4" disabled={!files.length} onClick={() => setReview(true)}>Mark as paid</button>
+          </> : <>
+            <div className="flex flex-wrap gap-2">{REFUSE.map((r) => <button key={r} onClick={() => setNote(r)} className={`chip py-2 ${note === r ? 'bg-sky-400/20 text-sky-200' : 'bg-fg/[0.06] text-slate-300'}`}>{r}</button>)}</div>
+            <input className="input text-sm" maxLength={200} placeholder="Or write the reason (sent to the user)" value={note} onChange={(e) => setNote(e.target.value)} />
+            <button className="btn-ghost py-4" disabled={!note.trim()} onClick={() => setReview(true)}><Undo2 size={16} /> Refund {lira(Number(b.amount_minor) + Number(b.fee_minor))}</button>
+          </>}
+        </div>
+      )}
+    </Sheet>
+  )
+}
+
+/* ------------------------- money held (marketplace / Flash) ------------------------- */
+
+function DisputesTab({ onChange }: { onChange: () => void }) {
+  const [status, setStatus] = useState('held')
+  const { data, err, load } = useLoad<{ escrows: any[] }>(`admin-escrows?status=${status}`)
+  const [open, setOpen] = useState<any | null>(null)
+  const list = (data?.escrows ?? []).filter((e) => e.kind !== 'bill')
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="rounded-2xl bg-fg/[0.04] p-3 text-xs text-slate-400">Buyers' and Flash posters' money waiting for confirmation. It's released automatically (7 days marketplace, 3 days Flash) unless there's an open case. Decide here when someone reports a problem.</p>
+      <div className="flex gap-2">{[['held', 'Held now'], ['released', 'Released'], ['refunded', 'Refunded']].map(([v, l]) => <button key={v} onClick={() => setStatus(v)} className={`chip py-2 ${status === v ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}>{l}</button>)}</div>
+      {err && <p className="text-sm text-rose-300">{err}</p>}
+      {data && list.length === 0 && <p className="rounded-3xl border border-dashed border-fg/10 py-10 text-center text-sm text-slate-400">Nothing here.</p>}
+      {list.map((e) => (
+        <button key={e.id} onClick={() => status === 'held' && setOpen(e)} className="glass flex items-center gap-3 rounded-3xl p-4 text-start">
+          <span className="text-2xl">{e.kind === 'market' ? '🛍️' : '⚡'}</span>
+          <div className="min-w-0 flex-1"><p className="truncate font-bold">{e.item?.title ?? e.kind}</p>
+            <p className="truncate text-xs text-slate-400">@{e.payer_name} → {e.payee_name ? `@${e.payee_name}` : 'no helper yet'} · {waited(e.created_at)} ago</p></div>
+          <div className="flex flex-col items-end gap-1"><p className="font-extrabold">{lira(e.amount_minor)}</p><Badge s={e.status} /></div>
+        </button>
+      ))}
+      {open && <DecideSheet e={open} onClose={() => setOpen(null)} onDone={() => { void load(); onChange() }} />}
+    </div>
+  )
+}
+
+function DecideSheet({ e, onClose, onDone }: { e: any; onClose: () => void; onDone: () => void }) {
+  const [to, setTo] = useState<'payee' | 'payer' | null>(null)
+  const [note, setNote] = useState('')
+  const who = e.kind === 'market' ? ['seller', 'buyer'] : ['helper', 'poster']
+  return (
+    <Sheet open onClose={onClose} title={e.item?.title ?? 'Held payment'}>
+      {to ? (
+        <ReviewAndPin holdLabel="Hold to decide" onClose={() => setTo(null)}
+          rows={[[to === 'payee' ? `Pay ${who[0]}` : `Refund ${who[1]}`, `@${to === 'payee' ? e.payee_name : e.payer_name}`], ['Amount', lira(to === 'payee' ? Number(e.amount_minor) - Number(e.fee_minor) : e.amount_minor)], ['Reason', note]]}
+          run={async (auth) => { await api('POST', 'admin-escrow', { escrowId: e.id, to, note, ...auth }); onDone() }}
+          done={<Success title="Decided ✅" sub="Money moved and written to the audit log." onClose={onClose} />} />
+      ) : (
+        <div className="flex flex-col gap-3 pb-4">
+          <div className="grid grid-cols-2 gap-2 text-center text-sm">
+            <div className="rounded-2xl bg-fg/[0.05] p-3"><p className="text-[11px] text-slate-400">Paid by ({who[1]})</p><p className="font-bold">@{e.payer_name}</p></div>
+            <div className="rounded-2xl bg-fg/[0.05] p-3"><p className="text-[11px] text-slate-400">{who[0]}</p><p className="font-bold">{e.payee_name ? `@${e.payee_name}` : '–'}</p></div>
+          </div>
+          <p className="text-center text-3xl font-extrabold">{lira(e.amount_minor)}</p>
+          <p className="flex items-start gap-2 text-xs text-slate-400"><LifeBuoy size={14} className="shrink-0" /> Check the user's case in the Cases tab (photos, messages) before deciding.</p>
+          <input className="input text-sm" maxLength={200} placeholder="Reason (saved, and sent if you link a case)" value={note} onChange={(ev) => setNote(ev.target.value)} />
+          <div className="grid grid-cols-2 gap-2">
+            <button className="btn-primary py-3 text-sm" disabled={!note.trim() || !e.payee} onClick={() => setTo('payee')}><BadgeCheck size={15} /> Pay {who[0]}</button>
+            <button className="btn-ghost py-3 text-sm" disabled={!note.trim()} onClick={() => setTo('payer')}><Undo2 size={15} /> Refund {who[1]}</button>
+          </div>
+        </div>
+      )}
+    </Sheet>
+  )
+}
+
+/* --------------------------------- lists --------------------------------- */
 
 function UsersTab({ onOpen }: { onOpen: (id: string) => void }) {
   const [q, setQ] = useState('')
@@ -103,7 +300,7 @@ function UsersTab({ onOpen }: { onOpen: (id: string) => void }) {
       {data?.users.length === 0 && <p className="text-sm text-slate-500">No users found.</p>}
       {data?.users.map((u) => (
         <button key={u.userId} onClick={() => onOpen(u.userId)} className="glass flex items-center gap-3 rounded-2xl p-3 text-start">
-          <Users size={18} className="shrink-0 text-slate-400" />
+          <Avatar name={u.fullName} />
           <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{u.fullName} <span className="text-xs text-slate-500">@{u.username}</span></p><p className="truncate text-xs text-slate-500">{u.email} · joined {when(u.createdAt)}</p></div>
           <div className="flex flex-col items-end gap-1"><Badge s={u.kyc} />{u.frozen && <span className="text-[10px] text-sky-300">🧊 frozen</span>}</div>
         </button>
@@ -112,23 +309,26 @@ function UsersTab({ onOpen }: { onOpen: (id: string) => void }) {
   )
 }
 
+const Filter = ({ value, set, options }: { value: string; set: (v: string) => void; options: [string, string][] }) => (
+  <div className="-mx-5 flex gap-2 overflow-x-auto px-5">{options.map(([v, l]) => <button key={v} onClick={() => set(v)} className={`chip shrink-0 py-2 ${value === v ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}>{l}</button>)}</div>
+)
+
 function TopUps({ onOpen }: { onOpen: (id: string) => void }) {
   const [status, setStatus] = useState('')
   const [q, setQ] = useState('')
   const { data, err, load } = useLoad<{ deposits: any[] }>(`admin-deposits?status=${status}&q=${encodeURIComponent(q)}`)
   const [msg, setMsg] = useState('')
-  const recheck = async (ref: string) => { setMsg(''); try { const r = await api('POST', 'admin-recheck', { reference: ref }); setMsg(`${short(ref)} → ${r.status}`); load() } catch (e) { setMsg(errMsg(e)) } }
+  const recheck = async (ref: string) => { setMsg(''); try { const r = await api('POST', 'admin-recheck', { reference: ref }); setMsg(`${short(ref)} → ${r.status}`); void load() } catch (e) { setMsg(errMsg(e)) } }
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex gap-2">
-        <select className="input w-auto py-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">All</option>{['paid', 'pending', 'mismatch', 'failed'].map((s) => <option key={s} value={s}>{s}</option>)}</select>
-        <input className="input py-2 text-sm" placeholder="Reference or email" value={q} onChange={(e) => setQ(e.target.value.trim())} />
-      </div>
+      <Filter value={status} set={setStatus} options={[['', 'All'], ['paid', 'Paid'], ['pending', 'Pending'], ['mismatch', 'Review'], ['failed', 'Failed']]} />
+      <input className="input py-2.5 text-sm" placeholder="Search reference or email" value={q} onChange={(e) => setQ(e.target.value.trim())} />
       {msg && <p className="text-xs text-slate-300">{msg}</p>}{err && <p className="text-sm text-rose-300">{err}</p>}
       {data?.deposits.map((d) => (
-        <div key={d.reference} className="rounded-2xl bg-fg/[0.04] p-3 text-sm">
-          <div className="flex items-center justify-between gap-2"><span className="selectable font-mono text-xs">{d.reference}</span><Badge s={d.status} /></div>
-          <p className="mt-1 text-xs text-slate-400">{d.provider} · paid {money(Number(d.amount_minor), d.currency)} → {money(Number(d.credit_minor), d.credit_currency ?? 'NGN')} · {when(d.created_at)}</p>
+        <div key={d.reference} className="glass rounded-2xl p-3 text-sm">
+          <div className="flex items-center justify-between gap-2"><p className="font-bold">{money(Number(d.credit_minor), d.credit_currency ?? 'NGN')}</p><Badge s={d.status} /></div>
+          <p className="mt-0.5 text-xs text-slate-400">{d.provider} · charged {money(Number(d.amount_minor), d.currency)} · {when(d.created_at)}</p>
+          <p className="selectable font-mono text-[11px] text-slate-500">{d.reference}</p>
           <div className="mt-2 flex gap-2">
             {d.status !== 'paid' && <button className="chip bg-fg/5 py-1.5 text-xs" onClick={() => recheck(d.reference)}><RefreshCw size={12} /> Re-check with {d.provider}</button>}
             {d.user_id && <button className="chip bg-fg/5 py-1.5 text-xs" onClick={() => onOpen(d.user_id)}>Open user</button>}
@@ -144,18 +344,18 @@ function Payouts({ onOpen }: { onOpen: (id: string) => void }) {
   const [status, setStatus] = useState('')
   const { data, err, load } = useLoad<{ withdrawals: any[] }>(`admin-withdrawals?status=${status}`)
   const [msg, setMsg] = useState('')
-  const recheck = async (ref: string) => { setMsg(''); try { const r = await api('POST', 'admin-recheck', { reference: ref }); setMsg(`${short(ref)} → ${r.status}`); load() } catch (e) { setMsg(errMsg(e)) } }
+  const recheck = async (ref: string) => { setMsg(''); try { const r = await api('POST', 'admin-recheck', { reference: ref }); setMsg(`${short(ref)} → ${r.status}`); void load() } catch (e) { setMsg(errMsg(e)) } }
   return (
     <div className="flex flex-col gap-2">
-      <select className="input w-auto py-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">All</option>{['processing', 'paid', 'failed', 'reversed'].map((s) => <option key={s} value={s}>{s}</option>)}</select>
+      <Filter value={status} set={setStatus} options={[['', 'All'], ['processing', 'Processing'], ['paid', 'Paid'], ['failed', 'Failed'], ['reversed', 'Reversed']]} />
       {msg && <p className="text-xs text-slate-300">{msg}</p>}{err && <p className="text-sm text-rose-300">{err}</p>}
       {data?.withdrawals.map((w) => (
-        <div key={w.reference} className="rounded-2xl bg-fg/[0.04] p-3 text-sm">
-          <div className="flex items-center justify-between gap-2"><span className="selectable font-mono text-xs">{w.reference}</span><Badge s={w.status} /></div>
-          <p className="mt-1 text-xs text-slate-400">{money(Number(w.amount_minor), 'NGN')} + fee {money(Number(w.fee_minor), 'NGN')} → {w.account_name} · {w.bank_name} ••{String(w.account_number).slice(-4)} · {when(w.created_at)}{w.provider ? ` · via ${w.provider === 'flutterwave' ? 'Flutterwave' : 'Paystack'}` : ''}</p>
+        <div key={w.reference} className="glass rounded-2xl p-3 text-sm">
+          <div className="flex items-center justify-between gap-2"><p className="font-bold">{money(Number(w.amount_minor), 'NGN')} <span className="text-xs font-normal text-slate-500">+ {money(Number(w.fee_minor), 'NGN')} fee</span></p><Badge s={w.status} /></div>
+          <p className="mt-0.5 text-xs text-slate-400">{w.account_name} · {w.bank_name} ••{String(w.account_number).slice(-4)} · {when(w.created_at)}{w.provider ? ` · via ${w.provider === 'flutterwave' ? 'Flutterwave' : 'Paystack'}` : ''}</p>
           {w.note && <p className="text-xs text-slate-500">{w.note}</p>}
           <div className="mt-2 flex gap-2">
-            {w.status === 'processing' && <button className="chip bg-fg/5 py-1.5 text-xs" onClick={() => recheck(w.reference)}><RefreshCw size={12} /> Re-check with Paystack</button>}
+            {w.status === 'processing' && <button className="chip bg-fg/5 py-1.5 text-xs" onClick={() => recheck(w.reference)}><RefreshCw size={12} /> Re-check</button>}
             <button className="chip bg-fg/5 py-1.5 text-xs" onClick={() => onOpen(w.user_id)}>Open user</button>
           </div>
         </div>
@@ -184,10 +384,15 @@ function UserSheet({ id, onClose }: { id: string; onClose: () => void }) {
         <ReviewAndPin rows={act.rows} warning={act.danger} holdLabel="Hold to confirm" onClose={() => setAct(null)} run={run}
           done={<Success title="Done ✅" sub="Saved and written to the audit log." onClose={() => { setAct(null); setReason('') }} />} />
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 pb-4">
+          <div className="flex items-center gap-3"><Avatar name={u.fullName} /><div className="min-w-0"><p className="font-bold">@{u.username}</p><p className="truncate text-xs text-slate-400">{u.email}</p></div><div className="ms-auto"><Badge s={u.kyc} /></div></div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-2xl bg-fg/[0.05] p-3"><p className="text-[11px] text-slate-400"><Wallet size={11} className="inline" /> Naira</p><p className="text-lg font-extrabold">{money(data.balances.NGN ?? 0, 'NGN')}</p></div>
+            <div className="rounded-2xl bg-fg/[0.05] p-3"><p className="text-[11px] text-slate-400"><Wallet size={11} className="inline" /> Lira</p><p className="text-lg font-extrabold">{money(data.balances.TRY ?? 0, 'TRY')}</p></div>
+          </div>
           <div className="divide-y divide-fg/5 rounded-2xl bg-fg/[0.04] text-sm">
-            {([['Username', '@' + u.username], ['Email', u.email], ['Phone', u.phone ? `${u.phone}${u.phoneVerified ? ' ✓' : ''}` : '–'], ['ID check', `${u.kyc}${u.kycName ? ` · ${u.kycName}` : ''}${u.kycType ? ` (${u.kycType}${u.kycCountry ? `, ${u.kycCountry}` : ''}${u.kycLast4 ? ` ••${u.kycLast4}` : ''})` : ''}`],
-              ['Status', u.frozen ? `🧊 Frozen by ${u.frozenBy}` : 'Active'], ['Joined', when(u.createdAt)], ['Naira', money(data.balances.NGN ?? 0, 'NGN')], ['Lira', money(data.balances.TRY ?? 0, 'TRY')]] as [string, string][])
+            {([['Phone', u.phone ? `${u.phone}${u.phoneVerified ? ' ✓' : ''}` : '–'], ['ID check', `${u.kyc}${u.kycName ? ` · ${u.kycName}` : ''}${u.kycType ? ` (${u.kycType}${u.kycCountry ? `, ${u.kycCountry}` : ''}${u.kycLast4 ? ` ••${u.kycLast4}` : ''})` : ''}`],
+              ['Status', u.frozen ? `🧊 Frozen by ${u.frozenBy}` : 'Active'], ['Joined', when(u.createdAt)]] as [string, string][])
               .map(([k, v]) => <div key={k} className="flex justify-between gap-3 px-4 py-2"><span className="shrink-0 text-slate-400">{k}</span><span className="selectable break-all text-end">{v}</span></div>)}
           </div>
           <input className="input text-sm" maxLength={140} placeholder="Reason (saved in the audit log)" value={reason} onChange={(e) => setReason(e.target.value)} />
@@ -240,19 +445,20 @@ function CasesTab() {
   const [open, setOpen] = useState<string | null>(null)
   return (
     <div className="flex flex-col gap-2">
-      <select className="input w-auto py-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
-        <option value="open,waiting_user">Open</option><option value="open">Needs your reply</option><option value="waiting_user">Waiting for user</option><option value="resolved">Resolved</option><option value="rejected">Closed</option><option value="all">All</option>
-      </select>
+      <Filter value={status} set={setStatus} options={[['open,waiting_user', 'Open'], ['open', 'Needs reply'], ['waiting_user', 'Waiting for user'], ['resolved', 'Resolved'], ['rejected', 'Closed'], ['all', 'All']]} />
       {err && <p className="text-sm text-rose-300">{err}</p>}
-      {data?.cases.length === 0 && <p className="text-sm text-slate-500">No cases here. 🎉</p>}
+      {data?.cases.length === 0 && <p className="rounded-3xl border border-dashed border-fg/10 py-10 text-center text-sm text-slate-400">No cases here 🎉</p>}
       {data?.cases.map((c) => (
-        <button key={c.id} onClick={() => setOpen(c.id)} className="glass flex flex-col gap-1 rounded-2xl p-3 text-start">
-          <div className="flex items-center justify-between gap-2"><p className="truncate text-sm font-semibold">{c.subject}</p><span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_LABEL[c.status]?.c}`}>{c.status === 'open' ? 'Needs reply' : STATUS_LABEL[c.status]?.t}</span></div>
-          <p className="text-xs text-slate-400">{CATEGORY_LABEL[c.category as CaseCategory]} · {c.user?.full_name} @{c.user?.username} · ID: {c.user?.kyc_status}</p>
-          {c.last && <p className="truncate text-xs text-slate-500">{c.last.author === 'admin' ? 'You' : 'User'}: {c.last.body}{c.last.files ? ` · 📎${c.last.files}` : ''} · {when(c.last.at)}</p>}
+        <button key={c.id} onClick={() => setOpen(c.id)} className="glass flex items-start gap-3 rounded-2xl p-3 text-start">
+          <Avatar name={c.user?.full_name} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2"><p className="truncate text-sm font-semibold">{c.subject}</p><span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_LABEL[c.status]?.c}`}>{c.status === 'open' ? 'Needs reply' : STATUS_LABEL[c.status]?.t}</span></div>
+            <p className="text-xs text-slate-400">{CATEGORY_LABEL[c.category as CaseCategory]} · @{c.user?.username} · ID: {c.user?.kyc_status}</p>
+            {c.last && <p className="truncate text-xs text-slate-500">{c.last.author === 'admin' ? 'You' : 'User'}: {c.last.body}{c.last.files ? ` · 📎${c.last.files}` : ''} · {when(c.last.at)}</p>}
+          </div>
         </button>
       ))}
-      {open && <AdminCaseSheet id={open} onClose={() => { setOpen(null); load() }} />}
+      {open && <AdminCaseSheet id={open} onClose={() => { setOpen(null); void load() }} />}
     </div>
   )
 }
@@ -277,11 +483,12 @@ function AdminCaseSheet({ id, onClose }: { id: string; onClose: () => void }) {
         <ReviewAndPin rows={act.rows} warning={act.danger} holdLabel="Hold to confirm" onClose={() => setAct(null)} run={run}
           done={<Success title="Done ✅" sub="The user was told in this case. Saved in the audit log." onClose={() => setAct(null)} />} />
       ) : (
-        <div className="flex flex-col gap-3">
-          <div className="rounded-2xl bg-fg/[0.04] p-3 text-xs text-slate-300">
-            <p><b>{u?.fullName}</b> @{u?.username} · {u?.email}</p>
-            <p>ID check: <b>{u?.kyc}</b>{u?.kycName ? ` · ${u.kycName}` : ''} · {u?.frozen ? '🧊 frozen' : 'active'} · {CATEGORY_LABEL[c.category as CaseCategory]}</p>
-            {c.reference && <p>Reference: <span className="font-mono">{c.reference}</span></p>}
+        <div className="flex flex-col gap-3 pb-4">
+          <div className="flex items-center gap-3 rounded-2xl bg-fg/[0.04] p-3 text-xs text-slate-300">
+            <Avatar name={u?.fullName} />
+            <div className="min-w-0"><p className="text-sm"><b>{u?.fullName}</b> @{u?.username}</p>
+              <p>ID: <b>{u?.kyc}</b>{u?.kycName ? ` · ${u.kycName}` : ''} · {u?.frozen ? '🧊 frozen' : 'active'} · {CATEGORY_LABEL[c.category as CaseCategory]}</p>
+              {c.reference && <p>Reference: <span className="selectable font-mono">{c.reference}</span></p>}</div>
           </div>
           <Thread messages={data.messages} />
           <textarea className="input min-h-20" maxLength={2000} placeholder="Reply to the user…" value={reply} onChange={(e) => setReply(e.target.value)} />

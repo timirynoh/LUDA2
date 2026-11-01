@@ -6,9 +6,10 @@ import { hashPin, randomHex, recover, refresh, setPassword, signIn, signUp, user
 import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion } from './webauthn.ts'
 import { MoneyError, type CaseRow, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
 import { accountMatchesName, diditDecision, diditEnabled, diditSignatureOk, diditStart, docHash, idMatchesName, kycEnabled, lookupId, nameTokens, normDate, type DiditEnv, type KycEnv } from './kyc.ts'
-import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, depositFee, foreignEnabled, foreignFee, margin, ngnPerTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
+import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, depositFee, featureFees, foreignEnabled, foreignFee, margin, ngnPerTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
 import { PayoutRefused, checkTransfer, createRecipient, flwBanks, flwCheckTransfer, flwResolve, flwSendTransfer, listBanks, matchFlwBank, payoutRefusalMessage, resolveAccount, sendTransfer, type PayoutProvider } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
+import { textProblem } from './moderation.ts'
 import { decodeFile, putFile, signedUrl } from './storage.ts'
 import { checkCode, normPhone, sendCode, smsEnabled, type SmsEnv } from './sms.ts'
 import { checkWebhook, initCheckout, verifyPayment, webhookEvent, type Fetch, type Keys, type Provider } from './providers.ts'
@@ -203,6 +204,37 @@ async function threads(env: Env, d: Deps, caseIds: string[]) {
   })))
 }
 
+
+/* ------------------------- wallet features (pots, bills, market, Flash) ------------------------- */
+const BILL_TYPES = ['electricity', 'water', 'internet', 'phone', 'rent', 'other']
+const MARKET_CATEGORIES = ['electronics', 'furniture', 'books', 'fashion', 'kitchen', 'tickets', 'other']
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const uuid = (v: unknown) => { const x = String(v ?? ''); if (!UUID.test(x)) throw new Fail('Not found', 404); return x }
+const tl = (minor: number) => `₺${(minor / 100).toLocaleString('en-US')}`
+/** A whole-lira amount in kuruş within [min, max] TL, or a friendly error. */
+function lira(v: unknown, min: number, max: number, what: string) {
+  const a = int(v)
+  if (!(a >= min * 100 && a <= max * 100) || a % 100) throw new Fail(`${what} must be between ${tl(min * 100)} and ${tl(max * 100)} (whole lira)`)
+  return a
+}
+function clean(v: unknown, max: number, what: string, min = 1) {
+  const t = cleanText(v, max).replace(/\s+/g, ' ')
+  if (t.length < min) throw new Fail(`Add ${what}`)
+  const bad = textProblem(t); if (bad) throw new Fail(bad)
+  return t
+}
+const featureErr = (e: unknown): never => {
+  if (e instanceof MoneyError) {
+    if (e.message === 'not_available') throw new Fail('This is no longer available', 409)
+    if (e.message === 'pot_locked') throw new Fail('This pot is locked until its unlock date')
+    if (e.message === 'too_many_pots') throw new Fail('You can have up to 10 pots')
+    if (e.message === 'own_listing') throw new Fail("You can't do that on your own post", 409)
+  }
+  return moneyMsg(e)
+}
+const signer = (env: Env, d: Deps) => (path: string) => signedUrl({ SUPABASE_URL: env.SUPABASE_URL, SERVICE_KEY: env.SERVICE_KEY }, path, d.fetch).catch(() => null)
+const signAll = (env: Env, d: Deps, paths: string[] | null | undefined) => Promise.all((paths ?? []).map(signer(env, d)))
+
 const needKyc = (p: Profile, what: string) => { if (p.kyc_status !== 'verified') throw new Fail(`Verify your identity to ${what}`, 403) }
 
 /** Loads (or, on first use, creates) the signed-in user's profile. */
@@ -332,7 +364,7 @@ type Route = (ctx: { req: Request; env: Env; d: Deps; body: Body; url: URL }) =>
 
 const routes: Record<string, Route> = {
   /* ---- public ---- */
-  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env) } }),
+  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env), ...featureFees(env) } }),
 
   'GET username': async ({ d, url }) => {
     const u = (url.searchParams.get('u') ?? '').toLowerCase()
@@ -418,6 +450,8 @@ const routes: Record<string, Route> = {
     if (env.PAYSTACK_SECRET_KEY || env.FLW_SECRET_KEY) for (const w of (await d.db.withdrawals(p.user_id, 5)).filter((x) => x.status === 'processing' && Date.parse(x.created_at) < Date.now() - 120e3)) {
       if (await d.db.hit(`wrecheck:${w.reference}`, 1, 120)) await settleWithdrawal(w, env, d).catch(() => {})
     }
+    // Money owed to this user as a seller/helper that the buyer/poster never confirmed (after 7 / 3 days, no open case).
+    if (await d.db.hit(`autorel:${p.user_id}`, 1, 600)) await d.db.fn('luda_auto_release', { p_user: p.user_id }).catch(() => {})
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
     return {
       profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: isAdmin(p, env), frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null },
@@ -726,7 +760,16 @@ const routes: Record<string, Route> = {
   },
 
   /* ---- owner admin ---- */
-  'GET admin-overview': async ({ req, env, d }) => { await admin(req, env, d); return { ...(await d.db.adminOverview()), openCases: (await d.db.listCases('open', 200)).length } },
+  'GET admin-overview': async ({ req, env, d }) => {
+    const a = await admin(req, env, d)
+    const [ov, cases, bills, held] = await Promise.all([d.db.adminOverview(), d.db.listCases('open', 200), d.db.fn<Record<string, any>[]>('luda_admin_bills', { p_status: 'pending' }), d.db.fn<Record<string, any>[]>('luda_admin_escrows', { p_status: 'held' })])
+    const disputes = held.filter((e) => e.kind !== 'bill')
+    return {
+      ...ov, admin: a.username, openCases: cases.length,
+      billsPending: bills.length, billsPendingMinor: bills.reduce((t, b) => t + Number(b.amount_minor), 0),
+      escrowHeld: disputes.length, escrowHeldMinor: disputes.reduce((t, e) => t + Number(e.amount_minor), 0),
+    }
+  },
 
   'GET admin-users': async ({ req, env, d, url }) => {
     await admin(req, env, d)
@@ -851,6 +894,239 @@ const routes: Record<string, Route> = {
       default: throw new Fail('Unknown action')
     }
     await audit()
+    return { ok: true }
+  },
+
+  /* ---------------- savings pots ---------------- */
+  'POST pot-create': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const name = clean(body.name, 40, 'a name for your pot', 2), emoji = cleanText(body.emoji, 8) || '🎯'
+    const cur = body.currency === 'NGN' ? 'NGN' : 'TRY', goal = int(body.goalMinor ?? 0)
+    if (!(goal >= 0 && goal <= 100_000_000_00) || goal % 100) throw new Fail('Enter a goal in whole amounts')
+    const days = int(body.lockDays ?? 0)
+    if (!(days >= 0 && days <= 366)) throw new Fail('Lock for at most a year')
+    await limit(d, `pot-new:${p.user_id}`, 10, 86400)
+    const until = days ? new Date((d.now?.() ?? new Date()).getTime() + days * 86400e3).toISOString() : null
+    return { pot: await d.db.fn('luda_pot_create', { p_user: p.user_id, p_name: name, p_emoji: emoji, p_currency: cur, p_goal: goal, p_locked_until: until }).catch(featureErr) }
+  },
+
+  'POST pot-move': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const amt = int(body.amountMinor)
+    if (!amt || Math.abs(amt) > 100_000_000_00 || amt % 100) throw new Fail('Enter an amount in whole Naira or Lira')
+    await verifyAuth(p, body, env, d)
+    return { pot: await d.db.fn('luda_pot_move', { p_user: p.user_id, p_pot: uuid(body.potId), p_amount: amt, p_ref: newRef('pot') }).catch(featureErr) }
+  },
+
+  'POST pot-close': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await d.db.fn('luda_pot_close', { p_user: p.user_id, p_pot: uuid(body.potId) }).catch((e) => { if (e instanceof MoneyError && e.message === 'not_available') throw new Fail('Move the money back to your wallet before closing this pot'); throw e })
+    return { ok: true }
+  },
+
+  /* ---------------- assisted bill pay ---------------- */
+  'GET features': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    const r = await d.db.fn<{ pots: unknown[]; bills: Record<string, any>[] }>('luda_features_mine', { p_user: p.user_id })
+    const bills = await Promise.all(r.bills.map(async (b) => ({ ...b, user_id: undefined, files: undefined, receipt: undefined, receiptUrls: await signAll(env, d, b.receipt), photoUrls: await signAll(env, d, b.files) })))
+    return { pots: r.pots, bills, fees: featureFees(env) }
+  },
+
+  'POST bill-create': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const type = String(body.type ?? '')
+    if (!BILL_TYPES.includes(type)) throw new Fail('Pick what kind of bill it is')
+    const provider = clean(body.provider, 60, 'who the bill is from (e.g. KIB-TEK)', 2)
+    const account = cleanText(body.account, 40).replace(/\s+/g, '')
+    if (!/^[\w\-+./]{3,40}$/.test(account)) throw new Fail('Enter the customer / subscriber number from the bill')
+    const amount = lira(body.amountMinor, 10, 20_000, 'The bill amount')
+    await verifyAuth(p, body, env, d)
+    await limit(d, `bill:${p.user_id}`, 10, 86400, 'You can send up to 10 bills a day')
+    const fee = featureFees(env).billMinor
+    const files = await storeFiles(env, d, p.user_id, 'bills', body.files)
+    const bill = await d.db.fn<Record<string, unknown>>('luda_bill_create', { p_user: p.user_id, p_type: type, p_provider: provider, p_account: account, p_amount: amount, p_fee: fee, p_files: files }).catch(featureErr)
+    await d.db.log(String(bill.id), 'bill_new', { user: p.username, type, amount, fee })
+    return { bill: { ...bill, files: undefined, user_id: undefined } }
+  },
+
+  /* ---------------- marketplace ---------------- */
+  'GET market': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    if (await d.db.hit(`autorel:${p.user_id}`, 1, 600)) await d.db.fn('luda_auto_release', { p_user: p.user_id }).catch(() => {})
+    const r = await d.db.fn<{ items: Record<string, any>[]; mine: Record<string, any>[]; bought: Record<string, any>[] }>('luda_market_list', { p_user: p.user_id, p_city: cleanText(url.searchParams.get('city'), 30) })
+    const sign = signer(env, d)
+    const view = async (l: Record<string, any>, all = false) => ({ ...l, seller: undefined, photos: undefined, mine: l.seller === p.user_id, photoUrls: await Promise.all((all ? l.photos : (l.photos ?? []).slice(0, 1)).map(sign)) })
+    return { items: await Promise.all(r.items.map((l) => view(l))), mine: await Promise.all(r.mine.map((l) => view(l))), bought: await Promise.all(r.bought.map((l) => view(l))), feePct: featureFees(env).marketPct }
+  },
+
+  'GET market-item': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    const id = uuid(url.searchParams.get('id'))
+    const r = await d.db.fn<{ items: Record<string, any>[]; mine: Record<string, any>[]; bought: Record<string, any>[] }>('luda_market_list', { p_user: p.user_id, p_city: '' })
+    const l = [...r.items, ...r.mine, ...r.bought].find((x) => x.id === id)
+    if (!l) throw new Fail('This item is no longer listed', 404)
+    return { item: { ...l, seller: undefined, photos: undefined, mine: l.seller === p.user_id, photoUrls: await signAll(env, d, l.photos) } }
+  },
+
+  'POST market-list': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    needKyc(p, 'sell on the marketplace')
+    const title = clean(body.title, 70, 'a title', 3), description = clean(body.description ?? '', 600, 'a description', 0)
+    const category = MARKET_CATEGORIES.includes(String(body.category)) ? String(body.category) : 'other'
+    const city = cleanText(body.city, 30), price = lira(body.priceMinor, 10, 100_000, 'The price')
+    if (Array.isArray(body.photos) && body.photos.length > 3) throw new Fail('Add at most 3 photos')
+    await limit(d, `list:${p.user_id}`, 5, 86400, 'You can post up to 5 items a day')
+    const id = crypto.randomUUID()
+    const photos = await storeFiles(env, d, p.user_id, `market-${id}`, body.photos)
+    if (photos.some((x) => x.endsWith('.pdf'))) throw new Fail('Photos only (JPG, PNG or WEBP)')
+    const row = await d.db.fn<Record<string, unknown>>('luda_market_create', { p_id: id, p_seller: p.user_id, p_title: title, p_description: description, p_category: category, p_city: city, p_price: price, p_photos: photos }).catch(featureErr)
+    return { item: row }
+  },
+
+  'POST market-remove': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await d.db.fn('luda_market_remove', { p_listing: uuid(body.id), p_seller: p.user_id }).catch(featureErr)
+    return { ok: true }
+  },
+
+  'POST market-buy': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const id = uuid(body.id)
+    await verifyAuth(p, body, env, d)
+    await limit(d, `buy:${p.user_id}`, 20, 86400)
+    const r = await d.db.fn<{ price_minor: number }>('luda_market_buy', { p_listing: id, p_buyer: p.user_id, p_fee_pct: featureFees(env).marketPct }).catch(featureErr)
+    await d.db.log(id, 'market_buy', { buyer: p.username, price: r.price_minor })
+    return { ok: true }
+  },
+
+  // Buyer has the item: pay the seller.
+  'POST market-received': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const id = uuid(body.id)
+    await verifyAuth(p, body, env, d)
+    const r = await d.db.fn<{ items: unknown[]; mine: unknown[]; bought: Record<string, any>[] }>('luda_market_list', { p_user: p.user_id, p_city: '' })
+    if (!r.bought.some((l) => l.id === id && l.status === 'reserved')) throw new Fail('Nothing to confirm for this item', 409)
+    await d.db.fn('luda_market_finish', { p_listing: id, p_to: 'seller', p_note: 'Buyer confirmed receipt' }).catch(featureErr)
+    await d.db.log(id, 'market_released', { by: p.username })
+    return { ok: true }
+  },
+
+  // Seller can't hand it over: give the buyer their money back.
+  'POST market-cancel': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const id = uuid(body.id)
+    const r = await d.db.fn<{ items: unknown[]; mine: Record<string, any>[]; bought: unknown[] }>('luda_market_list', { p_user: p.user_id, p_city: '' })
+    if (!r.mine.some((l) => l.id === id && l.status === 'reserved')) throw new Fail('Nothing to cancel for this item', 409)
+    await d.db.fn('luda_market_finish', { p_listing: id, p_to: 'buyer', p_note: 'Seller cancelled the sale' }).catch(featureErr)
+    await d.db.log(id, 'market_cancelled', { by: p.username })
+    return { ok: true }
+  },
+
+  /* ---------------- Flash help ---------------- */
+  'GET flash': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    if (await d.db.hit(`autorel:${p.user_id}`, 1, 600)) await d.db.fn('luda_auto_release', { p_user: p.user_id }).catch(() => {})
+    const r = await d.db.fn<Record<string, Record<string, any>[]>>('luda_flash_list', { p_user: p.user_id, p_city: cleanText(url.searchParams.get('city'), 30) })
+    const strip = (j: Record<string, any>) => ({ ...j, poster: undefined, helper: undefined, mine: j.poster === p.user_id })
+    return { open: r.open.map(strip), mine: r.mine.map(strip), helping: r.helping.map(strip), feePct: featureFees(env).flashPct }
+  },
+
+  'POST flash-post': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const title = clean(body.title, 70, 'what you need help with', 5), details = clean(body.details ?? '', 400, 'details', 0)
+    const city = cleanText(body.city, 30), reward = lira(body.rewardMinor, 20, 5_000, 'The reward')
+    await verifyAuth(p, body, env, d)
+    await limit(d, `flash:${p.user_id}`, 5, 86400, 'You can post up to 5 Flash jobs a day')
+    const fee = Math.round(reward * featureFees(env).flashPct)
+    return { job: await d.db.fn('luda_flash_post', { p_poster: p.user_id, p_title: title, p_details: details, p_city: city, p_reward: reward, p_fee: fee }).catch(featureErr) }
+  },
+
+  'POST flash-take': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    needKyc(p, 'take paid Flash jobs')
+    const r = await d.db.fn<Record<string, Record<string, any>[]>>('luda_flash_list', { p_user: p.user_id, p_city: '' })
+    if (r.helping.filter((j) => j.status === 'taken').length >= 3) throw new Fail('Finish your current jobs first (max 3 at a time)')
+    await limit(d, `flash-take:${p.user_id}`, 10, 86400)
+    return { job: await d.db.fn('luda_flash_take', { p_job: uuid(body.id), p_helper: p.user_id }).catch(featureErr) }
+  },
+
+  'POST flash-drop': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    return { job: await d.db.fn('luda_flash_drop', { p_job: uuid(body.id), p_helper: p.user_id }).catch(featureErr) }
+  },
+
+  // Poster: job done → pay the helper. Or cancel an open job → reward back.
+  'POST flash-done': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const id = uuid(body.id)
+    await verifyAuth(p, body, env, d)
+    const r = await d.db.fn<Record<string, Record<string, any>[]>>('luda_flash_list', { p_user: p.user_id, p_city: '' })
+    if (!r.mine.some((j) => j.id === id && j.status === 'taken')) throw new Fail('Nothing to confirm for this job', 409)
+    await d.db.fn('luda_flash_finish', { p_job: id, p_to: 'helper', p_note: 'Poster confirmed the job is done' }).catch(featureErr)
+    return { ok: true }
+  },
+
+  'POST flash-cancel': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const id = uuid(body.id)
+    const r = await d.db.fn<Record<string, Record<string, any>[]>>('luda_flash_list', { p_user: p.user_id, p_city: '' })
+    const j = r.mine.find((x) => x.id === id)
+    if (!j || j.status !== 'open') throw new Fail(j?.status === 'taken' ? 'Someone is already doing this job. Ask them to drop it, or open a case if there is a problem.' : 'Nothing to cancel', 409)
+    await d.db.fn('luda_flash_finish', { p_job: id, p_to: 'poster', p_note: 'Poster cancelled' }).catch(featureErr)
+    return { ok: true }
+  },
+
+  /* ---------------- admin: bills and money in escrow ---------------- */
+  'GET admin-bills': async ({ req, env, d, url }) => {
+    await admin(req, env, d)
+    const st = url.searchParams.get('status')
+    const list = await d.db.fn<Record<string, any>[]>('luda_admin_bills', { p_status: st === 'all' ? null : st || 'pending' })
+    return { bills: await Promise.all(list.map(async (b) => ({ ...b, photoUrls: await signAll(env, d, b.files), receiptUrls: await signAll(env, d, b.receipt), files: undefined, receipt: undefined }))) }
+  },
+
+  'POST admin-bill': async ({ req, env, d, body }) => {
+    const a = await admin(req, env, d)
+    await verifyAuth(a, body, env, d)
+    const id = uuid(body.billId), paid = body.paid === true, note = cleanText(body.note, 200)
+    if (!paid && !note) throw new Fail('Tell the user why the bill could not be paid')
+    const receipt = paid ? await storeFiles(env, d, a.user_id, `receipts`, body.files) : []
+    if (paid && !receipt.length) throw new Fail('Attach the payment receipt (photo or PDF)')
+    const r = await d.db.fn<{ ok: boolean }>('luda_bill_settle', { p_bill: id, p_paid: paid, p_note: note || 'Paid by the Luda team', p_receipt: receipt })
+    if (!r.ok) throw new Fail('This bill was already handled', 409)
+    await d.db.log(id, paid ? 'admin_bill_paid' : 'admin_bill_refunded', { by: a.username, note })
+    return { ok: true }
+  },
+
+  'GET admin-escrows': async ({ req, env, d, url }) => {
+    await admin(req, env, d)
+    const st = url.searchParams.get('status')
+    return { escrows: await d.db.fn('luda_admin_escrows', { p_status: st === 'all' ? null : st || 'held' }) }
+  },
+
+  // Resolve a marketplace / Flash dispute: pay the seller or helper, or refund the buyer or poster.
+  'POST admin-escrow': async ({ req, env, d, body }) => {
+    const a = await admin(req, env, d)
+    await verifyAuth(a, body, env, d)
+    const to = body.to === 'payee' ? 'payee' : body.to === 'payer' ? 'payer' : ''
+    const note = cleanText(body.note, 200)
+    if (!to || !note) throw new Fail('Choose who gets the money and add a reason')
+    const list = await d.db.fn<Record<string, any>[]>('luda_admin_escrows', { p_status: 'held' })
+    const e = list.find((x) => x.id === uuid(body.escrowId))
+    if (!e) throw new Fail('This money was already released or refunded', 409)
+    const item = e.item as { type: string; id: string } | null
+    let r: { ok: boolean }
+    if (item?.type === 'market') r = await d.db.fn('luda_market_finish', { p_listing: item.id, p_to: to === 'payee' ? 'seller' : 'buyer', p_note: `Luda team: ${note}` })
+    else if (item?.type === 'flash') {
+      if (to === 'payee' && !e.payee) throw new Fail('Nobody has taken this job yet')
+      r = await d.db.fn('luda_flash_finish', { p_job: item.id, p_to: to === 'payee' ? 'helper' : 'poster', p_note: `Luda team: ${note}` })
+    } else if (item?.type === 'bill') r = await d.db.fn('luda_bill_settle', { p_bill: item.id, p_paid: to === 'payee', p_note: note, p_receipt: [] })
+    else throw new Fail('Unknown item')
+    if (!r.ok) throw new Fail('This was already settled', 409)
+    if (body.caseId) {
+      const c = await d.db.getCase(String(body.caseId))
+      if (c) { await d.db.addCaseMessage({ case_id: c.id, author: 'admin', author_name: 'Luda team', body: `Decision: ${note}`, files: [] }); await d.db.updateCase(c.id, { status: 'resolved', resolution: note }) }
+    }
+    await d.db.log(String(body.escrowId), 'admin_escrow', { by: a.username, to, note })
     return { ok: true }
   },
 

@@ -108,7 +108,7 @@ export interface Me {
   withdrawals: LiveWithdrawal[]
   deposits: LiveDeposit[]
 }
-export interface LiveConfig { google: boolean; sms: boolean; didit: boolean; nin: boolean; providers: Provider[]; foreign: string[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number } }
+export interface LiveConfig { google: boolean; sms: boolean; didit: boolean; nin: boolean; providers: Provider[]; foreign: string[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number; billMinor?: number; marketPct?: number; flashPct?: number } }
 
 let cfg: Promise<LiveConfig> | null = null
 export const liveConfig = () => (cfg ??= raw<LiveConfig>('GET', 'config', undefined, false).catch((e) => { cfg = null; throw e }))
@@ -133,7 +133,11 @@ export const FOREIGN_CURRENCIES: Record<string, { flag: string; name: string; qu
 
 export const KIND_LABEL: Record<string, string> = {
   deposit: 'Top-up', withdraw: 'Withdrawal', withdraw_fee: 'Withdrawal fee', withdraw_reversal: 'Withdrawal refunded',
-  convert: 'Conversion', send: 'Sent', receive: 'Received', ticket: 'Ticket',
+  convert: 'Conversion', send: 'Sent', receive: 'Received', ticket: 'Ticket', adjustment: 'Correction by Luda',
+  pot_in: 'Moved to savings', pot_out: 'Back from savings',
+  bill_pay: 'Bill payment', bill_refund: 'Bill refunded',
+  market_pay: 'Marketplace purchase', market_refund: 'Purchase refunded', market_earn: 'Item sold',
+  flash_pay: 'Flash job reward held', flash_refund: 'Flash reward returned', flash_earn: 'Flash job earned',
 }
 
 /* ----------------------------- pending deposit ----------------------------- */
