@@ -23,12 +23,12 @@ export const TICKET_DISCOUNT = { single: 12, return: 14 }
 
 /**
  * Girne ⇄ Lefkoşa bus operators and official fares (TL, per passenger).
- * CONFIRM the second operator's exact name and current fares before launch.
+ * Operators confirmed by the owner. Re-check current fares before launch.
  */
 export const GIRNE_LEFKOSA = {
   operators: [
     { id: 'virgo', name: 'VirgoBus', color: 'from-violet-500 to-fuchsia-700', every: 20 },
-    { id: 'girneseri', name: 'Girne Seri', color: 'from-sky-500 to-blue-700', every: 30 },
+    { id: 'girneliler', name: 'Girneliler Seyahat', color: 'from-sky-500 to-blue-700', every: 30 },
   ],
   single: 250,
   return: 450,

@@ -25,14 +25,13 @@ Luda is an all-in-one, gamified, modern app for Africans (mostly students) livin
 10. The owner speaks through voice dictation, so names get mangled. "Greene" or "Guinea" means **Girne**.
 
 ## Key business numbers (`app/src/config.ts`)
-- Girne⇄Lefkoşa tickets: operators VirgoBus (every 20 min) and "Girne Seri" (every 30 min). Fares: single ₺250, return ₺450.
+- Girne⇄Lefkoşa tickets: operators VirgoBus (every 20 min) and Girneliler Seyahat (every 30 min; name confirmed by the owner). Fares: single ₺250, return ₺450.
 - Ride Saver discount: −₺12 single, −₺14 return. Limits: 2 discounted tickets per month, opt-in, automatic selection. To qualify, a user needs a verified phone, KYC and one wallet top-up.
 - Airport: KIBHAS shuttle only. The airport ride-pool was removed on purpose.
 - P2P fee: 0.5%. Ad limits: a member gets 1 ad up to ₺5,000; a Verified Exchanger gets 5 ads up to ₺50,000 and pays a ₺2,000 bond.
 - Referral reward: ₺50. Daily limits for each action type are in `DAILY_LIMITS`.
 
 ## Open questions for the owner
-- What is the exact name of the second Girne–Lefkoşa operator? It is currently "Girne Seri", which is unconfirmed.
 - Does "they give me 5" mean a ₺5 commission per ticket?
 - Going live is deferred. The suggested path: build the free features on a real backend (Supabase), host on Cloudflare Pages (root `app`, build `npm run build`, output `dist`, NODE_VERSION 22), and add payments and KYC providers later.
 
