@@ -21,7 +21,9 @@ export interface Db {
 
 export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
   const base = `${url.replace(/\/$/, '')}/rest/v1`
-  const h = (extra: Record<string, string> = {}) => ({ apikey: serviceKey, authorization: `Bearer ${serviceKey}`, 'content-type': 'application/json', ...extra })
+  // Legacy service_role keys are JWTs (sent in both headers); newer `sb_secret_…` keys go in `apikey` only.
+  const auth: Record<string, string> = serviceKey.startsWith('sb_') ? { apikey: serviceKey } : { apikey: serviceKey, authorization: `Bearer ${serviceKey}` }
+  const h = (extra: Record<string, string> = {}) => ({ ...auth, 'content-type': 'application/json', ...extra })
   const ok = async (r: Response) => { if (!r.ok) throw new Error(`Database error ${r.status}: ${await r.text()}`); return r }
   const q = encodeURIComponent
   return {

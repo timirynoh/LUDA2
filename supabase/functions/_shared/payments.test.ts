@@ -121,3 +121,12 @@ test('input checks: provider, email, rate limit, unknown reference', async () =>
   const g = await (await handleInit(new Request('https://fn/pay-init'), env, d)).json() as any
   assert.deepEqual(g.providers, ['paystack', 'flutterwave'])
 })
+
+test('only the bus companies the owner switched on can be sold', async () => {
+  const { db } = memDb(), api = fakeApi(), d = { db, fetch: api.f, now: () => NOW }
+  const e2 = { ...env, SELL_OPERATORS: 'girneliler, kibhas' }
+  const r = await handleInit(post({ provider: 'paystack', purpose: 'ticket', email: 'a@x.com', item: ticket }), e2, d)
+  assert.equal(r.status, 400); assert.match(((await r.json()) as any).error, /coming soon/)
+  assert.equal(api.calls.length, 0, 'no checkout created')
+  assert.equal((await handleInit(post({ provider: 'paystack', purpose: 'ticket', email: 'a@x.com', item: { ...ticket, operatorId: 'girneliler' } }), e2, d)).status, 200)
+})

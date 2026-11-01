@@ -33,7 +33,7 @@ Luda is an all-in-one, gamified, modern app for Africans (mostly students) livin
 
 ## Open questions for the owner
 - Does "they give me 5" mean a ₺5 commission per ticket?
-- Is the owner's business registered with CAC yet? Paystack and Flutterwave need it for live keys.
+- Business registration is in progress (the owner says live keys are available). Have VirgoBus, Girneliler Seyahat and KIBHAS agreed to accept Luda tickets, and how are they paid?
 - Next phases: **1b** real Luda accounts on Supabase (then Ride Saver can apply to online payments); **2** live keys after CAC; **3** wallet, transfers and exchange after legal advice. Also needed: how the bus companies get paid their TL share.
 
 ## Stack
@@ -66,7 +66,10 @@ All code lives in `app/`:
 - Rules: the server sets the price; the ticket is issued only after the server verifies with the provider (exact amount and currency, else `mismatch`); settled exactly once; webhooks are signature-checked; card data never touches Luda.
 - App: `src/lib/payments.ts`, `components/OnlinePay.tsx` (two-step: quote, then confirm), `screens/PayReturn.tsx` (`/pay/return`). Online-paid tickets have `payRef` and are refunded through support.
 - Tests: `node --test supabase/functions/_shared/payments.test.ts` (no install needed). Type-check with `app/node_modules/.bin/tsc -p supabase/functions/tsconfig.json`.
-- Setup for the owner: `docs/GO_LIVE.md`.
+- Setup for the owner: `docs/GO_LIVE.md` (browser-only, **live keys**; the owner has live Paystack and Flutterwave accounts).
+- Deploy: the GitHub Action `.github/workflows/deploy-payments.yml` runs the tests, `db push` and deploys the functions (`--no-verify-jwt`) on every push touching `supabase/**`. It needs the repo secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD`.
+- Server secrets (Supabase → Edge Functions → Secrets): `APP_URL`, `PAYSTACK_SECRET_KEY`, `FLW_SECRET_KEY`, `FLW_SECRET_HASH`, `FX_FALLBACK_RATE`, `SELL_OPERATORS` (only operators that agreed to accept Luda tickets); optional `FX_FIXED_RATE`, `FX_MARGIN`, `LUDA_SERVICE_KEY`.
+- Never ask the owner to paste secret keys into chat.
 - `vite.config.ts` uses base `/` for real hosting (deep links work) and `./` only for the embed build.
 
 ## Build, test, publish

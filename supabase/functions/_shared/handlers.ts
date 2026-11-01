@@ -9,6 +9,7 @@ export interface Env extends Keys {
   APP_URL: string // where the app is hosted, e.g. https://luda.app (used for the return link)
   ALLOWED_ORIGINS?: string // extra comma-separated origins allowed to call the API (e.g. http://localhost:5173)
   CHARGE_CURRENCY?: string; FX_FIXED_RATE?: string; FX_FALLBACK_RATE?: string; FX_MARGIN?: string
+  SELL_OPERATORS?: string // e.g. "virgo,girneliler,kibhas": only these can be bought. Unset = all.
 }
 export interface Deps { db: Db; fetch?: Fetch; now?: () => Date }
 
@@ -64,6 +65,8 @@ export async function handleInit(req: Request, env: Env, d: Deps): Promise<Respo
       return json({ error: 'Too many payment attempts. Try again in an hour.' }, 429, h)
 
     const priced = priceTicket(body.item ?? {}, now)
+    const selling = (env.SELL_OPERATORS ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+    if (selling.length && !selling.includes(priced.item.operatorId)) return json({ error: 'Online tickets for this company are coming soon' }, 400, h)
     const fx = await chargeRate(priced.currency, env, d.fetch)
     const amountMinor = Math.ceil(priced.amount * fx.rate * 100)
     const reference = newReference()

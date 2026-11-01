@@ -1,5 +1,12 @@
 # Supabase project config (only the parts Luda changes from the defaults).
-# Webhooks come from Paystack/Flutterwave, not from a signed-in user, so they
-# skip Supabase's JWT check; the function verifies the provider signature instead.
+# The payment functions do their own checks (server-side prices, rate limits,
+# provider webhook signatures), so Supabase's JWT check is turned off. This also
+# keeps them working with Supabase's newer non-JWT "publishable" API keys.
+[functions.pay-init]
+verify_jwt = false
+
+[functions.pay-verify]
+verify_jwt = false
+
 [functions.pay-webhook]
 verify_jwt = false

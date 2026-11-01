@@ -1,0 +1,55 @@
+# Installs/updates the Luda payment server on Supabase whenever supabase/** changes
+# (or when run by hand from the GitHub "Actions" tab).
+# Needs three GitHub repository secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_ACCESS_TOKEN  – from supabase.com/dashboard/account/tokens
+#   SUPABASE_PROJECT_REF   – the "abcd" in https://abcd.supabase.co
+#   SUPABASE_DB_PASSWORD   – the database password chosen when creating the project
+# Payment keys (Paystack/Flutterwave) are NOT stored here: they live in Supabase → Edge Functions → Secrets.
+name: Deploy payment server
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, claude/cyprus-expat-app-mlnvuc]
+    paths: ['supabase/**', '.github/workflows/deploy-payments.yml']
+
+concurrency: deploy-payments
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node --test supabase/functions/_shared/payments.test.ts
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check secrets are set
+        run: |
+          for v in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Add the GitHub secret $v (see docs/GO_LIVE.md)"; exit 1; fi
+          done
+      - uses: supabase/setup-cli@v1
+        with: { version: latest }
+      - name: Create / update database tables
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" -p "$SUPABASE_DB_PASSWORD"
+          supabase db push -p "$SUPABASE_DB_PASSWORD"
+      - name: Deploy payment functions
+        # No Supabase JWT check: pay-init/pay-verify are public by design (rate-limited,
+        # server-priced) and pay-webhook is protected by the provider signature.
+        run: |
+          for fn in pay-init pay-verify pay-webhook; do
+            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
+          done
+      - name: Print your webhook address
+        run: echo "Webhook URL for Paystack and Flutterwave → https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/pay-webhook"
