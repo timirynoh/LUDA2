@@ -3,3 +3,6 @@
 !.env.example
 supabase/.temp/
 supabase/.branches/
+
+# Rendered ad videos (large; sent to the owner directly)
+ad-video/
