@@ -12,11 +12,6 @@ export function useRecorder(onDone: (url: string, dur: number) => void, onError:
   const chunks = useRef<Blob[]>([])
   const cancelled = useRef(false)
   const started = useRef(0)
-  useEffect(() => {
-    if (!rec) return
-    const t = setInterval(() => { const s = Math.floor((Date.now() - started.current) / 1000); setSec(s); if (s >= MAX_SEC) stop() }, 250)
-    return () => clearInterval(t)
-  })
   const start = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -32,8 +27,13 @@ export function useRecorder(onDone: (url: string, dur: number) => void, onError:
       mr.current = m; started.current = Date.now(); setSec(0); m.start(); setRec(true)
     } catch { onError('Microphone not available. Allow mic access in your browser settings.') }
   }
-  const stop = () => { mr.current?.state === 'recording' && mr.current.stop(); setRec(false) }
+  function stop() { if (mr.current?.state === 'recording') mr.current.stop(); setRec(false) }
   const cancel = () => { cancelled.current = true; stop() }
+  useEffect(() => {
+    if (!rec) return
+    const t = setInterval(() => { const s = Math.floor((Date.now() - started.current) / 1000); setSec(s); if (s >= MAX_SEC) stop() }, 250)
+    return () => clearInterval(t)
+  })
   return { rec, sec, start, stop, cancel }
 }
 

@@ -20,7 +20,7 @@ export default function Profile() {
     if (k === 'photo') setPhotoSheet(true)
     else if (k === 'bio') setEdit(true)
     else if (k === 'phone') gate(1, 'Verify your phone')
-    else if (k === 'kyc') (s.phoneVerified ? setKyc(true) : gate(2, 'KYC verification'))
+    else if (k === 'kyc') { if (s.phoneVerified) setKyc(true); else gate(2, 'KYC verification') }
     else if (k === 'security') nav('/security')
   }
   const country = COUNTRIES.find((c) => c.code === s.country)!

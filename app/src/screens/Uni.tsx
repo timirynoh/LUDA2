@@ -73,6 +73,7 @@ function Timetable() {
   const [draft, setDraft] = useState<ClassItem[]>([])
   const [day, setDay] = useState(() => (new Date().getDay() + 6) % 7)
   const [consent, setConsent] = useState(false)
+  const [raw, setRaw] = useState<string[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
   const nc = useMemo(() => nextClass(s.classes), [s.classes])
 
@@ -80,9 +81,10 @@ function Timetable() {
     const url = URL.createObjectURL(file)
     setPreview(url); setStage('reading'); setProgress({ p: 0, label: 'Starting on-device reader…' })
     try {
-      const { classes } = await readTimetable(file, (p, status) => setProgress({ p, label: status.replace(/^./, (c) => c.toUpperCase()) }))
+      const { classes, lines } = await readTimetable(file, (p, status) => setProgress({ p, label: status.replace(/^./, (c) => c.toUpperCase()) }))
       setDraft(classes.length ? classes : [{ id: uid(), course: '', day: 0, start: '09:00', end: '09:50' }])
-      if (!classes.length) toast({ title: "Couldn't read classes. Add them below", emoji: '✍️' })
+      setRaw(classes.length ? [] : lines.filter((l) => l.trim().length > 2).slice(0, 14))
+      if (!classes.length) toast({ title: "Couldn't spot classes. See tips below", emoji: '✍️' })
       setStage('review')
     } catch {
       toast({ title: 'Reader unavailable here. Add classes manually', emoji: '✍️' })
@@ -126,6 +128,17 @@ function Timetable() {
         <Wand2 size={18} className="mt-0.5 shrink-0 text-indigo-300" />
         <p>We found <b>{draft.filter((d) => d.course).length} classes</b>. Check them and fix anything we got wrong.</p>
       </div>
+      {raw.length > 0 && (
+        <div className="rounded-2xl border border-gold-400/30 bg-gold-400/5 p-3 text-xs">
+          <p className="font-semibold text-gold-200">We read the text but couldn't match classes. Tips:</p>
+          <ul className="mt-1 list-disc ps-4 text-slate-300">
+            <li>Crop the screenshot to just the timetable (no menus), and zoom in so the text is big.</li>
+            <li>Make sure day names (Mon/Monday/Pazartesi) and times (09:00) are visible.</li>
+            <li>Or add your classes below; it only takes a minute.</li>
+          </ul>
+          <details className="mt-2 text-slate-400"><summary className="cursor-pointer">What we read</summary><pre className="mt-1 whitespace-pre-wrap font-sans">{raw.join('\n')}</pre></details>
+        </div>
+      )}
       {draft.map((c, i) => (
         <div key={c.id} className="card grid grid-cols-6 gap-2 p-3">
           <input className="input col-span-3 py-2 font-semibold uppercase" placeholder="Course" value={c.course} onChange={(e) => setDraft(draft.map((x, j) => (j === i ? { ...x, course: e.target.value } : x)))} />

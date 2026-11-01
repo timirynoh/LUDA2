@@ -10,3 +10,6 @@ export interface ExchangerApp { status: 'none' | 'pending' | 'approved'; display
 /** Refundable safety deposit held while you're an exchanger (protects buyers). */
 export const EXCHANGER_BOND = 2000
 export const PAY_METHODS = ['Cash in person', 'Bank transfer (home country)', 'Mobile money', 'Luda wallet']
+
+/** Ads: any KYC-verified user can post; Verified Exchangers get more and bigger ads. */
+export const AD_LIMITS = { member: { ads: 1, total: 5000 }, exchanger: { ads: 5, total: 50000 } }

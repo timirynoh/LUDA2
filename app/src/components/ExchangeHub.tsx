@@ -3,7 +3,7 @@ import { BadgeCheck, Check, ChevronRight, Lock, Pause, Play, Plus, ShieldCheck, 
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { COUNTRIES, CURRENCIES, SAFE_SPOTS } from '../lib/data'
-import { EXCHANGER_BOND, PAY_METHODS, type Ad, type AdMode } from '../lib/exchanger'
+import { AD_LIMITS as LIMITS, EXCHANGER_BOND, PAY_METHODS, type Ad, type AdMode } from '../lib/exchanger'
 import { convert, fmt, useRates } from '../lib/fx'
 import { uid, useStore } from '../lib/store'
 import { Segmented, Sheet } from './ui'
@@ -15,6 +15,8 @@ export function ExchangeHub() {
   const [creating, setCreating] = useState(false)
   const live = s.trades.filter((x) => ['escrow', 'meeting', 'disputed'].includes(x.status))
   const ex = s.exchanger
+  const lim = ex.status === 'approved' ? LIMITS.exchanger : LIMITS.member
+  const activeAds = s.ads.filter((a) => a.active).length
 
   const closeExchanger = () => {
     if (s.ads.some((a) => a.active)) return toast({ title: 'Pause or delete your active ads first', emoji: '⏸️' })
@@ -45,29 +47,32 @@ export function ExchangeHub() {
         </section>
       )}
 
+      {/* Anyone who is KYC-verified can post ads. Verified Exchangers get higher limits and a badge. */}
+      <section className="card">
+        <div className="flex items-center gap-3">
+          <div className="grid size-12 place-items-center rounded-2xl bg-gold-400/15 text-2xl">{ex.status === 'approved' ? '🏪' : '💱'}</div>
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-1 font-bold">{ex.status === 'approved' ? ex.displayName : 'My exchange ads'}{ex.status === 'approved' && <BadgeCheck size={16} className="text-gold-300" />}</p>
+            <p className="text-xs text-slate-400">{ex.status === 'approved' ? `Verified exchanger · up to ${LIMITS.exchanger.ads} ads · ${fmt(LIMITS.exchanger.total, 'TRY')} each` : `Verified users: ${LIMITS.member.ads} ad up to ${fmt(LIMITS.member.total, 'TRY')}`}</p>
+          </div>
+          <button className="btn-primary shrink-0 px-3 py-2 text-sm" onClick={() => { if (!gate(2, 'Post an exchange ad')) return; if (activeAds >= lim.ads) { toast({ title: `Limit reached: ${lim.ads} active ad${lim.ads > 1 ? 's' : ''}.${ex.status !== 'approved' ? ' Become a Verified Exchanger for more.' : ''}`, emoji: '⏸️' }); return } setCreating(true) }}><Plus size={16} /> Post ad</button>
+        </div>
+        {s.ads.length > 0 && <><p className="label mt-4 mb-2">My ads</p>{s.ads.map((a) => <AdRow key={a.id} a={a} />)}</>}
+        {!s.ads.length && <p className="mt-3 text-sm text-slate-400">Have Lira or Naira to exchange? Post an ad. You must be KYC-verified, and every trade goes through escrow.</p>}
+        {ex.status === 'approved' && <button className="mt-3 text-xs text-slate-500 underline" onClick={closeExchanger}>Close exchanger account & get deposit back</button>}
+      </section>
+
       {ex.status === 'none' && (
         <div className="card">
-          <p className="flex items-center gap-2 font-bold"><Store size={18} className="text-gold-300" /> Become a verified exchanger</p>
-          <p className="mt-1 text-sm text-slate-400">Post your own rates, reach the whole community and earn on every swap. You get the ✓ Exchanger badge.</p>
+          <p className="flex items-center gap-2 font-bold"><Store size={18} className="text-gold-300" /> Upgrade: Verified Exchanger</p>
+          <p className="mt-1 text-sm text-slate-400">Exchange a lot? Get the 🏪 badge, {LIMITS.exchanger.ads} ads, bigger amounts and top placement in offers.</p>
           <ul className="mt-2 grid gap-1 text-xs text-slate-300">
             <li>✓ KYC verified · ✓ Phone verified</li><li>✓ Refundable safety deposit of {fmt(EXCHANGER_BOND, 'TRY')} (protects buyers)</li><li>✓ Agree to fair-rate & no-scam rules</li>
           </ul>
-          <button className="btn-gold mt-3 w-full py-3" onClick={() => gate(2, 'Become an exchanger') && setApply(true)}>Apply now</button>
+          <button className="btn-gold mt-3 w-full py-3" onClick={() => gate(2, 'Become an exchanger') && setApply(true)}>Apply</button>
         </div>
       )}
-      {ex.status === 'pending' && <div className="card flex items-center gap-3 border-sky-400/30 bg-sky-400/10"><ShieldCheck className="animate-pulse text-sky-300" /><div><p className="font-semibold">Application under review</p><p className="text-xs text-slate-400">Usually a few minutes. We'll notify you.</p></div></div>}
-      {ex.status === 'approved' && (
-        <section className="card">
-          <div className="flex items-center gap-3">
-            <div className="grid size-12 place-items-center rounded-2xl bg-gold-400/15 text-2xl">🏪</div>
-            <div className="flex-1"><p className="flex items-center gap-1 font-bold">{ex.displayName}<BadgeCheck size={16} className="text-gold-300" /></p><p className="text-xs text-slate-400">Verified exchanger · deposit {fmt(ex.bond ?? 0, 'TRY')} held</p></div>
-            <button className="btn-primary px-3 py-2 text-sm" onClick={() => setCreating(true)}><Plus size={16} /> New ad</button>
-          </div>
-          <p className="label mt-4 mb-2">My ads</p>
-          {s.ads.length ? s.ads.map((a) => <AdRow key={a.id} a={a} />) : <p className="text-sm text-slate-400">No ads yet. Create one to start receiving orders.</p>}
-          <button className="mt-3 text-xs text-slate-500 underline" onClick={closeExchanger}>Close exchanger account & get deposit back</button>
-        </section>
-      )}
+      {ex.status === 'pending' && <div className="card flex items-center gap-3 border-sky-400/30 bg-sky-400/10"><ShieldCheck className="animate-pulse text-sky-300" /><div><p className="font-semibold">Exchanger application under review</p><p className="text-xs text-slate-400">Usually a few minutes. We'll notify you.</p></div></div>}
       {apply && <ApplySheet onClose={() => setApply(false)} />}
       {creating && <CreateAd onClose={() => setCreating(false)} />}
     </div>
@@ -139,7 +144,8 @@ function CreateAd({ onClose }: { onClose: () => void }) {
   const rate = (+f.rate || 0) / 1000
   const diff = market ? ((rate - market) / market) * 100 : 0
   const lockNeeded = f.mode === 'inapp' && f.side === 'sell' ? +f.total || 0 : 0
-  const valid = rate > 0 && +f.min > 0 && +f.max >= +f.min && +f.total >= +f.max && Math.abs(diff) <= 15 && (s.balances.TRY ?? 0) >= lockNeeded
+  const capTotal = (s.exchanger.status === 'approved' ? LIMITS.exchanger : LIMITS.member).total
+  const valid = rate > 0 && +f.min > 0 && +f.max >= +f.min && +f.total >= +f.max && +f.total <= capTotal && Math.abs(diff) <= 15 && (s.balances.TRY ?? 0) >= lockNeeded
   const publish = () => {
     if (!allow('ad')) return
     const ad: Ad = { id: uid(), side: f.side, cur: hc, rate, min: +f.min, max: +f.max, total: +f.total, mode: f.mode, spot: f.spot, methods: f.methods, active: true, createdAt: Date.now(), trades: 0, locked: lockNeeded }
@@ -158,6 +164,7 @@ function CreateAd({ onClose }: { onClose: () => void }) {
         <div className="grid grid-cols-3 gap-2">
           {(['total', 'min', 'max'] as const).map((k) => <label key={k} className="grid gap-1 text-xs text-slate-400">{k === 'total' ? 'Total ₺' : k === 'min' ? 'Min ₺' : 'Max ₺'}<input className="input py-2.5" inputMode="numeric" value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value.replace(/\D/g, '') })} /></label>)}
         </div>
+        {+f.total > capTotal && <p className="text-xs text-rose-300">Max {fmt(capTotal, 'TRY')} per ad{s.exchanger.status !== 'approved' ? '. Become a Verified Exchanger for bigger ads' : ''}.</p>}
         <Segmented value={f.mode} onChange={(v) => setF({ ...f, mode: v })} options={[{ value: 'cash', label: '💵 Cash in person' }, { value: 'inapp', label: '📲 In-app (escrow)' }]} />
         {f.mode === 'inapp' && f.side === 'sell' && <p className="rounded-2xl bg-fuchsia-500/10 p-3 text-xs text-fuchsia-100">🔒 {fmt(lockNeeded, 'TRY')} will be locked in escrow from your wallet, so buyers know the money is really there. Unlocked when you delete the ad.{(s.balances.TRY ?? 0) < lockNeeded ? ' Not enough balance.' : ''}</p>}
         {f.mode === 'cash' && <select className="input" value={f.spot} onChange={(e) => setF({ ...f, spot: e.target.value })}>{spots.map((x) => <option key={x}>{x}</option>)}</select>}
