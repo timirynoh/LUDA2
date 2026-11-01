@@ -21,6 +21,8 @@ import Security from './screens/Security'
 import Inbox from './screens/Inbox'
 import Search from './screens/Search'
 import Help from './screens/Help'
+import { DisputeList, DisputeView } from './screens/Disputes'
+import { useDisputeProgress, useExchangerReview } from './lib/disputeFlow'
 import Profile from './screens/Profile'
 import Residency from './screens/Residency'
 import Rewards from './screens/Rewards'
@@ -51,6 +53,8 @@ export default function App() {
   useGigProgress()
   useTierCelebration()
   useKycReview()
+  useDisputeProgress()
+  useExchangerReview()
   const inRoom = loc.pathname.startsWith('/chats/')
   const [splash, setSplash] = useState(true)
   const [authView, setAuthView] = useState<'landing' | 'signup' | 'signin'>('landing')
@@ -108,6 +112,8 @@ export default function App() {
                 <Route path="/inbox" element={<Inbox />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/help" element={<Help />} />
+                <Route path="/disputes" element={<DisputeList />} />
+                <Route path="/disputes/:id" element={<DisputeView />} />
                 <Route path="/chats" element={<Chats />} />
                 <Route path="/chats/:id" element={<ChatRoom />} />
                 <Route path="/residency" element={<Residency />} />

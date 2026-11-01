@@ -2,6 +2,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle, BadgeCheck, Banknote, CheckCircle2, Clock, Lock, MapPin, ShieldCheck, Star, Wrench, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { TradeChat } from '../components/TradeChat'
+import { OpenDispute } from './Disputes'
 import { PhoneVerify } from '../components/PhoneVerify'
 import { DemoNote, Header, PinPad, Segmented, Sheet, Success } from '../components/ui'
 import { CITIES } from '../lib/data'
@@ -177,6 +179,7 @@ function MyRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
   const [pin, setPin] = useState<'lock' | 'release' | null>(null)
   const [err, setErr] = useState('')
   const [rated, setRated] = useState(f.rating ?? 0)
+  const [appeal, setAppeal] = useState(false)
   useEffect(() => { const t = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(t) }, [])
   const offers = f.offers.filter((o) => o.at <= Date.now())
   const pending = f.offers.length - offers.length
@@ -241,12 +244,17 @@ function MyRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
             <a href="tel:+905330000000" className="chip bg-mint-400/15 py-2 text-mint-300">Call</a>
           </div>
         )}
+        {acc && ['escrow', 'cash', 'disputed'].includes(f.status) && (
+          <TradeChat threadKey={`flash-${f.id}`} name={acc.fixer} flag={acc.flag} onAppeal={f.status === 'escrow' ? () => setAppeal(true) : undefined}
+            intro={f.status === 'cash' ? 'Cash deal: Luda can’t refund cash payments.' : undefined} />
+        )}
+        {appeal && acc && <OpenDispute kind="flash" refId={f.id} title={`Flash job: ${f.text.slice(0, 40)}`} counterparty={acc.fixer} amount={acc.price} cur="TRY" onClose={() => setAppeal(false)} onOpened={() => update({ status: 'disputed' })} />}
         {f.status === 'escrow' && (
           <>
             <div className="flex items-center gap-3 rounded-2xl bg-fuchsia-500/10 p-3 text-sm"><Lock size={18} className="text-fuchsia-300" /> {fmt(acc!.price, 'TRY')} is safe in escrow. Release it only when the job is really done.</div>
             {pin === 'release' ? <div className="flex flex-col items-center gap-2"><p className="text-sm text-slate-300">Enter PIN to pay {acc!.fixer}</p><PinPad error={err} onDone={release} /></div> : <>
               <button className="btn-primary py-4" onClick={() => { setPin('release'); setErr('') }}>✅ Job done: release ₺{acc!.price}</button>
-              <button className="btn bg-rose-500/10 text-sm text-rose-300" onClick={() => update({ status: 'disputed' })}><AlertTriangle size={16} /> Problem with the job</button>
+              <button className="btn bg-rose-500/10 text-sm text-rose-300" onClick={() => setAppeal(true)}><AlertTriangle size={16} /> Problem with the job: appeal</button>
             </>}
           </>
         )}
@@ -256,7 +264,8 @@ function MyRequest({ f, onClose }: { f: FlashReq; onClose: () => void }) {
             <button className="btn-primary py-4" onClick={() => update({ status: 'done' })}>Job done (paid cash)</button>
           </>
         )}
-        {f.status === 'disputed' && <p className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-200">⚠️ Escrow frozen. A Luda safety agent will contact you and {acc?.fixer} within 15 minutes to sort it out.</p>}
+        {f.status === 'disputed' && (() => { const c = s.disputes.find((x) => x.refId === f.id); return (
+          <Link to={c ? `/disputes/${c.id}` : '/disputes'} className="flex items-center gap-2 rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-200"><AlertTriangle size={16} /> Appeal open: escrow frozen. <span className="ms-auto underline">View case</span></Link>) })()}
         {f.status === 'done' && (
           <div className="flex flex-col items-center gap-2 rounded-3xl bg-mint-400/10 p-5 text-center">
             <p className="text-lg font-bold">All done 🎉</p>

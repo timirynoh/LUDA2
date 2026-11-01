@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion'
 import { BadgeCheck, BellOff, Plus, Search, ShieldCheck, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { ExchangeHub } from '../components/ExchangeHub'
 import { PhoneVerify } from '../components/PhoneVerify'
 import { Header, Segmented, Sheet } from '../components/ui'
 import { BASE_RULES, GROUPS, seedMessages, type Group, type GroupCat } from '../lib/chat'
@@ -39,6 +40,8 @@ export default function Chats() {
   const [q, setQ] = useState('')
   const [cat, setCat] = useState<'All' | GroupCat>('All')
   const [creating, setCreating] = useState(false)
+  const [params, setParams] = useSearchParams()
+  const section = params.get('tab') === 'exchange' ? 'exchange' : 'chat'
   const match = (g: Group) => !q || `${g.name} ${g.desc}`.toLowerCase().includes(q.toLowerCase())
 
   const mine = groups.filter((g) => s.joinedGroups.includes(g.id) && match(g))
@@ -52,6 +55,12 @@ export default function Chats() {
       <Header title={t('nav.chats')} sub="Groups for the community"
         right={<button onClick={() => gate(1, 'Create a group') && setCreating(true)} className="btn-primary size-11 rounded-2xl p-0" aria-label="Create group"><Plus size={20} /></button>} />
       <div className="flex flex-col gap-3 px-5">
+        <div className="flex gap-2 rounded-2xl bg-fg/[0.03] p-1">
+          {([['chat', '💬 Chats'], ['exchange', '💱 Exchange']] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setParams(k === 'exchange' ? { tab: 'exchange' } : {})} className={`flex-1 rounded-xl py-3 text-sm font-bold transition ${section === k ? 'bg-gradient-to-r from-mint-400 to-emerald-500 text-ink-950 shadow-lg' : 'text-slate-400'}`}>{l}</button>
+          ))}
+        </div>
+        {section === 'exchange' ? <ExchangeHub /> : <>
         <div className="relative"><Search size={18} className="absolute start-4 top-1/2 -translate-y-1/2 text-slate-500" />
           <input className="input ps-11" placeholder="Search groups" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         <Segmented value={tab} onChange={setTab} options={[{ value: 'mine', label: `💬 My groups${s.joinedGroups.length ? ` · ${s.joinedGroups.length}` : ''}` }, { value: 'discover', label: '🧭 Discover' }]} />
@@ -94,6 +103,7 @@ export default function Chats() {
             {!discover.length && <p className="card text-center text-sm text-slate-400">No groups match. Create one!</p>}
           </>
         )}
+        </>}
       </div>
       {creating && <CreateGroup onClose={() => setCreating(false)} />}
     </div>

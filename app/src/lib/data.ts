@@ -104,6 +104,7 @@ export const BADGES: Record<string, { name: string; emoji: string; desc: string 
   flash_asker: { name: 'Flash', emoji: '⚡', desc: 'Posted a Flash help request' },
   handy_hero: { name: 'Handy Hero', emoji: '🛠️', desc: 'Completed a Flash job and got paid safely' },
   saver: { name: 'Ride Saver', emoji: '🎟️', desc: 'Selected for Luda Ride Saver' },
+  exchanger: { name: 'Verified Exchanger', emoji: '🏪', desc: 'Approved as a Luda exchanger' },
   home_sweet: { name: 'Home Sweet Home', emoji: '🏡', desc: 'Booked a house viewing' },
   good_neighbour: { name: 'Good Neighbour', emoji: '🤝', desc: 'Posted a listing or found a roommate' },
 }

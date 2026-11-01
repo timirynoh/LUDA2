@@ -2,7 +2,9 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowDownUp, BadgeCheck, CheckCircle2, Clock, Lock, MapPin, QrCode, ShieldAlert, ShieldCheck, Siren, Star } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import { TradeChat } from '../components/TradeChat'
+import { OpenDispute } from './Disputes'
 import { DemoNote, Header, PinPad, Segmented, Sheet, Success } from '../components/ui'
 import { P2P_FEE } from '../config'
 import { handshakeCode, randomSecret, verifyHandshake } from '../lib/crypto'
@@ -260,6 +262,7 @@ function TradeSheet({ trade, onClose }: { trade: Trade | null; onClose: () => vo
   const [releasing, setReleasing] = useState(false)
   const [arrived, setArrived] = useState(false)
   const [done, setDone] = useState(false)
+  const [appeal, setAppeal] = useState(false)
   const cur = trade ? s.trades.find((x) => x.id === trade.id) ?? trade : null
 
   useEffect(() => {
@@ -317,7 +320,12 @@ function TradeSheet({ trade, onClose }: { trade: Trade | null; onClose: () => vo
           </ol>
           <p className="flex items-center gap-1 text-xs text-slate-400"><MapPin size={12} /> {cur.spot} · {cur.when}</p>
 
-          {cur.status === 'disputed' && <div className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-200">⚠️ Dispute opened. Escrow is frozen and a Luda safety agent will contact you within 15 minutes.</div>}
+          {cur.status === 'disputed' && (() => { const c = s.disputes.find((x) => x.refId === cur.id); return (
+            <Link to={c ? `/disputes/${c.id}` : '/disputes'} className="flex items-center gap-2 rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-200"><ShieldAlert size={16} /> Appeal open: escrow is frozen. <span className="ms-auto underline">View case</span></Link>) })()}
+
+          {cur.status !== 'cancelled' && cur.status !== 'completed' && (
+            <TradeChat threadKey={`trade-${cur.id}`} name={cur.trader} flag={cur.traderFlag} onAppeal={cur.status === 'disputed' ? undefined : () => setAppeal(true)} />
+          )}
 
           {cur.status === 'escrow' && !arrived && <button className="btn-ghost" onClick={() => setArrived(true)}><MapPin size={16} /> I've arrived — share live check-in</button>}
 
@@ -343,9 +351,10 @@ function TradeSheet({ trade, onClose }: { trade: Trade | null; onClose: () => vo
 
           <div className="grid grid-cols-2 gap-2">
             {cur.status === 'escrow' ? <button className="btn-ghost text-sm" onClick={cancel}>Cancel & refund</button>
-              : <button className="btn-ghost text-sm" disabled={cur.status === 'disputed'} onClick={() => update('disputed')}><ShieldAlert size={16} /> Dispute</button>}
+              : <button className="btn-ghost text-sm" disabled={cur.status === 'disputed'} onClick={() => setAppeal(true)}><ShieldAlert size={16} /> Appeal</button>}
             <a href="tel:155" className="btn bg-rose-500/15 text-sm text-rose-300"><Siren size={16} /> SOS · 155</a>
           </div>
+          {appeal && <OpenDispute kind="swap" refId={cur.id} title={`SafeSwap with ${cur.trader}`} counterparty={cur.trader} amount={cur.give} cur={cur.giveCur} onClose={() => setAppeal(false)} onOpened={() => update('disputed')} />}
         </div>
       )}
     </Sheet>

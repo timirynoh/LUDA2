@@ -7,6 +7,7 @@ import { TxList } from '../components/TxList'
 import { COUNTRIES, CURRENCIES } from '../lib/data'
 import { KYC_LIMITS } from '../lib/kyc'
 import { KycStatus } from '../components/Kyc'
+import { CardPicker, CardsManager } from '../components/Cards'
 import { convert, fmt, useRates } from '../lib/fx'
 import { useStore } from '../lib/store'
 
@@ -37,6 +38,8 @@ export default function Wallet() {
   const [method, setMethod] = useState('card')
   const [stage, setStage] = useState<'form' | 'pin' | 'busy' | 'done'>('form')
   const [err, setErr] = useState('')
+  const [cardId, setCardId] = useState('')
+  const [manage, setManage] = useState(false)
 
   const need = (m: Mode) => gate(m === 'deposit' ? 1 : 2, m === 'deposit' ? 'Top up your wallet' : 'Withdraw money (KYC required)')
   const open = (m: Mode) => { if (need(m)) setParams({ a: m }) }
@@ -113,6 +116,12 @@ export default function Wallet() {
         Funds are held with a licensed partner in segregated accounts. PIN + device binding protects every withdrawal.
       </div>
 
+      <button onClick={() => setManage(true)} className="mx-5 mt-3 flex w-[calc(100%-2.5rem)] items-center gap-3 rounded-2xl bg-fg/[0.03] p-3 text-start">
+        <span className="text-xl">💳</span><span className="flex-1 text-sm font-semibold">Saved cards</span>
+        <span className="text-xs text-slate-400">{s.cards.length ? s.cards.map((c) => `•••• ${c.last4}`).join(' · ') : 'Add a card'}</span>
+      </button>
+      <Sheet open={manage} onClose={() => setManage(false)} title="Your cards"><CardsManager /></Sheet>
+
       <div className="px-5 pt-6">
         <p className="label mb-3">{t('wallet.history')}</p>
         <TxList txs={s.txs} empty={t('wallet.empty')} />
@@ -152,6 +161,7 @@ export default function Wallet() {
                 ))}
               </div>
             </div>
+            {mode === 'deposit' && method === 'card' && <div><p className="label mb-2">Pay with</p><CardPicker value={cardId || s.cards.find((c) => c.isDefault)?.id || ''} onChange={setCardId} /></div>}
             {amt > 0 && (
               <div className="rounded-2xl bg-fg/[0.03] p-3 text-sm">
                 <div className="flex justify-between text-slate-400"><span>Fee</span><span>{fmt(fee, cur)}</span></div>
@@ -159,7 +169,7 @@ export default function Wallet() {
               </div>
             )}
             {err && <p className="text-sm text-rose-400">{err}</p>}
-            <button className="btn-primary py-4" disabled={amt <= 0} onClick={submit}>{t('wallet.confirm')}</button>
+            <button className="btn-primary py-4" disabled={amt <= 0 || (mode === 'deposit' && method === 'card' && !(cardId || s.cards.find((c) => c.isDefault)))} onClick={submit}>{t('wallet.confirm')}</button>
           </div>
         )}
         {stage === 'pin' && (

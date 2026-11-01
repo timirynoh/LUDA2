@@ -1,6 +1,7 @@
 import { ChevronDown, FileText, Mail, MessageCircle, Siren } from 'lucide-react'
 import { useState } from 'react'
 import { Header, Sheet } from '../components/ui'
+import { Link } from 'react-router-dom'
 import { checkText } from '../lib/moderation'
 import { useStore } from '../lib/store'
 
@@ -19,7 +20,7 @@ export const TERMS = `Luda Terms (summary). By using Luda you agree to: use your
 export const PRIVACY = `Luda Privacy (summary). We collect what you give us (name, contacts, verification documents, posts) and what's needed to run payments safely. Verification documents are encrypted and only used for checks. Timetable screenshots are processed on your phone and never uploaded. We never sell your data. You can download or delete your data any time in Security Center.`
 
 export default function Help() {
-  const { toast, notify, allow } = useStore()
+  const { s, toast, notify, allow } = useStore()
   const [open, setOpen] = useState<number | null>(0)
   const [legal, setLegal] = useState<null | 'terms' | 'privacy'>(null)
   const [report, setReport] = useState(false)
@@ -39,6 +40,7 @@ export default function Help() {
           <a href="mailto:support@luda.app" className="card flex flex-col items-center gap-1 py-4"><Mail className="text-sky-300" /> Email</a>
           <button onClick={() => setReport(true)} className="card flex flex-col items-center gap-1 py-4"><Siren className="text-rose-300" /> Report a problem</button>
         </div>
+        <Link to="/disputes" className="card flex items-center gap-3"><span className="text-xl">🛡️</span><span className="flex-1 text-sm font-semibold">My appeals & support cases</span><span className="chip bg-fg/5 text-slate-300">{s.disputes.filter((d) => d.status !== 'resolved').length} open</span></Link>
         <section>
           <p className="label mb-2">Frequently asked</p>
           <div className="card divide-y divide-fg/5 p-1">

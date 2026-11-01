@@ -32,6 +32,8 @@ export default function Profile() {
         <div className="grid grid-cols-2 gap-2">
           <Link to="/security" className="card flex items-center gap-3 py-3"><ShieldCheck className="text-mint-300" size={20} /><span className="text-sm font-semibold">Security Center</span></Link>
           <Link to="/help" className="card flex items-center gap-3 py-3"><span className="text-lg">💬</span><span className="text-sm font-semibold">Help & Support</span></Link>
+          <Link to="/wallet" className="card flex items-center gap-3 py-3"><span className="text-lg">💳</span><span className="text-sm font-semibold">Saved cards · {s.cards.length}</span></Link>
+          <Link to="/disputes" className="card flex items-center gap-3 py-3"><span className="text-lg">🛡️</span><span className="text-sm font-semibold">My appeals</span></Link>
         </div>
 
         {s.account && (
@@ -50,6 +52,11 @@ export default function Profile() {
             <button className="btn-ghost py-2.5 text-sm" onClick={() => set((p) => ({ ...p, signedIn: false }))}>Sign out</button>
           </section>
         )}
+
+        <section className="card flex items-center justify-between gap-3">
+          <span><span className="block text-sm font-semibold">⚡ Flash help pop-ups</span><span className="text-xs text-slate-400">Max once per visit. Bubbles on Home always show open requests.</span></span>
+          <input type="checkbox" aria-label="Flash pop-ups" className="size-5 accent-emerald-500" checked={s.flashPop} onChange={(e) => set((p) => ({ ...p, flashPop: e.target.checked }))} />
+        </section>
 
         <section className="card">
           <p className="label mb-3">Theme</p>

@@ -13,6 +13,8 @@ import { convert, fmt, useRates } from '../lib/fx'
 import { COUNTRIES, CURRENCIES } from '../lib/data'
 import { uid, useStore } from '../lib/store'
 import { departures, luhn, ticketCode, type Ticket } from '../lib/tickets'
+import { CardPicker } from '../components/Cards'
+import { brandOf } from '../lib/cards'
 import { ERCAN, km, routesFrom, taxiFare } from '../lib/transport'
 
 type Tab = 'tickets' | 'airport' | 'taxi'
@@ -186,7 +188,9 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const bal = s.balances.TRY ?? 0
   const homeBal = s.balances[hc] ?? 0
   const homeNeeded = convert(rates, total, 'TRY', hc) * 1.008 // live rate + 0.8% FX spread
-  const cardOk = luhn(card.num) && /^\d{2}\/\d{2}$/.test(card.exp) && /^\d{3,4}$/.test(card.cvv)
+  const [savedId, setSavedId] = useState(() => s.cards.find((c) => c.isDefault)?.id ?? '')
+  const [saveCard, setSaveCard] = useState(true)
+  const cardOk = savedId ? /^\d{3,4}$/.test(card.cvv) : luhn(card.num) && /^\d{2}\/\d{2}$/.test(card.exp) && /^\d{3,4}$/.test(card.cvv)
   const canPay = !!(time || times[0]) && (!ret || !!(rtime || rtimes[0])) && (pay === 'wallet' ? bal >= total : pay === 'home' ? homeBal >= homeNeeded : cardOk)
 
   const issue = () => {
@@ -196,6 +200,10 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
       holder: s.name, secret: randomSecret(),
     }
     if (pay === 'home') { tk.paidCur = hc; tk.paidAmount = homeNeeded }
+    if (pay === 'card' && !savedId && saveCard && s.cards.every((c) => c.last4 !== card.num.replace(/\D/g, '').slice(-4))) {
+      const d = card.num.replace(/\D/g, '')
+      set((p) => ({ ...p, cards: [...p.cards, { id: uid(), brand: brandOf(d), last4: d.slice(-4), exp: card.exp, name: p.name, isDefault: p.cards.length === 0 }] }))
+    }
     set((p) => ({ ...p, tickets: [tk, ...p.tickets], balances: pay === 'wallet' ? { ...p.balances, TRY: (p.balances.TRY ?? 0) - total } : pay === 'home' ? { ...p.balances, [hc]: (p.balances[hc] ?? 0) - homeNeeded } : p.balances }))
     addTx({ type: 'bill', amount: pay === 'home' ? -homeNeeded : -total, currency: pay === 'home' ? hc : 'TRY', label: `${trip.operator} · ${trip.from}→${trip.to}`, meta: `${pay === 'card' ? 'card' : pay === 'home' ? `${hc} wallet` : 'wallet'}${saved ? ` · saved ₺${saved}` : ''}` })
     reward(s.quests.includes('ticket') ? 10 : 50, { quest: 'ticket', badge: 'traveller', title: saved ? `Saved ₺${saved} on your ticket` : 'Ticket booked' })
@@ -243,11 +251,17 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
             </div>
             <AnimatePresence>
               {pay === 'card' && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="grid grid-cols-4 gap-2 overflow-hidden">
-                  <input className="input col-span-4 font-mono" inputMode="numeric" placeholder="Card number" value={card.num} onChange={(e) => setCard({ ...card, num: e.target.value.replace(/[^\d ]/g, '').slice(0, 23) })} />
-                  <input className="input col-span-2" inputMode="numeric" placeholder="MM/YY" value={card.exp} onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 4); setCard({ ...card, exp: v.length > 2 ? `${v.slice(0, 2)}/${v.slice(2)}` : v }) }} />
-                  <input className="input col-span-2" inputMode="numeric" placeholder="CVV" type="password" value={card.cvv} onChange={(e) => setCard({ ...card, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) })} />
-                  <p className="col-span-4 text-[11px] text-slate-500">🔒 Card is charged once for this ticket only and never stored. Demo: try 4242 4242 4242 4242.</p>
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="flex flex-col gap-2 overflow-hidden">
+                  {s.cards.length > 0 && <CardPicker value={savedId} onChange={setSavedId} />}
+                  {s.cards.length > 0 && savedId && <button className="text-start text-xs text-slate-400 underline" onClick={() => setSavedId('')}>Use a different card once</button>}
+                  {!savedId && <div className="grid grid-cols-4 gap-2">
+                    <input className="input col-span-4 font-mono" inputMode="numeric" placeholder="Card number" value={card.num} onChange={(e) => setCard({ ...card, num: e.target.value.replace(/[^\d ]/g, '').slice(0, 23) })} />
+                    <input className="input col-span-2" inputMode="numeric" placeholder="MM/YY" value={card.exp} onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 4); setCard({ ...card, exp: v.length > 2 ? `${v.slice(0, 2)}/${v.slice(2)}` : v }) }} />
+                    <input className="input col-span-2" inputMode="numeric" placeholder="CVV" type="password" value={card.cvv} onChange={(e) => setCard({ ...card, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) })} />
+                    <label className="col-span-4 flex items-center gap-2 text-xs text-slate-300"><input type="checkbox" className="size-4 accent-emerald-500" checked={saveCard} onChange={(e) => setSaveCard(e.target.checked)} /> Save this card for next time</label>
+                  </div>}
+                  {savedId && <input className="input" inputMode="numeric" placeholder="CVV for this card" type="password" value={card.cvv} onChange={(e) => setCard({ ...card, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) })} />}
+                  <p className="text-[11px] text-slate-500">🔒 Protected by 3-D Secure. Demo: try 4242 4242 4242 4242.</p>
                 </motion.div>
               )}
             </AnimatePresence>

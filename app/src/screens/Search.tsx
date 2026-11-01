@@ -16,6 +16,9 @@ const EXTRA = [
   { label: 'Notifications', to: '/inbox', emoji: '🔔', kw: 'alerts inbox' },
   { label: 'Profile & settings', to: '/profile', emoji: '👤', kw: 'language theme city account' },
   { label: 'Residency portal', to: '/residency', emoji: '🪪', kw: 'ikamet permit visa immigration' },
+  { label: 'Appeals & support cases', to: '/disputes', emoji: '🛡️', kw: 'dispute appeal case refund complaint' },
+  { label: 'Become an exchanger / my ads', to: '/chats?tab=exchange', emoji: '🏪', kw: 'exchanger merchant ad exchange p2p' },
+  { label: 'Saved cards', to: '/wallet', emoji: '💳', kw: 'card bank visa mastercard' },
 ]
 
 /** One search box for features, houses, jobs, events and groups. */

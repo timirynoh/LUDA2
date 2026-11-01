@@ -65,4 +65,5 @@ export const DAILY_LIMITS: Record<string, { max: number; label: string }> = {
   roommate: { max: 10, label: 'roommate requests' },
   report: { max: 10, label: 'reports' },
   ticket: { max: 6, label: 'ticket purchases' },
+  ad: { max: 5, label: 'exchange ads' },
 }
