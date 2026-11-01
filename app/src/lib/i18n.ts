@@ -178,46 +178,7 @@ const ar: Dict = {
 }
 
 
-const pcm: Dict = {
-  'act.promos': 'Cheap market',
-  'act.deals': 'Deals', 'act.news': 'News', 'act.challenges': 'Challenge', 'act.invite': 'Invite & chop money', 'act.ambassador': 'Ambassadors', 'act.welcome': 'Welcome pack',
-  'act.send': 'Send money', 'act.savings': 'Save money', 'act.market': 'Buy & sell', 'act.flash': 'Quick help', 'nav.chats': 'Chats', 'act.admin': 'Admin',
-  'act.jobs': 'Work', 'act.community': 'Community', 'act.uni': 'School', 'act.transport': 'Transport', 'act.housing': 'House',
-  'nav.home': 'Home', 'nav.wallet': 'Wallet', 'nav.exchange': 'Change money', 'nav.nearby': 'Near you', 'nav.more': 'More',
-  'home.hello': 'How far', 'home.balance': 'All your money', 'home.quick': 'Quick things', 'home.quests': 'Today task', 'home.rates': 'Rate now now', 'home.streak': 'days straight', 'home.level': 'Level',
-  'act.deposit': 'Put money', 'act.withdraw': 'Comot money', 'act.convert': 'Change am', 'act.bills': 'Pay bills', 'act.p2p': 'Meet & change', 'act.food': 'Order food', 'act.residency': 'Residence', 'act.rewards': 'Prize',
-  'wallet.title': 'Wallet', 'wallet.history': 'Wetin happen', 'wallet.empty': 'Nothing never happen yet. Start am!', 'wallet.amount': 'How much', 'wallet.method': 'How you wan pay', 'wallet.confirm': 'Confam', 'wallet.pin': 'Put your 4-number PIN', 'wallet.success': 'E don do!', 'wallet.insufficient': 'Money no reach',
-  'fx.title': 'Change money', 'fx.convert': 'Change am', 'fx.p2p': 'Face to face', 'fx.from': 'You go pay', 'fx.to': 'You go get', 'fx.rate': 'Rate', 'fx.live': 'Live', 'fx.indicative': 'Estimate', 'fx.offers': 'Verified people near you', 'fx.start': 'Start safe trade', 'fx.escrow': 'Money dey lock for escrow',
-  'bills.title': 'Pay bills', 'bills.fetch': 'Bring the bill', 'bills.pay': 'Pay now', 'bills.due': 'Wetin you owe', 'bills.saved': 'Saved accounts', 'bills.cashback': 'cashback for Luda Points',
-  'near.title': 'Around you', 'near.call': 'Call', 'near.whatsapp': 'WhatsApp', 'near.directions': 'Show me road', 'near.loading': 'We dey check the area…', 'near.none': 'We no see anything. Try another one.',
-  'res.title': 'Residence permit', 'res.open': 'Open the government site', 'res.steps': 'How e dey work', 'res.docs': 'Documents wey you need', 'res.expiry': 'Permit go expire',
-  'more.title': 'Everything', 'profile.title': 'My profile', 'profile.lang': 'Language', 'profile.city': 'City', 'profile.verify': 'Verify yourself', 'profile.verified': 'Verified', 'profile.reset': 'Clear demo data',
-  'rewards.title': 'Prize', 'rewards.badges': 'Badges', 'rewards.board': 'Community ranking', 'rewards.points': 'Luda Points',
-  'onb.tag': 'Your whole life for North Cyprus, for one app.', 'onb.lang': 'Choose your language', 'onb.country': 'Where you come from?', 'onb.city': 'Which city you dey stay?', 'onb.name': 'Wetin we go call you?', 'onb.pin': 'Make 4-number PIN', 'onb.next': 'Continue', 'onb.go': 'Make we go',
-  'common.back': 'Go back', 'common.cancel': 'Cancel', 'common.demo': 'Demo mode: no real money dey move',
-}
-
-/* Yoruba & Hausa: core screens translated; everything else falls back to English. Have a native speaker review before launch. */
-const yo: Dict = {
-  'nav.home': 'Ilé', 'nav.wallet': 'Àpamọ́wọ́', 'nav.exchange': 'Pàṣípààrọ̀', 'nav.chats': 'Ìjíròrò', 'nav.nearby': 'Nítòsí', 'nav.more': 'Síi',
-  'home.hello': 'Báwo ni', 'home.balance': 'Gbogbo owó rẹ', 'home.quick': 'Àwọn iṣẹ́ kíákíá', 'home.quests': 'Iṣẹ́ òní', 'home.rates': 'Iye owó lọ́wọ́lọ́wọ́', 'home.level': 'Ìpele',
-  'act.deposit': 'Fi owó sí', 'act.withdraw': 'Gba owó jáde', 'act.convert': 'Yí owó padà', 'act.bills': 'San owó iná/omi', 'act.send': 'Fi owó ránṣẹ́', 'act.savings': 'Ìpamọ́ owó', 'act.market': 'Ra & tà',
-  'act.housing': 'Ilé gbígbé', 'act.jobs': 'Iṣẹ́', 'act.community': 'Àwùjọ', 'act.uni': 'Ilé-ìwé', 'act.transport': 'Ìrìnàjò', 'act.flash': 'Ìrànlọ́wọ́ kíákíá', 'act.residency': 'Ìwé ìgbélùú', 'act.rewards': 'Èrè',
-  'wallet.title': 'Àpamọ́wọ́', 'wallet.confirm': 'Jẹ́rìísí', 'wallet.pin': 'Tẹ PIN oní-nọ́mbà mẹ́rin rẹ', 'wallet.success': 'Ó ti parí!', 'wallet.insufficient': 'Owó kò tó',
-  'onb.tag': 'Gbogbo ìgbésí ayé rẹ ní Àríwá Cyprus, nínú áàpù kan.', 'onb.country': 'Níbo ni o ti wá?', 'onb.city': 'Ìlú wo ni o ń gbé?', 'onb.pin': 'Ṣe PIN oní-nọ́mbà mẹ́rin', 'onb.next': 'Tẹ̀síwájú',
-  'profile.title': 'Profaili mi', 'profile.lang': 'Èdè', 'common.back': 'Padà', 'common.cancel': 'Fagilé', 'common.demo': 'Ìdánwò: kò sí owó gidi tí ó ń lọ',
-}
-const ha: Dict = {
-  'nav.home': 'Gida', 'nav.wallet': 'Walat', 'nav.exchange': 'Canji', 'nav.chats': 'Hira', 'nav.nearby': 'Kusa', 'nav.more': 'Ƙari',
-  'home.hello': 'Sannu', 'home.balance': 'Jimillar kuɗi', 'home.quick': 'Ayyuka masu sauri', 'home.quests': 'Ayyukan yau', 'home.rates': 'Farashin canji yanzu', 'home.level': 'Mataki',
-  'act.deposit': 'Saka kuɗi', 'act.withdraw': 'Cire kuɗi', 'act.convert': 'Canza kuɗi', 'act.bills': 'Biyan kuɗin wuta/ruwa', 'act.send': 'Aika kuɗi', 'act.savings': 'Ajiya', 'act.market': 'Saya & sayarwa',
-  'act.housing': 'Gidaje', 'act.jobs': 'Aiki', 'act.community': 'Al’umma', 'act.uni': 'Jami’a', 'act.transport': 'Sufuri', 'act.flash': 'Taimako cikin gaggawa', 'act.residency': 'Izinin zama', 'act.rewards': 'Kyaututtuka',
-  'wallet.title': 'Walat', 'wallet.confirm': 'Tabbatar', 'wallet.pin': 'Shigar da PIN mai lamba huɗu', 'wallet.success': 'An gama!', 'wallet.insufficient': 'Kuɗi bai isa ba',
-  'onb.tag': 'Duk rayuwarka a Arewacin Cyprus, a cikin manhaja ɗaya.', 'onb.country': 'Daga ina kake?', 'onb.city': 'A wane gari kake zaune?', 'onb.pin': 'Ƙirƙiri PIN mai lamba huɗu', 'onb.next': 'Ci gaba',
-  'profile.title': 'Bayanaina', 'profile.lang': 'Harshe', 'common.back': 'Koma baya', 'common.cancel': 'Soke', 'common.demo': 'Gwaji: babu kuɗi na gaske da ke motsi',
-}
-
-export const DICTS: Record<Lang, Dict> = { en, tr, fr, sw, ar, pcm, yo, ha }
+export const DICTS: Record<Lang, Dict> = { en, tr, fr, sw, ar }
 
 export function translate(lang: Lang, key: string): string {
   return DICTS[lang]?.[key] ?? en[key] ?? key

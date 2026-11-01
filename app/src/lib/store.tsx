@@ -155,6 +155,7 @@ function load(): State {
     s.security = { ...initialState.security, ...s.security }
     if (s.verified && s.kyc.status === 'none') s.kyc = { status: 'verified' } // older demo profiles
     if (s.account && !s.account.stay) s.signedIn = false
+    if (!['en', 'tr', 'fr', 'sw', 'ar'].includes(s.lang)) s.lang = 'en' // Nigerian languages removed: English for everyone from Nigeria
     // daily streak bookkeeping
     const t = today()
     if (s.lastDay !== t) {

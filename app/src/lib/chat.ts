@@ -33,7 +33,7 @@ export const GROUPS: Group[] = [
 const PEOPLE: [string, string][] = [['Chidi', '🇳🇬'], ['Amara', '🇳🇬'], ['Tendai', '🇿🇼'], ['Kofi', '🇬🇭'], ['Mireille', '🇨🇲'], ['Wanjiru', '🇰🇪'], ['Grâce', '🇨🇩'], ['Tolu', '🇳🇬'], ['Ibrahim', '🇸🇩'], ['Esther', '🇬🇭']]
 
 const SEED: Record<string, string[]> = {
-  'g-naija': ['Good morning family 🌞', 'Anyone knows where to buy ponmo in Lefkoşa?', 'Try the African shop near the bus terminal', 'Thanks bro 🙏', 'Who dey go Saturday football?'],
+  'g-naija': ['Good morning family 🌞', 'Anyone knows where to buy ponmo in Lefkoşa?', 'Try the African shop near the bus terminal', 'Thanks bro 🙏', 'Who’s coming to Saturday football?'],
   'g-francophone': ['Bonjour à tous !', 'Quelqu’un a un bon plan pour changer des euros ?', 'Utilise SafeSwap sur Luda, c’est sécurisé 👌', 'Merci beaucoup', 'La messe en français est samedi 18h'],
   'g-houses': ['Room available in Gönyeli from next month, posted on Luda Housing', 'Looking for a roommate near EMU, budget £200', 'DM me, I have a 2+1 to share', 'Always view before paying any deposit!'],
   'g-jobs': ['⚡ 2 workers needed for construction in Girne tomorrow 7am', 'Café on Dereboyu hiring baristas, apply in Luda Jobs', 'Anyone doing delivery with QuickBite? How is it?', 'Pay is weekly, it’s fine'],

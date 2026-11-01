@@ -1,4 +1,4 @@
-export type Lang = 'en' | 'tr' | 'fr' | 'sw' | 'ar' | 'pcm' | 'yo' | 'ha'
+export type Lang = 'en' | 'tr' | 'fr' | 'sw' | 'ar'
 
 export const LANGS: { code: Lang; name: string; native: string; flag: string; rtl?: boolean }[] = [
   { code: 'en', name: 'English', native: 'English', flag: '🇬🇧' },
@@ -6,9 +6,6 @@ export const LANGS: { code: Lang; name: string; native: string; flag: string; rt
   { code: 'fr', name: 'French', native: 'Français', flag: '🇫🇷' },
   { code: 'sw', name: 'Swahili', native: 'Kiswahili', flag: '🇰🇪' },
   { code: 'ar', name: 'Arabic', native: 'العربية', flag: '🇸🇩', rtl: true },
-  { code: 'pcm', name: 'Nigerian Pidgin', native: 'Naija Pidgin', flag: '🇳🇬' },
-  { code: 'yo', name: 'Yoruba', native: 'Yorùbá', flag: '🇳🇬' },
-  { code: 'ha', name: 'Hausa', native: 'Hausa', flag: '🇳🇬' },
 ]
 
 /** Largest African communities in North Cyprus (mostly students), roughly by size. */

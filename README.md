@@ -57,7 +57,6 @@ It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desk
 | **Savings pots** | Goals with emoji, target and deadline; add/take out from wallet; 25/50/75/100% milestones with XP | ✅ |
 | **Marketplace** | Buy & sell student items (photos, condition, category, area), buy safely with escrow at a Safe Spot, chat with seller, release, review, appeal | ✅ demo listings |
 | **Voice notes** | Tap-to-record (≤60 s) voice messages with waveform playback in group chats, trade, job and marketplace chats | ✅ needs mic permission |
-| **More languages** | Nigerian Pidgin (full), Yorùbá and Hausa (core screens; have a native speaker review) | ✅ |
 | **Profile & completeness** | Profile photo (auto square-crop, shown on Home, Profile & lock screen), display name & bio, completeness meter (photo, bio, phone, KYC, account, security) with All-Star badge at 100% | ✅ |
 | **Fits every device** | Phones full-width (tested 320 → 430 px: iPhone SE, 8, 15, 15 Pro Max, Galaxy), tablets get a wider layout with more columns (iPad), desktop shows a phone frame; iPhone notch/home-bar safe areas; no input zoom on iOS; automated overflow check on 20 screens × 7 devices | ✅ |
 | **Invite & earn** | Referral code + WhatsApp invite; ₺50 for both when the friend completes KYC + first top-up; funnel tracking; enter-a-code for new users; anti-fraud caps (20/month, same phone/device/ID never counts twice) | ✅ demo friends |
@@ -70,7 +69,7 @@ It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desk
 | **Notifications** | Phone/browser notifications with per-category settings (money, security, chats, classes, rates, deals, news); full background push needs the live server | ✅ in-app + browser |
 | **Promo Spotter** | Students snap promo/free products in shops (photo required, promo & normal price → auto % off, shop, area, optional GPS, end date, category). +10 pts per post, +5 per "still there" confirmation, +2 for voting; feed sorted by biggest %, newest or nearest, free-only filter, save, directions; Home strip; top spotters; anti-spam (daily cap, duplicate check, filter, auto-expiry, hidden after repeated "gone/fake") | ✅ |
 | **Gamification** | XP, 5 levels (Newcomer → Legend), daily streaks, 7 quests, 9 badges, redeemable Luda Points and a community leaderboard by country, plus XP toasts and confetti | ✅ |
-| **Languages** | English, Türkçe, Français, Kiswahili, العربية (RTL), Naija Pidgin, Yorùbá, Hausa | ✅ |
+| **Languages** | English (used for Nigeria & other English-speaking countries), Türkçe, Français, Kiswahili, العربية (RTL) | ✅ |
 
 Everything is saved on the device (`localStorage`) so the demo is fully interactive with no backend. **No real money moves**, and every money screen says so.
 
