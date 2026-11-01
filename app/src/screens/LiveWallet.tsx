@@ -1,11 +1,12 @@
 // Live (real-money) wallet: Naira + Lira balances held on the Luda server.
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Eye, EyeOff, Plus, RefreshCw, Send, ShieldCheck } from 'lucide-react'
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Download, Share2, Eye, EyeOff, Plus, RefreshCw, Send, ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { ConvertSheet, DepositSheet, LiveKyc, SendSheet, WithdrawSheet } from '../components/LiveMoney'
 import { Header, Sheet } from '../components/ui'
 import { KIND_LABEL, money, type Cur, type Me } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 import { NewCaseSheet } from '../components/LiveSupport'
+import { downloadReceipt, shareReceipt } from '../lib/receipt'
 import { useStore } from '../lib/store'
 
 type Open = null | 'deposit' | 'withdraw' | 'convert' | 'send' | 'kyc'
@@ -141,6 +142,13 @@ function Row({ it, onOpen }: { it: Item; onOpen: () => void }) {
 function Details({ it, onClose }: { it: Item; onClose: () => void }) {
   const [copied, setCopied] = useState(false)
   const [report, setReport] = useState(false)
+  const { me } = useLive()
+  const [rmsg, setRmsg] = useState('')
+  const receipt = async (how: 'share' | 'download') => {
+    setRmsg('')
+    const data = { title: it.title, amount: money(it.amountMinor, it.currency, { sign: true }), status: LABEL[it.status], positive: it.amountMinor > 0, rows: it.details.filter(([k]) => k !== 'Status'), name: me ? `${me.profile.fullName} (@${me.profile.username})` : undefined }
+    try { if (how === 'download') { await downloadReceipt(data); setRmsg('Receipt saved to your downloads') } else if ((await shareReceipt(data)) === 'downloaded') setRmsg('Sharing isn’t supported here, so the receipt was downloaded') } catch (e) { setRmsg(e instanceof Error ? e.message : 'Could not create the receipt') }
+  }
   return (
     <Sheet open onClose={onClose} title={it.title}>
       <div className="flex flex-col gap-3">
@@ -150,6 +158,11 @@ function Details({ it, onClose }: { it: Item; onClose: () => void }) {
         <div className="divide-y divide-fg/5 rounded-2xl bg-fg/[0.04] text-sm">
           {it.details.map(([k, v]) => <div key={k} className="flex justify-between gap-3 px-4 py-2.5"><span className="shrink-0 text-slate-400">{k}</span><span className="selectable break-all text-end font-medium">{v}</span></div>)}
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button className="btn-primary py-3 text-sm" onClick={() => void receipt('share')}><Share2 size={16} /> Share receipt</button>
+          <button className="btn-ghost py-3 text-sm" onClick={() => void receipt('download')}><Download size={16} /> Download</button>
+        </div>
+        {rmsg && <p className="text-center text-xs text-slate-400">{rmsg}</p>}
         {it.reference && <button className="btn-ghost text-sm" onClick={() => { navigator.clipboard?.writeText(it.reference!).then(() => setCopied(true)).catch(() => {}) }}>{copied ? '✓ Reference copied' : 'Copy reference'}</button>}
         <button className="btn-ghost text-sm text-gold-200" onClick={() => setReport(true)}>Report a problem with this</button>
         {report && <NewCaseSheet category={it.title === 'Withdrawal' ? 'withdrawal' : 'payment'} reference={it.reference} subject={`Problem with ${it.title.toLowerCase()}`} onClose={() => setReport(false)} />}

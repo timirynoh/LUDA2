@@ -16,6 +16,7 @@ import { departures, luhn, ticketCode, type Ticket } from '../lib/tickets'
 import { CardPicker } from '../components/Cards'
 import { LiveTicketPay } from '../components/LiveTicketPay'
 import { LIVE } from '../lib/live'
+import { KibhasLive } from '../components/KibhasBooking'
 import { brandOf } from '../lib/cards'
 import { ERCAN, km, routesFrom, taxiFare } from '../lib/transport'
 
@@ -29,12 +30,12 @@ export default function Transport() {
   return (
     <div>
       <Header back title={t('act.transport')} sub="Bus tickets, airport shuttle & taxis" />
-      {tab !== 'taxi' && <div className="px-5 pb-3"><SaverCard onOpen={() => setSaver(true)} /></div>}
+      {tab !== 'taxi' && !LIVE && <div className="px-5 pb-3"><SaverCard onOpen={() => setSaver(true)} /></div>}
       {saver && <SaverSheet onClose={() => setSaver(false)} />}
       <div className="px-5"><Segmented value={tab} onChange={setTab} options={[{ value: 'tickets', label: '🎟️ Bus tickets' }, { value: 'airport', label: '✈️ Airport' }, { value: 'taxi', label: '🚕 Taxi' }]} /></div>
       {valid.length > 0 && <MyTickets tickets={valid} />}
       {tab === 'tickets' && <BusTickets />}
-      {tab === 'airport' && <Airport />}
+      {tab === 'airport' && (LIVE ? <KibhasLive /> : <Airport />)}
       {tab === 'taxi' && <Taxi />}
       <DemoNote />
     </div>

@@ -3,6 +3,7 @@ import { ChevronLeft, Delete, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../lib/store'
+import { LIVE } from '../lib/live'
 
 export function Header({ title, back, right, sub }: { title: string; back?: boolean; right?: ReactNode; sub?: string }) {
   const nav = useNavigate()
@@ -169,5 +170,6 @@ export function Segmented<T extends string>({ value, onChange, options }: { valu
 
 export function DemoNote() {
   const { t } = useStore()
+  if (LIVE) return null // never tell real-money users it's a demo
   return <p className="mx-auto mt-2 w-fit rounded-full bg-gold-400/10 px-3 py-1 text-[11px] font-medium text-gold-300">{t('common.demo')}</p>
 }
