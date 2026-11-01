@@ -8,6 +8,7 @@ import { SaverCard, SaverSheet } from '../components/RideSaver'
 import { UnlockCard, WelcomeTour } from '../components/Verify'
 import { Avatar } from '../components/Avatar'
 import { CheckinCard, NewsPreview } from './Engage'
+import { PromoStrip } from './Promos'
 import { WELCOME_STEPS } from '../lib/growth'
 import { ACTION_TIER, tierOf } from '../lib/access'
 import { Bell, Lock, Search as SearchIcon } from 'lucide-react'
@@ -152,6 +153,7 @@ export default function Home() {
         </div>
       </section>
 
+      {s.sections.promos && <PromoStrip />}
       {s.sections.news && <NewsPreview />}
 
       {/* rates */}
@@ -196,7 +198,7 @@ export default function Home() {
 }
 
 const SECTIONS: { key: keyof import('../lib/store').State['sections']; label: string }[] = [
-  { key: 'checkin', label: '🎡 Daily spin' }, { key: 'welcome', label: '🧳 Welcome pack' }, { key: 'news', label: '📰 News' },
+  { key: 'promos', label: '🔥 Promos near you' }, { key: 'checkin', label: '🎡 Daily spin' }, { key: 'welcome', label: '🧳 Welcome pack' }, { key: 'news', label: '📰 News' },
   { key: 'flash', label: '⚡ Flash help bubbles' }, { key: 'nextClass', label: '🎓 Next class' }, { key: 'deadline', label: '⏳ Next uni deadline' },
   { key: 'rates', label: '💱 Live rates' }, { key: 'quests', label: '★ Daily quests' },
 ]

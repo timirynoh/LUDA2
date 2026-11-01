@@ -3,6 +3,7 @@ import type { Lang } from './data'
 type Dict = Record<string, string>
 
 const en: Dict = {
+  'act.promos': 'Promos',
   'act.deals': 'Deals', 'act.news': 'News', 'act.challenges': 'Challenges', 'act.invite': 'Invite & earn', 'act.ambassador': 'Ambassadors', 'act.welcome': 'Welcome pack',
   'act.send': 'Send money', 'act.savings': 'Savings', 'act.market': 'Marketplace',
   'act.flash': 'Flash help',
@@ -37,6 +38,7 @@ const en: Dict = {
 }
 
 const tr: Dict = {
+  'act.promos': 'İndirimler',
   'act.deals': 'Fırsatlar', 'act.news': 'Haberler', 'act.challenges': 'Yarışmalar', 'act.invite': 'Davet et & kazan', 'act.ambassador': 'Elçiler', 'act.welcome': 'Hoş geldin paketi',
   'act.send': 'Para gönder', 'act.savings': 'Birikim', 'act.market': 'Pazar',
   'act.flash': 'Hızlı yardım',
@@ -71,6 +73,7 @@ const tr: Dict = {
 }
 
 const fr: Dict = {
+  'act.promos': 'Promos',
   'act.deals': 'Bons plans', 'act.news': 'Actualités', 'act.challenges': 'Défis', 'act.invite': 'Inviter & gagner', 'act.ambassador': 'Ambassadeurs', 'act.welcome': 'Pack bienvenue',
   'act.send': 'Envoyer', 'act.savings': 'Épargne', 'act.market': 'Marché',
   'act.flash': 'Aide flash',
@@ -105,6 +108,7 @@ const fr: Dict = {
 }
 
 const sw: Dict = {
+  'act.promos': 'Punguzo',
   'act.deals': 'Ofa', 'act.news': 'Habari', 'act.challenges': 'Changamoto', 'act.invite': 'Alika & upate', 'act.ambassador': 'Mabalozi', 'act.welcome': 'Kifurushi cha karibu',
   'act.send': 'Tuma pesa', 'act.savings': 'Akiba', 'act.market': 'Soko',
   'act.flash': 'Msaada haraka',
@@ -139,6 +143,7 @@ const sw: Dict = {
 }
 
 const ar: Dict = {
+  'act.promos': 'تخفيضات',
   'act.deals': 'عروض', 'act.news': 'أخبار', 'act.challenges': 'تحديات', 'act.invite': 'ادعُ واربح', 'act.ambassador': 'السفراء', 'act.welcome': 'باقة الترحيب',
   'act.send': 'إرسال المال', 'act.savings': 'الادخار', 'act.market': 'السوق',
   'act.flash': 'مساعدة سريعة',
@@ -174,6 +179,7 @@ const ar: Dict = {
 
 
 const pcm: Dict = {
+  'act.promos': 'Cheap market',
   'act.deals': 'Deals', 'act.news': 'News', 'act.challenges': 'Challenge', 'act.invite': 'Invite & chop money', 'act.ambassador': 'Ambassadors', 'act.welcome': 'Welcome pack',
   'act.send': 'Send money', 'act.savings': 'Save money', 'act.market': 'Buy & sell', 'act.flash': 'Quick help', 'nav.chats': 'Chats', 'act.admin': 'Admin',
   'act.jobs': 'Work', 'act.community': 'Community', 'act.uni': 'School', 'act.transport': 'Transport', 'act.housing': 'House',

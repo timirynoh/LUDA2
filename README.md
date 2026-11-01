@@ -68,6 +68,7 @@ It is a mobile-first PWA: open it on a phone and "Add to Home Screen". On a desk
 | **News & alerts** | Pinned scam alerts, utilities, residency, university, transport, events; like/save/share; admin can publish announcements; preview on Home | ✅ sample stories |
 | **Monthly challenges** | Personal goals (pay 3 bills, save ₺1,000, 2 SafeSwaps) with prizes + Country savings cup leaderboard | ✅ |
 | **Notifications** | Phone/browser notifications with per-category settings (money, security, chats, classes, rates, deals, news); full background push needs the live server | ✅ in-app + browser |
+| **Promo Spotter** | Students snap promo/free products in shops (photo required, promo & normal price → auto % off, shop, area, optional GPS, end date, category). +10 pts per post, +5 per "still there" confirmation, +2 for voting; feed sorted by biggest %, newest or nearest, free-only filter, save, directions; Home strip; top spotters; anti-spam (daily cap, duplicate check, filter, auto-expiry, hidden after repeated "gone/fake") | ✅ |
 | **Gamification** | XP, 5 levels (Newcomer → Legend), daily streaks, 7 quests, 9 badges, redeemable Luda Points and a community leaderboard by country, plus XP toasts and confetti | ✅ |
 | **Languages** | English, Türkçe, Français, Kiswahili, العربية (RTL), Naija Pidgin, Yorùbá, Hausa | ✅ |
 

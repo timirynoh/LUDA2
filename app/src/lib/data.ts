@@ -119,6 +119,8 @@ export const BADGES: Record<string, { name: string; emoji: string; desc: string 
   newcomer_pro: { name: 'Settled In', emoji: '🧳', desc: 'Finished the welcome pack' },
   lucky: { name: 'Lucky Spin', emoji: '🎡', desc: 'Won cash on the daily spin' },
   challenger: { name: 'Challenger', emoji: '🏆', desc: 'Completed a monthly challenge' },
+  spotter: { name: 'Promo Spotter', emoji: '🔥', desc: 'Shared a promo from a shop' },
+  eagle_eye: { name: 'Eagle Eye', emoji: '🦅', desc: '10 people confirmed your promos' },
   home_sweet: { name: 'Home Sweet Home', emoji: '🏡', desc: 'Booked a house viewing' },
   good_neighbour: { name: 'Good Neighbour', emoji: '🤝', desc: 'Posted a listing or found a roommate' },
 }
@@ -138,5 +140,6 @@ export const QUESTS = [
   { id: 'event', title: 'RSVP to a community event', xp: 40, to: '/community' },
   { id: 'chat', title: 'Join a group chat', xp: 30, to: '/chats' },
   { id: 'flash', title: 'Post a Flash help request', xp: 40, to: '/flash' },
+  { id: 'promo', title: 'Snap a promo in a shop', xp: 30, to: '/promos' },
   { id: 'ticket', title: 'Buy a bus ticket', xp: 50, to: '/transport' },
 ]

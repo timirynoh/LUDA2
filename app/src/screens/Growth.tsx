@@ -174,6 +174,7 @@ export function Deals() {
     <div>
       <Header back title="Luda Deals" sub={`📍 ${city.name} · save when you pay with Luda`} />
       <div className="flex flex-col gap-3 px-5">
+        <Link to="/promos" className="card flex items-center gap-3"><span className="text-xl">🔥</span><span className="flex-1 text-sm font-semibold">Promo Spotter: student-snapped shop promos</span><span className="text-xs text-mint-300">›</span></Link>
         <div className="card flex items-center gap-3 bg-gradient-to-br from-orange-500/20 to-transparent"><Gift className="text-orange-300" /><p className="flex-1 text-sm">You've saved <b>{fmt(saved, 'TRY')}</b> with {s.dealsUsed.length} deal{s.dealsUsed.length === 1 ? '' : 's'}</p></div>
         <div className="-mx-5 flex gap-2 overflow-x-auto px-5">{(['All', 'Food', 'Beauty', 'Groceries', 'Transport', 'Phone', 'Fun'] as const).map((c) => <button key={c} onClick={() => setCat(c)} className={`chip shrink-0 px-4 py-2 text-sm ${cat === c ? 'bg-gradient-to-r from-orange-400 to-red-500 text-white' : 'glass text-slate-300'}`}>{c}</button>)}</div>
         <div className="grid grid-cols-1 gap-3 tab:grid-cols-2">

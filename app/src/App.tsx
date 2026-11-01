@@ -30,6 +30,7 @@ import Market from './screens/Market'
 import Person from './screens/Person'
 import { Ambassadors, Deals, Invite, useReferralProgress, Welcome } from './screens/Growth'
 import { Challenges, NewsScreen } from './screens/Engage'
+import Promos, { usePromoConfirms } from './screens/Promos'
 import Profile from './screens/Profile'
 import Residency from './screens/Residency'
 import Rewards from './screens/Rewards'
@@ -64,6 +65,7 @@ export default function App() {
   useExchangerReview()
   useRateAlerts()
   useReferralProgress()
+  usePromoConfirms()
   const inRoom = loc.pathname.startsWith('/chats/')
   const [splash, setSplash] = useState(true)
   const [authView, setAuthView] = useState<'landing' | 'signup' | 'signin'>('landing')
@@ -132,6 +134,7 @@ export default function App() {
                 <Route path="/welcome" element={<Welcome />} />
                 <Route path="/news" element={<NewsScreen />} />
                 <Route path="/challenges" element={<Challenges />} />
+                <Route path="/promos" element={<Promos />} />
                 <Route path="/disputes/:id" element={<DisputeView />} />
                 <Route path="/chats" element={<Chats />} />
                 <Route path="/chats/:id" element={<ChatRoom />} />

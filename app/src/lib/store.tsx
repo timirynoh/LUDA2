@@ -20,6 +20,7 @@ import type { Review } from './social'
 import type { Item, Order } from './market'
 import type { Pot, RateAlert } from './savings'
 import type { News, NotifCat, Referral } from './growth'
+import type { Promo } from './promos'
 
 export type TxType = 'deposit' | 'withdraw' | 'convert' | 'bill' | 'p2p' | 'reward'
 export interface Tx { id: string; type: TxType; amount: number; currency: string; label: string; ts: number; meta?: string }
@@ -52,7 +53,7 @@ export interface State {
   connections: string[]
   theme: 'dark' | 'light' | 'system'
   shortcuts: string[]
-  sections: { flash: boolean; nextClass: boolean; rates: boolean; quests: boolean; deadline: boolean; checkin: boolean; welcome: boolean; news: boolean }
+  sections: { flash: boolean; nextClass: boolean; rates: boolean; quests: boolean; deadline: boolean; checkin: boolean; welcome: boolean; news: boolean; promos: boolean }
   phoneVerified: boolean
   proofs: { housing?: 'resident' | 'owner' | 'agent' | 'photos'; business?: 'company' | 'individual'; org?: boolean }
   isAdmin: boolean
@@ -112,6 +113,9 @@ export interface State {
   notifPrefs: Record<NotifCat, boolean>
   pushOn: boolean
   myNews: News[]
+  myPromos: Promo[]
+  promoVotes: Record<string, 'still' | 'gone'>
+  savedPromos: string[]
   invitePaid?: boolean
   bio?: string
   sent: { id: string; to: string; amount: number; cur: string; note: string; ts: number }[]
@@ -131,7 +135,7 @@ export const initialState: State = {
   badges: [], quests: [], trades: [], savedBills: [], docs: [], permitExpiry: '', contacted: 0,
   savedHomes: [], viewings: [], myListings: [], connections: [],
   theme: 'dark', shortcuts: ['deposit', 'convert', 'p2p', 'bills'],
-  sections: { flash: true, nextClass: true, rates: true, quests: true, deadline: true, checkin: true, welcome: true, news: true },
+  sections: { flash: true, nextClass: true, rates: true, quests: true, deadline: true, checkin: true, welcome: true, news: true, promos: true },
   phoneVerified: false, proofs: {}, isAdmin: false, reports: [],
   myJobs: [], applications: [], myEvents: [], rsvps: [],
   university: '', classes: [], remind: { on: false, minutes: 15 }, paidFees: [],
@@ -139,7 +143,7 @@ export const initialState: State = {
   chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {}, flash: [], gigs: [], saver: { status: 'none' }, createdAt: Date.now(), toured: false, account: null, signedIn: false, lockOnOpen: true,
   security: { frozen: false, twoStep: false, hideBalances: false, dailyWithdraw: 20000, autoLockMin: 3 }, logins: [], inbox: [], referral: '', kyc: { status: 'none' }, threads: {}, disputes: [], exchanger: { status: 'none' }, ads: [], cards: [], flashPop: true, reviews: [], alerts: [], pots: [], myItems: [], orders: [], sent: [],
   referrals: [], ambassador: { status: 'none' }, dealsUsed: [], welcomeDone: [], spin: { total: 0 }, newsSaved: [], newsLiked: [], challenges: [],
-  notifPrefs: { money: true, chats: true, classes: true, rates: true, deals: false, news: true, security: true }, pushOn: false, myNews: [], activity: {}, recentPosts: [], deposits: 0,
+  notifPrefs: { money: true, chats: true, classes: true, rates: true, deals: false, news: true, security: true }, pushOn: false, myNews: [], myPromos: [], promoVotes: {}, savedPromos: [], activity: {}, recentPosts: [], deposits: 0,
 }
 
 function load(): State {

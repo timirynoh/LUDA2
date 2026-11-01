@@ -21,6 +21,7 @@ const EXTRA = [
   { label: 'Saved cards', to: '/wallet', emoji: '💳', kw: 'card bank visa mastercard' },
   { label: 'Notification settings', to: '/security', emoji: '🔔', kw: 'notification push alert' },
   { label: 'Daily spin', to: '/', emoji: '🎡', kw: 'spin wheel check-in daily reward' },
+  { label: 'Promo Spotter', to: '/promos', emoji: '🔥', kw: 'promo discount cheap free sale market shop price' },
 ]
 
 /** One search box for features, houses, jobs, events and groups. */

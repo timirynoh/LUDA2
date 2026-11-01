@@ -69,4 +69,6 @@ export const DAILY_LIMITS: Record<string, { max: number; label: string }> = {
   send: { max: 20, label: 'transfers' },
   item: { max: 5, label: 'marketplace posts' },
   review: { max: 20, label: 'reviews' },
+  promo: { max: 8, label: 'promo snaps' },
+  vote: { max: 40, label: 'promo votes' },
 }

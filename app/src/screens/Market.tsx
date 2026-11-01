@@ -35,6 +35,7 @@ export default function Market() {
       <div className="flex flex-col gap-3 px-5">
         <Segmented value={tab} onChange={setTab} options={[{ value: 'browse', label: '🛒 Browse' }, { value: 'mine', label: `📦 Mine${s.orders.length + s.myItems.length ? ` · ${s.orders.length + s.myItems.length}` : ''}` }]} />
         {tab === 'browse' ? <>
+          <Link to="/promos" className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-red-500/20 to-orange-500/10 p-3 text-sm"><span className="text-2xl">🔥</span><span className="flex-1"><b>Promo Spotter:</b> cheap & free finds in shops, snapped by students</span><span className="text-xs text-mint-300">Open ›</span></Link>
           <div className="flex items-start gap-3 rounded-2xl bg-mint-400/10 p-3 text-xs text-slate-300"><ShieldCheck size={18} className="mt-0.5 shrink-0 text-mint-300" /><span><b>Buy safely:</b> pay into escrow, meet at a Safe Spot, check the item, then release. Never pay before seeing it.</span></div>
           <div className="relative"><Search size={18} className="absolute start-4 top-1/2 -translate-y-1/2 text-slate-500" /><input className="input ps-11" placeholder="Search sofa, phone, books…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <div className="-mx-5 flex gap-2 overflow-x-auto px-5">{CATS.map((c) => <button key={c} onClick={() => setCat(c)} className={`chip shrink-0 px-4 py-2 text-sm ${cat === c ? 'bg-gradient-to-r from-amber-300 to-rose-500 text-ink-950' : 'glass text-slate-300'}`}>{c}</button>)}</div>

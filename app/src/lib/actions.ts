@@ -1,4 +1,4 @@
-import { MapPin, MessageCircle, Wrench, Send, PiggyBank, ShoppingBag, Tag, Newspaper, Trophy, UserPlus, Megaphone, Luggage, ArrowDownLeft, ArrowUpRight, Briefcase, Building2, Bus, Gift, GraduationCap, Handshake, House, Repeat, ShieldCheck, Users, UtensilsCrossed, Zap, type LucideIcon } from 'lucide-react'
+import { Flame, MapPin, MessageCircle, Wrench, Send, PiggyBank, ShoppingBag, Tag, Newspaper, Trophy, UserPlus, Megaphone, Luggage, ArrowDownLeft, ArrowUpRight, Briefcase, Building2, Bus, Gift, GraduationCap, Handshake, House, Repeat, ShieldCheck, Users, UtensilsCrossed, Zap, type LucideIcon } from 'lucide-react'
 
 export interface Action { id: string; to: string; icon: LucideIcon; key: string; c: string; admin?: boolean }
 
@@ -14,6 +14,7 @@ export const ACTIONS: Action[] = [
   { id: 'jobs', to: '/jobs', icon: Briefcase, key: 'act.jobs', c: 'from-lime-400 to-green-700' },
   { id: 'community', to: '/community', icon: Users, key: 'act.community', c: 'from-pink-400 to-rose-600' },
   { id: 'transport', to: '/transport', icon: Bus, key: 'act.transport', c: 'from-cyan-400 to-sky-700' },
+  { id: 'promos', to: '/promos', icon: Flame, key: 'act.promos', c: 'from-red-400 to-orange-600' },
   { id: 'deals', to: '/deals', icon: Tag, key: 'act.deals', c: 'from-orange-400 to-red-600' },
   { id: 'news', to: '/news', icon: Newspaper, key: 'act.news', c: 'from-slate-400 to-indigo-700' },
   { id: 'challenges', to: '/challenges', icon: Trophy, key: 'act.challenges', c: 'from-yellow-300 to-amber-700' },
