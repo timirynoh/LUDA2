@@ -16,6 +16,11 @@ Luda is an all-in-one, gamified, modern app for Africans (mostly students) livin
 - The app shows its version: Profile footer shows only 'Luda v1.0.1' (owner doesn't want build numbers shown to users; demo builds add ' · Demo'), the sign-in screen 'v1.0.1', and the admin header 'v… · build <time · commit>' (build details for the owner only). 'Reset demo data' is hidden in LIVE. Source of truth: `app/package.json` "version" → `__VERSION__` (vite define, `src/build.d.ts`).
 - v1.0.0 = first live real-money release (2026-11-02). Bump on EVERY push that reaches users: patch (1.0.x) = fixes, minor (1.x.0) = new features, major (x.0.0) = big changes. Mention the new version in the commit message.
 
+## Translations (2026-11-02, v1.1.0)
+- Old system: `lib/i18n.ts` `t(key)` covers ~125 keys (nav, headings). New layer: `lib/autoTranslate.ts` (`setScreenLanguage`, called from the store when `s.lang` changes) translates EVERY on-screen text node and placeholder/title/aria-label it knows, using `src/i18n/{fr,tr,sw,ar}.json` keyed by the exact English text (`{}` = pattern, e.g. "Hold to pay {}"). It follows React updates with a MutationObserver and restores English when switching back. Skips `[translate="no"]`, `.notranslate`, `.selectable` and texts that are already t() values (prevents double translation).
+- Covered so far (~960 texts per language): welcome/sign-in/sign-up, onboarding, Home (cards), Wallet + all money sheets, Exchange, Transport/bus, Bills, Savings, Marketplace, Flash, Help/appeals, Profile, KYC/Verify, lock screen. NOT yet: sample/demo content lists in lib files (promos, news, access unlock lists), Housing, Jobs, Community, Uni, Residency, Chats, Security, Admin.
+- To cover a screen: `TS_JS=/path/to/typescript-v5or6 node app/scripts/extract-i18n.mjs <files>` → translate the new English lines into fr/tr/sw/ar → add to the JSON files (same {} count). Nigeria = English (owner's rule).
+
 ## Owner's rules (always follow)
 1. **Ask before adding features nobody requested.** Offer them as a multi-select question and build only what is picked.
 2. **Nigeria = English only.** Pidgin, Yoruba and Hausa were removed on purpose; do not re-add them. App languages: en, tr, fr, sw, ar.

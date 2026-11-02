@@ -1,3 +1,4 @@
+import { setScreenLanguage } from './autoTranslate'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { BADGES, LANGS, LEVELS, type Lang } from './data'
 import type { Listing } from './housing'
@@ -219,6 +220,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.lang = s.lang
     document.documentElement.dir = rtl ? 'rtl' : 'ltr'
+    void setScreenLanguage(s.lang) // translates every known text on screen, not only the t() keys
   }, [s.lang, rtl])
 
   const set = useCallback((fn: (s: State) => State) => setS(fn), [])
