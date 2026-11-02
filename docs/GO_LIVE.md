@@ -105,7 +105,7 @@ GitHub → **Actions** → **Deploy payment server** → **Run workflow**.
    - Root: `app`
    - Build: `npm run build`
    - Output: `dist`
-3. Variables:
+3. Variables (add them for **both Production and Preview**; without `VITE_PAY_API` the build now stops on purpose instead of publishing the demo app):
    - `NODE_VERSION` = `22`
    - `VITE_PAY_API` = `https://abcd1234.supabase.co/functions/v1`
    - `VITE_SUPABASE_ANON_KEY` = your anon or publishable key
