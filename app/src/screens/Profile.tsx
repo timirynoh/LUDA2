@@ -127,8 +127,8 @@ export default function Profile() {
           <p className="mt-2 text-xs text-slate-500">Phone: {s.phoneVerified ? '✅ verified' : 'not verified'} · Poster docs: {s.proofs.housing || s.proofs.business ? '✅ on file' : 'none yet'}</p>
         </section>}
 
-        <button className="btn-ghost text-rose-300" onClick={() => (armed ? reset() : setArmed(true))}>{armed ? 'Tap again to confirm reset' : t('profile.reset')}</button>
-        <p className="text-center text-[11px] text-slate-500"><b className="text-slate-300">Luda v{__VERSION__}</b> · {LIVE ? '🟢 Live app · real money' : '🧪 Demo app · practice money'}<br />build {__BUILD__}</p>
+        {!LIVE && <button className="btn-ghost text-rose-300" onClick={() => (armed ? reset() : setArmed(true))}>{armed ? 'Tap again to confirm reset' : t('profile.reset')}</button>}
+        <p className="text-center text-xs text-slate-500">Luda v{__VERSION__}{LIVE ? '' : ' · Demo'}</p>
       </div>
 
       {edit && <EditProfile onClose={() => setEdit(false)} />}
