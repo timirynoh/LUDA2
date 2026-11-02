@@ -128,7 +128,7 @@ export default function Profile() {
         </section>}
 
         <button className="btn-ghost text-rose-300" onClick={() => (armed ? reset() : setArmed(true))}>{armed ? 'Tap again to confirm reset' : t('profile.reset')}</button>
-        <p className="text-center text-[11px] text-slate-500">{LIVE ? '🟢 Live app · real money' : '🧪 Demo app · practice money'} · version {__BUILD__}</p>
+        <p className="text-center text-[11px] text-slate-500"><b className="text-slate-300">Luda v{__VERSION__}</b> · {LIVE ? '🟢 Live app · real money' : '🧪 Demo app · practice money'}<br />build {__BUILD__}</p>
       </div>
 
       {edit && <EditProfile onClose={() => setEdit(false)} />}

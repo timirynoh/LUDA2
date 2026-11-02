@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 
 export default defineConfig(({ command, mode }) => {
@@ -10,6 +11,7 @@ export default defineConfig(({ command, mode }) => {
   if (command === 'build' && mode !== 'embed' && !env.VITE_PAY_API && env.VITE_DEMO !== '1') {
     throw new Error('VITE_PAY_API is not set, so this would be a DEMO build. Set VITE_PAY_API (Cloudflare → Settings → Variables, for Production AND Preview), or set VITE_DEMO=1 to build the demo on purpose.')
   }
+  const version = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version
   const sha = (env.CF_PAGES_COMMIT_SHA || env.GITHUB_SHA || '').slice(0, 7)
   return {
     // Normal hosting serves the app from the domain root, so deep links like /pay/return
@@ -17,6 +19,6 @@ export default defineConfig(({ command, mode }) => {
     // is served from an unknown folder, so it uses relative paths and a memory router.
     base: mode === 'embed' ? './' : '/',
     plugins: [react(), tailwindcss()],
-    define: { __BUILD__: JSON.stringify(`${new Date().toISOString().slice(0, 16).replace('T', ' ')}${sha ? ' · ' + sha : ''}`) },
+    define: { __VERSION__: JSON.stringify(version), __BUILD__: JSON.stringify(`${new Date().toISOString().slice(0, 16).replace('T', ' ')}${sha ? ' · ' + sha : ''}`) },
   }
 })

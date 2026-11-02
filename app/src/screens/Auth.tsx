@@ -114,6 +114,7 @@ export function Landing({ onSignUp, onSignIn }: { onSignUp: () => void; onSignIn
         <button className="btn-primary py-4 text-base" onClick={onSignUp}>Create free account</button>
         <button className="btn-ghost py-4 text-base" onClick={onSignIn}>I have an account · Sign in</button>
         <p className="text-center text-xs text-slate-500">Made for the African community in North Cyprus 🇳🇬 🇨🇩 🇨🇲 🇿🇼 🇬🇭 🇰🇪 🇸🇩</p>
+        <p className="text-center text-[10px] text-slate-600">v{__VERSION__}</p>
       </div>
       <Sheet open={langOpen} onClose={() => setLangOpen(false)} title="Language">
         <div className="grid gap-2">{LANGS.map((l) => (

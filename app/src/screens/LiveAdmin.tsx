@@ -60,7 +60,7 @@ export default function LiveAdmin() {
   const go = (t: Tab) => { setTab(t); void load() }
   return (
     <div className="pb-10">
-      <Header back title="Luda HQ" sub="Every money action needs your PIN and is logged" right={<button className="glass grid size-10 place-items-center rounded-2xl" onClick={() => void load()} aria-label="Refresh"><RefreshCw size={17} /></button>} />
+      <Header back title="Luda HQ" sub={`v${__VERSION__} · every money action needs your PIN and is logged`} right={<button className="glass grid size-10 place-items-center rounded-2xl" onClick={() => void load()} aria-label="Refresh"><RefreshCw size={17} /></button>} />
       <nav className="-mx-0 mb-4 flex gap-2 overflow-x-auto px-5 pb-1" aria-label="Admin sections">
         {tabs.map(({ v, l, i: I, n }) => (
           <button key={v} onClick={() => go(v)} className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-3.5 py-2.5 text-sm font-semibold transition ${tab === v ? 'bg-mint-400 text-ink-950 shadow-lg shadow-emerald-500/20' : 'glass text-slate-300'}`}>
