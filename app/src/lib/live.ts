@@ -101,13 +101,20 @@ export interface LiveTicket { id: string; code: string; item: Record<string, any
 export interface LiveWithdrawal { reference: string; amount_minor: number; fee_minor: number; bank_name: string | null; account_number: string; account_name: string; status: 'processing' | 'paid' | 'failed' | 'reversed'; created_at: string }
 export interface LiveDeposit { reference: string; provider: Provider; status: 'pending' | 'paid' | 'failed' | 'mismatch'; chargeMinor: number; currency: string; feeMinor: number; creditMinor: number; creditCurrency: Cur; createdAt: string; paidAt: string | null }
 export interface Me {
-  profile: { username: string; fullName: string; email: string; kyc: 'none' | 'pending' | 'verified' | 'failed'; kycName: string | null; hasPin: boolean; isAdmin?: boolean; frozen: boolean; frozenBy: 'user' | 'admin' | null; phone: string | null; phoneVerified: boolean; moneyHoldUntil: string | null }
+  profile: { username: string; fullName: string; email: string; kyc: 'none' | 'pending' | 'verified' | 'failed'; kycName: string | null; hasPin: boolean; isAdmin?: boolean; staff?: StaffPerms | null; frozen: boolean; frozenBy: 'user' | 'admin' | null; phone: string | null; phoneVerified: boolean; moneyHoldUntil: string | null }
   balances: Record<Cur, number>
   history: LedgerRow[]
   tickets: LiveTicket[]
   withdrawals: LiveWithdrawal[]
   deposits: LiveDeposit[]
 }
+export type StaffArea = 'overview' | 'users' | 'kyc' | 'money' | 'bills' | 'disputes' | 'cases' | 'content' | 'banners' | 'team'
+export type StaffLevel = 'view' | 'edit' | 'full'
+export interface StaffPerms { owner: boolean; perms: Partial<Record<StaffArea, StaffLevel>> }
+const RANK = { view: 1, edit: 2, full: 3 }
+/** Display only: the server checks every admin action itself. */
+export const staffCan = (s: StaffPerms | null | undefined, area: StaffArea, level: StaffLevel = 'view') => !!s && !!s.perms[area] && RANK[s.perms[area]!] >= RANK[level]
+
 export interface LiveConfig { google: boolean; sms: boolean; didit: boolean; nin: boolean; providers: Provider[]; foreign: string[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number; fxMargin?: number; billMinor?: number; billHighMinor?: number; billStepMinor?: number; marketPct?: number; flashPct?: number } }
 
 let cfg: Promise<LiveConfig> | null = null

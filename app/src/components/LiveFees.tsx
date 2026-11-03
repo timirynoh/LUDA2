@@ -17,7 +17,7 @@ export function FeesSheet({ onClose }: { onClose: () => void }) {
     ['🧾', 'Bill payment', f.billMinor !== undefined ? `${money(f.billMinor, 'TRY')} up to ${money(f.billStepMinor ?? 0, 'TRY')}, ${money(f.billHighMinor ?? 0, 'TRY')} above` : '…'],
     ['🛍️', 'Market sale', `${pct(f.marketPct)} from the seller. Buyers pay no fee`],
     ['⚡', 'Flash help', `${pct(f.flashPct)} from the helper. The poster pays no fee`],
-    ['🚌', 'Bus tickets', 'No fee. You pay the ticket price'],
+    ['🚌', 'Bus tickets', 'No booking fee. Paying from Naira uses the conversion rate above'],
   ] : []
   return (
     <Sheet open onClose={onClose} title="Fees">

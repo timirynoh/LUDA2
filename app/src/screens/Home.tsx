@@ -1,11 +1,13 @@
 import { motion } from 'framer-motion'
+import { HomeBanners } from '../components/Banners'
+import { BoardStrip } from '../components/LiveBoardKit'
 import { ChevronDown, ChevronRight, ChevronUp, Eye, EyeOff, Flame, GraduationCap, Handshake, Minus, Moon, Pencil, Plus, Sun } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Ring, Sheet } from '../components/ui'
 import { FlashBubbles, FlashPop } from '../components/FlashBubbles'
 import { SaverCard, SaverSheet } from '../components/RideSaver'
-import { UnlockCard, WelcomeTour } from '../components/Verify'
+import { UnlockCard } from '../components/Verify'
 import { Avatar } from '../components/Avatar'
 import { CheckinCard, NewsPreview } from './Engage'
 import { PromoStrip } from './Promos'
@@ -53,8 +55,8 @@ export default function Home() {
           <p className="truncate text-xs text-slate-400 min-[380px]:text-sm">{t('home.hello')} {home.flag} · {city.name}</p>
           <p className="truncate text-base font-bold min-[380px]:text-lg">{s.name} <span className="text-xs font-medium text-orange-300 min-[380px]:text-sm"><Flame size={12} className="inline" />{s.streak}</span> <span className="text-xs font-medium text-slate-400 max-[379px]:hidden min-[380px]:text-sm">· {level.emoji} {level.name}</span></p>
         </div>
-        <Link to="/search" className="glass grid size-9 shrink-0 place-items-center rounded-2xl min-[380px]:size-10" aria-label="Search"><SearchIcon size={18} /></Link>
-        <Link to="/inbox" className="glass relative grid size-9 shrink-0 place-items-center rounded-2xl min-[380px]:size-10" aria-label="Notifications"><Bell size={18} />
+        <Link to="/search" data-tour="search" className="glass grid size-9 shrink-0 place-items-center rounded-2xl min-[380px]:size-10" aria-label="Search"><SearchIcon size={18} /></Link>
+        <Link to="/inbox" data-tour="inbox" className="glass relative grid size-9 shrink-0 place-items-center rounded-2xl min-[380px]:size-10" aria-label="Notifications"><Bell size={18} />
           {s.inbox.some((n) => !n.read) && <span className="absolute -end-1 -top-1 grid min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{s.inbox.filter((n) => !n.read).length}</span>}</Link>
         <button onClick={() => set((p) => ({ ...p, theme: isLight ? 'dark' : 'light' }))} className="glass grid size-10 shrink-0 place-items-center rounded-2xl max-[379px]:hidden" aria-label="Toggle day / night">
           {isLight ? <Moon size={18} className="text-indigo-500" /> : <Sun size={18} className="text-gold-300" />}
@@ -65,7 +67,7 @@ export default function Home() {
       {s.sections.flash && <FlashBubbles />}
 
       {/* balance card */}
-      <motion.div initial={{ scale: 0.97 }} animate={{ scale: 1 }}
+      <motion.div initial={{ scale: 0.97 }} animate={{ scale: 1 }} data-tour="balance"
         className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-500 via-emerald-700 to-emerald-950 p-6 text-white shadow-2xl shadow-emerald-900/40">
         <div className="absolute -top-16 -right-10 size-56 rounded-full bg-gold-300/25 blur-3xl" />
         <div className="absolute -bottom-20 -left-10 size-48 rounded-full bg-mint-300/20 blur-3xl" />
@@ -90,6 +92,7 @@ export default function Home() {
         </div>
       </motion.div>
 
+      <HomeBanners />
       {s.sections.checkin && <CheckinCard />}
       <UnlockCard />
       {s.sections.welcome && Date.now() - s.createdAt < 30 * 86_400_000 && s.welcomeDone.length < WELCOME_STEPS.length && (
@@ -100,7 +103,6 @@ export default function Home() {
           <span className="text-xs text-slate-400">{s.welcomeDone.length}/{WELCOME_STEPS.length}</span>
         </Link>
       )}
-      <WelcomeTour />
 
       {s.saver.status === 'none' && tierOf(s) >= 2 && <SaverCard dismissible onOpen={() => setSaverOpen(true)} />}
       {saverOpen && <SaverSheet onClose={() => setSaverOpen(false)} />}
@@ -132,7 +134,7 @@ export default function Home() {
       )}
 
       {/* quick actions: user-chosen */}
-      <section>
+      <section data-tour="actions">
         <div className="mb-3 flex items-center justify-between">
           <p className="label">{t('home.quick')}</p>
           <button onClick={() => setEditing(true)} className="chip bg-fg/5 py-1.5 text-slate-300"><Pencil size={12} /> Edit</button>
@@ -158,8 +160,8 @@ export default function Home() {
         </div>
       </section>
 
-      {s.sections.promos && <PromoStrip />}
-      {s.sections.news && <NewsPreview />}
+      {s.sections.promos && (LIVE ? <BoardStrip kind="promo" title="🔥 Deals near you" to="/promos" /> : <PromoStrip />)}
+      {s.sections.news && (LIVE ? <BoardStrip kind="news" title="📰 News" to="/news" /> : <NewsPreview />)}
 
       {/* rates */}
       {s.sections.rates && <section className="card">

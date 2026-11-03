@@ -1,17 +1,19 @@
 // Owner's admin page (live mode). Only accounts the server marks as admin can load any of this.
 import {
   AlertTriangle, ArrowDownToLine, ArrowUpFromLine, BadgeCheck, Banknote, Check, ChevronRight, Copy, ExternalLink, Gavel, Home as HomeIcon,
-  Inbox, LifeBuoy, Receipt, RefreshCw, Search, ShieldCheck, Snowflake, Ticket, Undo2, Users, Wallet, type LucideIcon,
+  Inbox, LifeBuoy, Megaphone, Newspaper, UserCog, Receipt, RefreshCw, Search, ShieldCheck, Snowflake, Ticket, Undo2, Users, Wallet, type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { BILL_ICON, BILL_TINT } from '../components/LiveBillCard'
 import { ReviewAndPin, errMsg, type Approval } from '../components/LiveMoney'
 import { Attachments, CATEGORY_LABEL, STATUS_LABEL, Thread, type CaseCategory, type Upload } from '../components/LiveSupport'
 import { Header, Sheet, Success } from '../components/ui'
-import { KIND_LABEL, api, money, type Cur } from '../lib/live'
+import { KIND_LABEL, api, money, staffCan, type Cur, type StaffArea } from '../lib/live'
+import { BannersTab, ContentTab, TeamTab } from '../components/AdminCommunity'
 import { useLive } from '../lib/liveStore'
 
-type Tab = 'overview' | 'bills' | 'cases' | 'disputes' | 'users' | 'topups' | 'withdrawals'
+type Tab = 'overview' | 'bills' | 'cases' | 'disputes' | 'users' | 'topups' | 'withdrawals' | 'content' | 'banners' | 'team'
+const TAB_AREA: Record<Tab, StaffArea> = { overview: 'overview', bills: 'bills', cases: 'cases', disputes: 'disputes', users: 'users', topups: 'money', withdrawals: 'money', content: 'content', banners: 'banners', team: 'team' }
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–')
 const waited = (iso: string) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d` }
 const short = (ref: string) => '…' + ref.slice(-8)
@@ -53,10 +55,13 @@ export default function LiveAdmin() {
   const [userId, setUserId] = useState<string | null>(null)
   const { data: o, load } = useLoad<Record<string, any>>('admin-overview')
   if (me && !me.profile.isAdmin) return <div><Header back title="Admin" /><p className="px-6 pt-10 text-center text-sm text-slate-400">This page is only for the Luda team.</p></div>
-  const tabs: { v: Tab; l: string; i: LucideIcon; n?: number }[] = [
+  const st = me?.profile.staff ?? null
+  const allow = (t: Tab) => staffCan(st, TAB_AREA[t])
+  const tabs = ([
     { v: 'overview', l: 'Home', i: HomeIcon }, { v: 'bills', l: 'Bills', i: Receipt, n: o?.billsPending }, { v: 'cases', l: 'Cases', i: Inbox, n: o?.openCases },
     { v: 'disputes', l: 'Held money', i: Gavel }, { v: 'users', l: 'Users', i: Users }, { v: 'topups', l: 'Top-ups', i: ArrowDownToLine }, { v: 'withdrawals', l: 'Payouts', i: ArrowUpFromLine },
-  ]
+    { v: 'content', l: 'Content', i: Newspaper }, { v: 'banners', l: 'Banners', i: Megaphone }, { v: 'team', l: 'Team', i: UserCog },
+  ] as { v: Tab; l: string; i: LucideIcon; n?: number }[]).filter((t) => allow(t.v))
   const go = (t: Tab) => { setTab(t); void load() }
   return (
     <div className="pb-10">
@@ -69,7 +74,11 @@ export default function LiveAdmin() {
         ))}
       </nav>
       <div className="px-5">
-        {tab === 'overview' && <Overview o={o} go={go} />}
+        {st && !st.owner && <p className="mb-3 rounded-2xl bg-sky-400/10 p-3 text-xs text-sky-200">You're signed in as Luda staff. You only see the areas the owner gave you{Object.entries(st.perms).filter(([a]) => a !== 'overview').map(([a, l]) => ` · ${a}: ${l === 'view' ? 'view only' : l === 'edit' ? 'can act' : 'full'}`).join('')}.</p>}
+        {tab === 'overview' && <Overview o={o} go={(t) => allow(t) && go(t)} />}
+        {tab === 'content' && <ContentTab staff={st} />}
+        {tab === 'banners' && <BannersTab staff={st} />}
+        {tab === 'team' && <TeamTab />}
         {tab === 'bills' && <BillsTab onChange={load} />}
         {tab === 'cases' && <CasesTab />}
         {tab === 'disputes' && <DisputesTab onChange={load} />}
@@ -112,10 +121,10 @@ function Overview({ o, go }: { o: Record<string, any> | null; go: (t: Tab) => vo
         <div className="absolute -end-10 -top-10 size-44 rounded-full bg-gold-300/20 blur-3xl" />
         <p className="text-sm text-white/80">Good {hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'}{o.admin ? `, ${o.admin}` : ''} 👋</p>
         <p className="mt-1 text-2xl font-extrabold text-white">{todo.length ? `${todo.reduce((a, t) => a + t.n, 0)} things need you` : 'All clear ✨'}</p>
-        <div className="mt-3 grid grid-cols-2 gap-2 text-white">
+        {o.balances && <div className="mt-3 grid grid-cols-2 gap-2 text-white">
           <div className="rounded-2xl bg-black/20 p-3"><p className="text-[11px] text-white/70">Users hold (Naira)</p><p className="text-lg font-extrabold">{money(o.balances?.NGN ?? 0, 'NGN')}</p></div>
           <div className="rounded-2xl bg-black/20 p-3"><p className="text-[11px] text-white/70">Users hold (Lira)</p><p className="text-lg font-extrabold">{money(o.balances?.TRY ?? 0, 'TRY')}</p></div>
-        </div>
+        </div>}
       </div>
 
       {todo.length > 0 && <div className="flex flex-col gap-2">
@@ -134,11 +143,13 @@ function Overview({ o, go }: { o: Record<string, any> | null; go: (t: Tab) => vo
       <p className="label">This week</p>
       <div className="grid grid-cols-2 gap-2.5 tab:grid-cols-3">
         <Stat icon={Users} tint="from-sky-400 to-indigo-500" label="Users" value={o.users} sub={`+${o.newUsers7d} new · ${o.verified} verified`} />
+        {o.balances && <>
         <Stat icon={ArrowDownToLine} tint="from-mint-400 to-emerald-600" label="Top-ups" value={o.deposits7d?.count ?? 0} sub={`${money(o.deposits7d?.NGN ?? 0, 'NGN')} · ${money(o.deposits7d?.TRY ?? 0, 'TRY')}`} />
         <Stat icon={ArrowUpFromLine} tint="from-violet-400 to-fuchsia-600" label="Payouts" value={o.withdrawals7d?.count ?? 0} sub={money(o.withdrawals7d?.NGN ?? 0, 'NGN')} />
         <Stat icon={Ticket} tint="from-amber-400 to-orange-600" label="Bus tickets" value={o.tickets7d ?? 0} />
         <Stat icon={Banknote} tint="from-gold-300 to-amber-500" label="Fees earned" value={money(o.fees7d?.withdrawNGN ?? 0, 'NGN')} sub="withdrawal fees" />
         <Stat icon={ShieldCheck} tint={Object.keys(wh).length ? 'from-mint-400 to-teal-600' : 'from-rose-400 to-rose-600'} label="Webhooks" value={Object.values(wh).reduce((a: number, b) => a + Number(b), 0)} sub={Object.keys(wh).length ? Object.entries(wh).map(([k, v]) => `${k} ${v}`).join(' · ') : 'none received yet'} />
+        </>}
       </div>
     </div>
   )

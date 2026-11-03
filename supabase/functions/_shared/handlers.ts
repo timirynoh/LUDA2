@@ -165,11 +165,30 @@ async function kycSync(p: Profile, env: Env, d: Deps): Promise<{ status: Profile
 }
 
 const isAdmin = (p: Profile, env: Env) => !!p.is_admin || (env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean).includes(p.email.toLowerCase())
-async function admin(req: Request, env: Env, d: Deps) {
-  const p = await me(req, env, d)
-  if (!isAdmin(p, env)) throw new Fail('Not found', 404) // don't reveal the admin page exists
-  return p
+/* Staff roles: the owner can do everything; staff are added by email with a level per area. */
+export const AREAS = ['overview', 'users', 'kyc', 'money', 'bills', 'disputes', 'cases', 'content', 'banners'] as const
+export type Area = (typeof AREAS)[number] | 'team'
+export type Level = 'view' | 'edit' | 'full'
+const RANK: Record<Level, number> = { view: 1, edit: 2, full: 3 }
+type Perms = Partial<Record<Area, Level>>
+async function permsOf(p: Profile, env: Env, d: Deps): Promise<{ owner: boolean; perms: Perms } | null> {
+  if (isAdmin(p, env)) return { owner: true, perms: Object.fromEntries([...AREAS, 'team'].map((a) => [a, 'full'])) as Perms }
+  const roles = await d.db.fn<Perms | null>('luda_staff_get', { p_email: p.email }).catch(() => null)
+  if (!roles || !Object.keys(roles).length) return null
+  const perms: Perms = {}
+  for (const a of AREAS) { const l = roles[a]; if (l && RANK[l]) perms[a] = l }
+  return Object.keys(perms).length ? { owner: false, perms: { ...perms, overview: perms.overview ?? 'view' } } : null
 }
+const can = (s: { perms: Perms }, area: Area, level: Level) => !!s.perms[area] && RANK[s.perms[area]!] >= RANK[level]
+/** Signed-in staff member allowed `level` in `area`. Non-staff get 404 (don't reveal the admin page exists). */
+async function staff(req: Request, env: Env, d: Deps, area: Area, level: Level = 'view') {
+  const p = await me(req, env, d)
+  const s = await permsOf(p, env, d)
+  if (!s) throw new Fail('Not found', 404)
+  if (!can(s, area, level)) throw new Fail(level === 'view' ? "Your role can't see this. Ask the owner." : "Your role can't do this. Ask the owner.", 403)
+  return Object.assign(p, { staff: s })
+}
+const admin = (req: Request, env: Env, d: Deps) => staff(req, env, d, 'team', 'full') // owner-only actions
 /** What the admin page shows about a person (never PIN data, full document numbers or payout recipient codes). */
 const adminProfile = (u: Profile) => ({
   userId: u.user_id, username: u.username, fullName: u.full_name, email: u.email, phone: u.phone ?? null, phoneVerified: !!u.phone_verified_at,
@@ -387,6 +406,56 @@ async function payOut(reference: string, amount: number, bank: string, bankName:
 type Body = Record<string, any>
 type Route = (ctx: { req: Request; env: Env; d: Deps; body: Body; url: URL }) => Promise<unknown>
 
+
+/* ------------------------- community: posts, groups, banners, team ------------------------- */
+type BoardKind = 'housing' | 'job' | 'event' | 'news' | 'promo' | 'place'
+/** Who can post what (shown in the app, enforced here). Staff with content 'edit' post as "Luda Official" and skip review. */
+export const BOARD_RULES: Record<BoardKind, { kyc: boolean; staffOnly?: boolean; minAgeDays?: number; review?: boolean; maxLive: number; perDay: number; days: number }> = {
+  housing: { kyc: true, maxLive: 3, perDay: 3, days: 30 },
+  job: { kyc: true, maxLive: 3, perDay: 3, days: 30 },
+  event: { kyc: true, maxLive: 5, perDay: 3, days: 60 },
+  news: { kyc: true, minAgeDays: 7, review: true, maxLive: 5, perDay: 2, days: 0 },
+  promo: { kyc: true, maxLive: 5, perDay: 5, days: 14 },
+  place: { kyc: true, staffOnly: true, maxLive: 0, perDay: 0, days: 0 },
+}
+const BOARD_KINDS = Object.keys(BOARD_RULES) as BoardKind[]
+const boardKind = (v: unknown) => { const k = String(v ?? '') as BoardKind; if (!BOARD_KINDS.includes(k)) throw new Fail('Unknown post type'); return k }
+/** The kind's own fields: short text, numbers, yes/no. Every text goes through the scam/abuse filter. */
+function boardData(v: unknown) {
+  const out: Record<string, string | number | boolean> = {}
+  if (!v || typeof v !== 'object') return out
+  for (const [k, raw] of Object.entries(v as Record<string, unknown>).slice(0, 14)) {
+    if (!/^[a-zA-Z]{2,20}$/.test(k)) continue
+    if (typeof raw === 'boolean') out[k] = raw
+    else if (typeof raw === 'number' && Number.isFinite(raw)) out[k] = Math.max(-1e9, Math.min(1e9, raw))
+    else if (raw !== null && raw !== undefined) { const t = cleanText(raw, 160); if (t) { const bad = textProblem(t); if (bad) throw new Fail(bad); out[k] = t } }
+  }
+  return out
+}
+/** Why this person can't post this kind yet (null = they can). */
+async function boardBlock(p: Profile, kind: BoardKind, official: boolean, d: Deps) {
+  const r = BOARD_RULES[kind]
+  if (official) return null
+  if (r.staffOnly) return 'Only the Luda team adds these.'
+  if (r.kyc && p.kyc_status !== 'verified') return 'Verify your ID first (Wallet → Verify). It keeps fake posts and scammers out.'
+  if (r.minAgeDays && p.created_at && Date.now() - Date.parse(p.created_at) < r.minAgeDays * 86400e3) return `Your account must be at least ${r.minAgeDays} days old to post news.`
+  const c = await d.db.fn<{ live: number; recent: number }>('luda_board_count', { p_user: p.user_id, p_kind: kind, p_since: new Date(Date.now() - 86400e3).toISOString() })
+  if (r.maxLive && c.live >= r.maxLive) return `You can have ${r.maxLive} active posts here. Remove an old one first.`
+  if (r.perDay && c.recent >= r.perDay) return `You can post ${r.perDay} of these a day. Try again tomorrow.`
+  return null
+}
+const communityErr = (e: unknown): never => {
+  if (e instanceof MoneyError) {
+    if (e.message === 'not_found') throw new Fail('This is no longer available', 404)
+    if (e.message === 'own_post') throw new Fail("You can't report your own post")
+    if (e.message === 'name_taken') throw new Fail('A group with this name already exists. Join it instead!')
+    if (e.message === 'not_member') throw new Fail('Join the group first', 403)
+    if (e.message === 'owner_cannot_leave') throw new Fail("You created this group, so you can't leave it")
+  }
+  return moneyMsg(e)
+}
+const BANNER_THEMES = ['mint', 'sunset', 'ocean', 'grape', 'gold', 'night']
+
 const routes: Record<string, Route> = {
   /* ---- public ---- */
   'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env), fxMargin: margin(env), ...featureFees(env) } }),
@@ -477,9 +546,10 @@ const routes: Record<string, Route> = {
     }
     // Money owed to this user as a seller/helper that the buyer/poster never confirmed (after 7 / 3 days, no open case).
     if (await d.db.hit(`autorel:${p.user_id}`, 1, 600)) await d.db.fn('luda_auto_release', { p_user: p.user_id }).catch(() => {})
+    const staffOf = await permsOf(p, env, d)
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
     return {
-      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: isAdmin(p, env), frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null },
+      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null },
       // Every top-up attempt with its status (pending / paid / failed / mismatch), so the app can show all of them.
       deposits: deposits.map((x) => ({ reference: x.reference, provider: x.provider, status: x.status, chargeMinor: Number(x.amount_minor), currency: x.currency, feeMinor: Number(x.fee_minor ?? 0), creditMinor: Number(x.credit_minor ?? 0), creditCurrency: x.credit_currency ?? 'NGN', createdAt: x.created_at, paidAt: x.paid_at ?? null })),
       balances, history, tickets, withdrawals: withdrawals.map((w) => ({ ...w, account_number: '••••' + w.account_number.slice(-4), recipient_code: undefined })),
@@ -786,24 +856,25 @@ const routes: Record<string, Route> = {
 
   /* ---- owner admin ---- */
   'GET admin-overview': async ({ req, env, d }) => {
-    const a = await admin(req, env, d)
+    const a = await staff(req, env, d, 'overview', 'view')
     const [ov, cases, bills, held] = await Promise.all([d.db.adminOverview(), d.db.listCases('open', 200), d.db.fn<Record<string, any>[]>('luda_admin_bills', { p_status: 'pending' }), d.db.fn<Record<string, any>[]>('luda_admin_escrows', { p_status: 'held' })])
     const disputes = held.filter((e) => e.kind !== 'bill')
     return {
-      ...ov, admin: a.username, openCases: cases.length,
+      ...(can(a.staff, 'money', 'view') ? ov : { users: ov.users, verified: ov.verified, kycPending: ov.kycPending, phoneVerified: ov.phoneVerified, frozen: ov.frozen, newUsers7d: ov.newUsers7d }),
+      admin: a.username, owner: a.staff.owner, perms: a.staff.perms, openCases: cases.length,
       billsPending: bills.length, billsPendingMinor: bills.reduce((t, b) => t + Number(b.amount_minor), 0),
       escrowHeld: disputes.length, escrowHeldMinor: disputes.reduce((t, e) => t + Number(e.amount_minor), 0),
     }
   },
 
   'GET admin-users': async ({ req, env, d, url }) => {
-    await admin(req, env, d)
+    await staff(req, env, d, 'users', 'view')
     const list = await d.db.searchProfiles((url.searchParams.get('q') ?? '').slice(0, 60), 30)
     return { users: list.map(adminProfile) }
   },
 
   'GET admin-user': async ({ req, env, d, url }) => {
-    await admin(req, env, d)
+    await staff(req, env, d, 'users', 'view')
     const u = await d.db.profile(url.searchParams.get('id') ?? '')
     if (!u) throw new Fail('User not found', 404)
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(u.user_id), d.db.history(u.user_id, 50), d.db.tickets(u.user_id, 20), d.db.withdrawals(u.user_id, 20), d.db.deposits(u.user_id, 20)])
@@ -811,17 +882,17 @@ const routes: Record<string, Route> = {
   },
 
   'GET admin-deposits': async ({ req, env, d, url }) => {
-    await admin(req, env, d)
+    await staff(req, env, d, 'money', 'view')
     return { deposits: await d.db.listDeposits(url.searchParams.get('status') || null, url.searchParams.get('q') || null, 50) }
   },
 
   'GET admin-withdrawals': async ({ req, env, d, url }) => {
-    await admin(req, env, d)
+    await staff(req, env, d, 'money', 'view')
     return { withdrawals: (await d.db.listWithdrawals(url.searchParams.get('status') || null, 50)).map((w) => ({ ...w, recipient_code: undefined })) }
   },
 
   'GET admin-cases': async ({ req, env, d, url }) => {
-    await admin(req, env, d)
+    await staff(req, env, d, 'cases', 'view')
     const st = (url.searchParams.get('status') ?? 'open,waiting_user').replace(/[^a-z_,]/g, '') || null
     const list = await d.db.listCases(st === 'all' ? null : st, 100)
     const msgs = await d.db.caseMessages(list.map((c) => c.id))
@@ -829,7 +900,7 @@ const routes: Record<string, Route> = {
   },
 
   'GET admin-case': async ({ req, env, d, url }) => {
-    await admin(req, env, d)
+    await staff(req, env, d, 'cases', 'view')
     const c = await d.db.getCase(url.searchParams.get('id') ?? '')
     if (!c) throw new Fail('Case not found', 404)
     const u = await d.db.profile(c.user_id)
@@ -837,7 +908,7 @@ const routes: Record<string, Route> = {
   },
 
   'POST admin-case-reply': async ({ req, env, d, body }) => {
-    const a = await admin(req, env, d)
+    const a = await staff(req, env, d, 'cases', 'edit')
     const c = await d.db.getCase(String(body.caseId ?? ''))
     if (!c) throw new Fail('Case not found', 404)
     const message = cleanText(body.message, 2000)
@@ -851,7 +922,7 @@ const routes: Record<string, Route> = {
 
   // Ask Paystack/Flutterwave again about a top-up or withdrawal (safe: it only settles what the provider confirms).
   'POST admin-recheck': async ({ req, env, d, body }) => {
-    const a = await admin(req, env, d)
+    const a = await staff(req, env, d, 'money', 'edit')
     const ref = String(body.reference ?? '')
     await d.db.log(ref, 'admin_recheck', { by: a.username })
     if (ref.startsWith('wdr_')) { const w = await d.db.withdrawal(ref); if (!w) throw new Fail('Not found', 404); return { status: await settleWithdrawal(w, env, d) } }
@@ -862,11 +933,15 @@ const routes: Record<string, Route> = {
 
   // Changes to someone's account: always needs the admin's PIN or fingerprint, and is written to the audit log.
   'POST admin-action': async ({ req, env, d, body }) => {
-    const a = await admin(req, env, d)
+    const a = await staff(req, env, d, 'users', 'view')
     await verifyAuth(a, body, env, d)
     const u = await d.db.profile(String(body.userId ?? ''))
     if (!u) throw new Fail('User not found', 404)
     const action = String(body.action ?? ''), reason = String(body.reason ?? '').replace(/[<>\u0000-\u001f]/g, '').slice(0, 140)
+    const NEED: Record<string, [Area, Level]> = { freeze: ['users', 'full'], unfreeze: ['users', 'full'], 'kyc-reset': ['kyc', 'full'], 'kyc-approve': ['kyc', 'edit'], 'kyc-reject': ['kyc', 'edit'], adjust: ['team', 'full'], 'ticket-refund': ['money', 'full'] }
+    const need = NEED[action]
+    if (!need) throw new Fail('Unknown action')
+    if (!can(a.staff, need[0], need[1])) throw new Fail(need[0] === 'team' ? 'Only the owner can correct balances' : "Your role can't do this. Ask the owner.", 403)
     const audit = (extra: Record<string, unknown> = {}) => d.db.log(u.user_id, `admin_${action}`, { by: a.username, user: u.username, reason, ...extra })
     // When acting from a support case, tell the user in that case and update its status.
     const caseNote = async (text: string, status: CaseStatus) => {
@@ -1106,17 +1181,18 @@ const routes: Record<string, Route> = {
 
   /* ---------------- admin: bills and money in escrow ---------------- */
   'GET admin-bills': async ({ req, env, d, url }) => {
-    await admin(req, env, d)
+    await staff(req, env, d, 'bills', 'view')
     const st = url.searchParams.get('status')
     const list = await d.db.fn<Record<string, any>[]>('luda_admin_bills', { p_status: st === 'all' ? null : st || 'pending' })
     return { bills: await Promise.all(list.map(async (b) => ({ ...b, photoUrls: await signAll(env, d, b.files), receiptUrls: await signAll(env, d, b.receipt), files: undefined, receipt: undefined }))) }
   },
 
   'POST admin-bill': async ({ req, env, d, body }) => {
-    const a = await admin(req, env, d)
+    const a = await staff(req, env, d, 'bills', 'edit')
     await verifyAuth(a, body, env, d)
     const id = uuid(body.billId), paid = body.paid === true, note = cleanText(body.note, 200)
     if (!paid && !note) throw new Fail('Tell the user why the bill could not be paid')
+    if (!paid && !can(a.staff, 'bills', 'full')) throw new Fail("Your role can mark bills as paid, but refunds need the owner or a 'full' bills role", 403)
     const receipt = paid ? await storeFiles(env, d, a.user_id, `receipts`, body.files) : []
     if (paid && !receipt.length) throw new Fail('Attach the payment receipt (photo or PDF)')
     const r = await d.db.fn<{ ok: boolean }>('luda_bill_settle', { p_bill: id, p_paid: paid, p_note: note || 'Paid by the Luda team', p_receipt: receipt })
@@ -1126,14 +1202,14 @@ const routes: Record<string, Route> = {
   },
 
   'GET admin-escrows': async ({ req, env, d, url }) => {
-    await admin(req, env, d)
+    await staff(req, env, d, 'disputes', 'view')
     const st = url.searchParams.get('status')
     return { escrows: await d.db.fn('luda_admin_escrows', { p_status: st === 'all' ? null : st || 'held' }) }
   },
 
   // Resolve a marketplace / Flash dispute: pay the seller or helper, or refund the buyer or poster.
   'POST admin-escrow': async ({ req, env, d, body }) => {
-    const a = await admin(req, env, d)
+    const a = await staff(req, env, d, 'disputes', 'full')
     await verifyAuth(a, body, env, d)
     const to = body.to === 'payee' ? 'payee' : body.to === 'payer' ? 'payer' : ''
     const note = cleanText(body.note, 200)
@@ -1191,6 +1267,182 @@ const routes: Record<string, Route> = {
     await d.db.log(reference, 'withdraw_init', { amount, fee, bank })
     const r = await payOut(reference, amount, bank, bankName, account, name, env, d)
     return { reference, status: r.status, accountName: name, feeMinor: fee, ...('message' in r ? { message: r.message } : {}) }
+  },
+
+  /* ---------------- community posts ---------------- */
+  'GET board': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    const kind = boardKind(url.searchParams.get('kind'))
+    const st = await permsOf(p, env, d)
+    const official = !!st && can(st, 'content', 'edit')
+    const r = await d.db.fn<{ items: Record<string, any>[]; mine: Record<string, any>[] }>('luda_board_list', { p_kind: kind, p_viewer: p.user_id })
+    const sign = signer(env, d)
+    const view = async (x: Record<string, any>) => ({ ...x, photoKeys: undefined, photoUrls: await Promise.all(((x.photoKeys as string[]) ?? []).slice(0, 4).map(sign)) })
+    const block = await boardBlock(p, kind, official, d)
+    return { items: await Promise.all(r.items.map(view)), mine: await Promise.all(r.mine.map(view)), rules: BOARD_RULES[kind], canPost: !block, why: block, official }
+  },
+
+  'POST board-post': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const kind = boardKind(body.kind)
+    const st = await permsOf(p, env, d)
+    const official = body.official === true && !!st && can(st, 'content', 'edit')
+    if (body.official === true && !official) throw new Fail("Your role can't post as Luda Official", 403)
+    const block = await boardBlock(p, kind, official, d)
+    if (block) throw new Fail(block, 403)
+    await limit(d, `board:${p.user_id}`, official ? 60 : 10, 3600, 'Slow down a little: too many posts in an hour')
+    const title = clean(body.title, 90, 'a title', 3), text = body.body ? clean(body.body, 1500, 'a description') : ''
+    const data = boardData(body.data), city = cleanText(body.city, 30)
+    const photos = await storeFiles(env, d, p.user_id, `board-${kind}`, body.files)
+    const r = BOARD_RULES[kind]
+    const status = r.review && !official ? 'review' : 'live'
+    const post = await d.db.fn<Record<string, any>>('luda_board_create', { p_user: p.user_id, p_kind: kind, p_title: title, p_body: text, p_data: data, p_photos: photos, p_city: city, p_status: status, p_official: official, p_days: r.days }).catch(communityErr)
+    await d.db.log(String(post.id), 'board_post', { user: p.username, kind, status, official })
+    return { post: { ...post, photoKeys: undefined }, status }
+  },
+
+  'POST board-remove': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const ok = await d.db.fn<boolean>('luda_board_remove', { p_id: uuid(body.id), p_user: p.user_id, p_staff: false, p_note: 'Removed by the author' })
+    if (!ok) throw new Fail('Not found', 404)
+    return { ok: true }
+  },
+
+  'POST board-report': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await limit(d, `report:${p.user_id}`, 20, 86400, 'You have sent a lot of reports today. Thank you! Try again tomorrow.')
+    const r = await d.db.fn<{ reports: number; status: string }>('luda_board_report', { p_id: uuid(body.id), p_user: p.user_id, p_reason: cleanText(body.reason, 140) }).catch(communityErr)
+    return { ok: true, hidden: r.status !== 'live' }
+  },
+
+  'GET admin-board': async ({ req, env, d, url }) => {
+    await staff(req, env, d, 'content', 'view')
+    const st = url.searchParams.get('status')
+    const list = await d.db.fn<Record<string, any>[]>('luda_board_admin', { p_status: st === 'all' ? null : st || 'review' })
+    const sign = signer(env, d)
+    return { posts: await Promise.all(list.map(async (x) => ({ ...x, photoKeys: undefined, photoUrls: await Promise.all(((x.photoKeys as string[]) ?? []).map(sign)) }))) }
+  },
+
+  'POST admin-board-review': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'content', 'edit')
+    const approve = body.approve === true, note = cleanText(body.note, 200)
+    if (!approve && !note) throw new Fail('Add a short reason')
+    const ok = await d.db.fn<boolean>('luda_board_review', { p_id: uuid(body.id), p_approve: approve, p_note: note || null })
+    if (!ok) throw new Fail('Already handled', 409)
+    await d.db.log(String(body.id), approve ? 'admin_post_approved' : 'admin_post_removed', { by: a.username, note })
+    return { ok: true }
+  },
+
+  /* ---------------- group chats ---------------- */
+  'GET groups': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    const owned = await d.db.fn<number>('luda_groups_owned', { p_user: p.user_id })
+    const st = await permsOf(p, env, d)
+    const staffCan = !!st && can(st, 'content', 'edit')
+    const why = staffCan ? null : p.kyc_status !== 'verified' ? 'Verify your ID to create a group. Anyone signed in can join and chat.' : owned >= 3 ? 'You already run 3 groups (the maximum).' : null
+    return { groups: await d.db.fn('luda_groups', { p_user: p.user_id }), canCreate: !why, why, official: staffCan }
+  },
+
+  'POST group-create': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const st = await permsOf(p, env, d)
+    const official = body.official === true && !!st && can(st, 'content', 'edit')
+    if (!official) {
+      if (p.kyc_status !== 'verified') throw new Fail('Verify your ID to create a group', 403)
+      if ((await d.db.fn<number>('luda_groups_owned', { p_user: p.user_id })) >= 3) throw new Fail('You can run up to 3 groups', 403)
+      await limit(d, `groupnew:${p.user_id}`, 2, 86400, 'You can create 2 groups a day')
+    }
+    const name = clean(body.name, 40, 'a group name', 3), about = body.about ? clean(body.about, 200, 'what the group is about') : ''
+    const emoji = cleanText(body.emoji, 8) || '💬', city = cleanText(body.city, 30)
+    const g = await d.db.fn<Record<string, any>>('luda_group_create', { p_user: p.user_id, p_name: name, p_about: about, p_emoji: emoji, p_city: city, p_official: official }).catch(communityErr)
+    await d.db.log(String(g.id), 'group_new', { user: p.username, name, official })
+    return { group: g }
+  },
+
+  'POST group-join': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await d.db.fn('luda_group_join', { p_group: uuid(body.id), p_user: p.user_id, p_join: body.join !== false }).catch(communityErr)
+    return { ok: true }
+  },
+
+  'GET group-messages': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    const after = Math.max(0, Math.floor(Number(url.searchParams.get('after')) || 0))
+    return { messages: await d.db.fn('luda_group_messages', { p_group: uuid(url.searchParams.get('id')), p_user: p.user_id, p_after: after }).catch(communityErr) }
+  },
+
+  'POST group-send': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    if (p.frozen) throw new Fail('Your account is on hold', 403)
+    await limit(d, `chat:${p.user_id}`, 5, 10, '🐢 Slow down: 5 messages every 10 seconds')
+    await limit(d, `chatday:${p.user_id}`, 400, 86400, "You've sent a lot today. Try again tomorrow.")
+    const text = clean(body.body, 1000, 'a message')
+    const m = await d.db.fn<Record<string, unknown>>('luda_group_send', { p_group: uuid(body.id), p_user: p.user_id, p_body: text }).catch(communityErr)
+    return { message: m }
+  },
+
+  'POST group-delete-msg': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const st = await permsOf(p, env, d)
+    const ok = await d.db.fn<boolean>('luda_group_delete_msg', { p_msg: int(body.messageId), p_user: p.user_id, p_staff: !!st && can(st, 'content', 'edit') })
+    if (!ok) throw new Fail("You can't delete this message", 403)
+    return { ok: true }
+  },
+
+  'POST admin-group-remove': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'content', 'full')
+    if (!(await d.db.fn<boolean>('luda_group_remove', { p_group: uuid(body.id) }))) throw new Fail('Already removed', 409)
+    await d.db.log(String(body.id), 'admin_group_removed', { by: a.username })
+    return { ok: true }
+  },
+
+  /* ---------------- Home banners ---------------- */
+  'GET banners': async ({ d }) => ({ banners: await d.db.fn('luda_banners_live', {}) }),
+  'GET admin-banners': async ({ req, env, d }) => { await staff(req, env, d, 'banners', 'view'); return { banners: await d.db.fn('luda_banners_all', {}) } },
+  'POST admin-banner-save': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'banners', 'edit')
+    const b = (body.banner ?? {}) as Record<string, unknown>
+    const link = String(b.link ?? '/')
+    if (!/^\/[a-z0-9/_?=&-]*$/.test(link)) throw new Fail('The button must open a Luda page, like /transport or /bills')
+    const iso = (v: unknown) => { const t = String(v ?? ''); if (!t) return ''; const ms = Date.parse(t); if (!Number.isFinite(ms)) throw new Fail('Check the dates'); return new Date(ms).toISOString() }
+    const data = {
+      title: clean(b.title, 60, 'a title', 2), body: b.body ? clean(b.body, 120, 'a line of text') : '', cta: cleanText(b.cta, 24) || 'Open', link,
+      emoji: cleanText(b.emoji, 8) || '✨', theme: BANNER_THEMES.includes(String(b.theme)) ? String(b.theme) : 'mint',
+      starts_at: iso(b.startsAt), ends_at: iso(b.endsAt), active: b.active !== false, sort: Math.max(-100, Math.min(100, int(b.sort ?? 0))),
+    }
+    const saved = await d.db.fn<Record<string, unknown>>('luda_banner_save', { p_id: b.id ? uuid(b.id) : null, p: data, p_by: a.user_id }).catch(communityErr)
+    await d.db.log(String(saved.id), 'admin_banner_saved', { by: a.username, title: data.title })
+    return { banner: saved }
+  },
+  'POST admin-banner-delete': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'banners', 'full')
+    if (!(await d.db.fn<boolean>('luda_banner_delete', { p_id: uuid(body.id) }))) throw new Fail('Not found', 404)
+    await d.db.log(String(body.id), 'admin_banner_deleted', { by: a.username })
+    return { ok: true }
+  },
+
+  /* ---------------- team (owner only) ---------------- */
+  'GET admin-staff': async ({ req, env, d }) => { await admin(req, env, d); return { staff: await d.db.fn('luda_staff_list', {}), areas: AREAS } },
+  'POST admin-staff-set': async ({ req, env, d, body }) => {
+    const a = await admin(req, env, d)
+    await verifyAuth(a, body, env, d)
+    const email = String(body.email ?? '').trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120) throw new Fail('Enter a valid email')
+    if (email === a.email.toLowerCase()) throw new Fail('You are the owner: you can already do everything')
+    const roles: Record<string, Level> = {}
+    for (const ar of AREAS) { const l = (body.roles as Record<string, unknown> | undefined)?.[ar]; if (l === 'view' || l === 'edit' || l === 'full') roles[ar] = l }
+    if (!Object.keys(roles).length) throw new Fail('Give this person at least one area')
+    const row = await d.db.fn('luda_staff_set', { p_email: email, p_roles: roles, p_note: cleanText(body.note, 60) || null, p_by: a.user_id })
+    await d.db.log(email, 'admin_staff_set', { by: a.username, roles })
+    return { staff: row }
+  },
+  'POST admin-staff-remove': async ({ req, env, d, body }) => {
+    const a = await admin(req, env, d)
+    await verifyAuth(a, body, env, d)
+    const email = String(body.email ?? '').trim().toLowerCase()
+    if (!(await d.db.fn<boolean>('luda_staff_remove', { p_email: email }))) throw new Fail('Not found', 404)
+    await d.db.log(email, 'admin_staff_removed', { by: a.username })
+    return { ok: true }
   },
 
   'GET withdrawal': async ({ req, env, d, url }) => {

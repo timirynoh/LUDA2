@@ -1,4 +1,5 @@
 import { BadgeCheck, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react'
+import { TourButton } from '../components/GuidedTour'
 import { Link, useNavigate } from 'react-router-dom'
 import { Avatar, avatarFrom } from '../components/Avatar'
 import { ProfileComplete } from '../components/ProfileComplete'
@@ -127,6 +128,7 @@ export default function Profile() {
           <p className="mt-2 text-xs text-slate-500">Phone: {s.phoneVerified ? '✅ verified' : 'not verified'} · Poster docs: {s.proofs.housing || s.proofs.business ? '✅ on file' : 'none yet'}</p>
         </section>}
 
+        <TourButton />
         {!LIVE && <button className="btn-ghost text-rose-300" onClick={() => (armed ? reset() : setArmed(true))}>{armed ? 'Tap again to confirm reset' : t('profile.reset')}</button>}
         <p className="text-center text-xs text-slate-500">Luda v{__VERSION__}{LIVE ? '' : ' · Demo'}</p>
       </div>

@@ -47,6 +47,10 @@ import LiveWallet from './screens/LiveWallet'
 import KycReturn from './screens/KycReturn'
 import LiveAdmin from './screens/LiveAdmin'
 import LiveExchange from './screens/LiveExchange'
+import { GuidedTour } from './components/GuidedTour'
+import LiveBoard from './screens/LiveBoard'
+import LiveChats from './screens/LiveChats'
+import LiveChatRoom from './screens/LiveChatRoom'
 import LiveBills from './screens/LiveBills'
 import LiveSavings from './screens/LiveSavings'
 import LiveMarket from './screens/LiveMarket'
@@ -126,9 +130,9 @@ export default function App() {
                 <Route path="/nearby" element={<Nearby />} />
                 <Route path="/more" element={<More />} />
                 <Route path="/bills" element={LIVE ? <LiveBills /> : <Bills />} />
-                <Route path="/housing" element={<Housing />} />
-                <Route path="/jobs" element={<Jobs />} />
-                <Route path="/community" element={<Community />} />
+                <Route path="/housing" element={LIVE ? <LiveBoard key="housing" kind="housing" /> : <Housing />} />
+                <Route path="/jobs" element={LIVE ? <LiveBoard key="job" kind="job" /> : <Jobs />} />
+                <Route path="/community" element={LIVE ? <LiveBoard key="event" kind="event" /> : <Community />} />
                 <Route path="/uni" element={<Uni />} />
                 <Route path="/transport" element={<Transport />} />
                 <Route path="/pay/return" element={<PayReturn />} />
@@ -148,12 +152,13 @@ export default function App() {
                 <Route path="/ambassadors" element={<Ambassadors />} />
                 <Route path="/deals" element={<Deals />} />
                 <Route path="/welcome" element={<Welcome />} />
-                <Route path="/news" element={<NewsScreen />} />
+                <Route path="/news" element={LIVE ? <LiveBoard key="news" kind="news" /> : <NewsScreen />} />
                 <Route path="/challenges" element={<Challenges />} />
-                <Route path="/promos" element={<Promos />} />
+                <Route path="/promos" element={LIVE ? <LiveBoard key="promo" kind="promo" /> : <Promos />} />
+                <Route path="/places" element={<LiveBoard key="place" kind="place" />} />
                 <Route path="/disputes/:id" element={<DisputeView />} />
-                <Route path="/chats" element={<Chats />} />
-                <Route path="/chats/:id" element={<ChatRoom />} />
+                <Route path="/chats" element={LIVE ? <LiveChats /> : <Chats />} />
+                <Route path="/chats/:id" element={LIVE ? <LiveChatRoom /> : <ChatRoom />} />
                 <Route path="/residency" element={<Residency />} />
                 <Route path="/rewards" element={<Rewards />} />
                 <Route path="/profile" element={<Profile />} />
@@ -162,10 +167,11 @@ export default function App() {
               </ErrorBoundary>
             </motion.main>
           </AnimatePresence>
+          <GuidedTour />
           {!inRoom && <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-app px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <div className="flex items-center justify-around rounded-[1.75rem] border border-fg/10 bg-ink-900/85 px-2 py-2 shadow-2xl shadow-black/50 backdrop-blur-2xl">
               {TABS.map(({ to, icon: Icon, key }) => (
-                <NavLink key={to} to={to} end={to === '/'} className="relative flex flex-1 flex-col items-center gap-0.5 py-1.5">
+                <NavLink key={to} to={to} end={to === '/'} data-tour={`nav${to}`} className="relative flex flex-1 flex-col items-center gap-0.5 py-1.5">
                   {({ isActive }) => (
                     <>
                       {isActive && <motion.div layoutId="tab" className="absolute inset-0 rounded-2xl bg-gradient-to-b from-mint-400/20 to-transparent" />}
