@@ -61,7 +61,7 @@ export default function Chats() {
             <button key={k} onClick={() => setParams(k === 'exchange' ? { tab: 'exchange' } : {})} className={`flex-1 rounded-xl py-3 text-sm font-bold transition ${section === k ? 'bg-gradient-to-r from-mint-400 to-emerald-500 text-ink-950 shadow-lg' : 'text-slate-400'}`}>{l}</button>
           ))}
         </div>
-        {section === 'exchange' ? (LIVE ? <p className="mx-5 rounded-2xl bg-fg/[0.04] p-4 text-sm text-slate-400">🚧 Person-to-person exchange is coming soon with real money. For now, convert Naira ⇄ Lira instantly in your <a href="/wallet?a=convert" className="text-mint-300 underline">wallet</a>.</p> : <ExchangeHub />) : <>
+        {section === 'exchange' ? (LIVE ? <p className="mx-5 rounded-2xl bg-fg/[0.04] p-4 text-sm text-slate-400">🚧 Person-to-person exchange is coming soon. For now, convert Naira ⇄ Lira instantly in your <a href="/wallet?a=convert" className="text-mint-300 underline">wallet</a>.</p> : <ExchangeHub />) : <>
         <div className="relative"><Search size={18} className="absolute start-4 top-1/2 -translate-y-1/2 text-slate-500" />
           <input className="input ps-11" placeholder="Search groups" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         <Segmented value={tab} onChange={setTab} options={[{ value: 'mine', label: `💬 My groups${s.joinedGroups.length ? ` · ${s.joinedGroups.length}` : ''}` }, { value: 'discover', label: '🧭 Discover' }]} />

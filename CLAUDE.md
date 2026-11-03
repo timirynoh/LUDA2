@@ -18,7 +18,7 @@ Luda is an all-in-one, gamified, modern app for Africans (mostly students) livin
 
 ## Translations (2026-11-02, v1.1.0)
 - Old system: `lib/i18n.ts` `t(key)` covers ~125 keys (nav, headings). New layer: `lib/autoTranslate.ts` (`setScreenLanguage`, called from the store when `s.lang` changes) translates EVERY on-screen text node and placeholder/title/aria-label it knows, using `src/i18n/{fr,tr,sw,ar}.json` keyed by the exact English text (`{}` = pattern, e.g. "Hold to pay {}"). It follows React updates with a MutationObserver and restores English when switching back. Skips `[translate="no"]`, `.notranslate`, `.selectable` and texts that are already t() values (prevents double translation).
-- Covered so far (~960 texts per language): welcome/sign-in/sign-up, onboarding, Home (cards), Wallet + all money sheets, Exchange, Transport/bus, Bills, Savings, Marketplace, Flash, Help/appeals, Profile, KYC/Verify, lock screen. NOT yet: sample/demo content lists in lib files (promos, news, access unlock lists), Housing, Jobs, Community, Uni, Residency, Chats, Security, Admin.
+- Covered (v1.2.0, ~1,950 texts per language): all user screens incl. Housing, Jobs, Community, Uni, Residency, Chats, Security, Promos, Referrals. NOT translated on purpose: Admin (owner reads English), proper names, sample chat messages. Avoid `${n} day${s}` style plurals (one {} per word) — write separate strings.
 - To cover a screen: `TS_JS=/path/to/typescript-v5or6 node app/scripts/extract-i18n.mjs <files>` → translate the new English lines into fr/tr/sw/ar → add to the JSON files (same {} count). Nigeria = English (owner's rule).
 
 ## Owner's rules (always follow)

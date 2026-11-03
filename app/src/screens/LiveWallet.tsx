@@ -27,7 +27,7 @@ export default function LiveWallet() {
 
   return (
     <div className="pb-6">
-      <Header back title="Wallet" sub="Real money · protected by your PIN" right={
+      <Header back title="Wallet" sub="Protected by your PIN" right={
         <button className="glass grid size-10 place-items-center rounded-2xl" aria-label="Refresh" onClick={() => refresh()}><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>} />
       <div className="flex flex-col gap-3 px-5">
         {error && !me && <p className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-300">{error}</p>}

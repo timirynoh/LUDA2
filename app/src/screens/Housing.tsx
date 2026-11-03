@@ -165,7 +165,7 @@ function ListingSheet({ listing: l, onClose }: { listing: Listing; onClose: () =
             <div><p className="flex items-center gap-1 text-sm text-slate-400"><MapPin size={14} /> {l.area}</p><Price gbp={l.price} big /></div>
             <span className="chip bg-fg/5 text-slate-300">{l.deposit} month deposit</span>
           </div>
-          <p className="-mt-2 flex items-center gap-1 text-xs text-mint-300">● Availability confirmed {confirmedDays === 0 ? 'today' : `${confirmedDays} day${confirmedDays > 1 ? 's' : ''} ago`}{l.official ? ' · Luda Official' : ''}</p>
+          <p className="-mt-2 flex items-center gap-1 text-xs text-mint-300">● Availability confirmed {confirmedDays === 0 ? 'today' : confirmedDays === 1 ? '1 day ago' : `${confirmedDays} days ago`}{l.official ? ' · Luda Official' : ''}</p>
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             <div className="rounded-2xl bg-fg/[0.04] p-3"><BedDouble size={18} className="mx-auto mb-1 text-slate-300" />{l.beds} bed</div>
             <div className="rounded-2xl bg-fg/[0.04] p-3"><Bath size={18} className="mx-auto mb-1 text-slate-300" />{l.baths} bath</div>

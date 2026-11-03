@@ -106,7 +106,7 @@ export default function Security() {
       {sheet === 'pin' && <ChangePin onClose={() => setSheet(null)} />}
       {sheet === 'password' && (LIVE ? <LivePasswordSheet onClose={() => setSheet(null)} /> : <PasswordSheet mode="change" onClose={() => setSheet(null)} />)}
       {sheet === 'unfreeze' && (LIVE ? <LiveUnfreeze onClose={() => setSheet(null)} /> : <PasswordSheet mode="unfreeze" onClose={() => setSheet(null)} />)}
-      {sheet === 'delete' && (LIVE ? <Sheet open onClose={() => setSheet(null)} title="Close my account"><p className="text-sm text-slate-300">Your account holds real money, so closing it is done with the Luda team: they'll help you withdraw your balance first, then delete your data. Go to <b>Help</b> and choose "Close my account".</p></Sheet> : <PasswordSheet mode="delete" onClose={() => setSheet(null)} onDone={reset} />)}
+      {sheet === 'delete' && (LIVE ? <Sheet open onClose={() => setSheet(null)} title="Close my account"><p className="text-sm text-slate-300">Your account holds money, so closing it is done with the Luda team: they'll help you withdraw your balance first, then delete your data. Go to <b>Help</b> and choose "Close my account".</p></Sheet> : <PasswordSheet mode="delete" onClose={() => setSheet(null)} onDone={reset} />)}
     </div>
   )
 }

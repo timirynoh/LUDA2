@@ -54,7 +54,7 @@ export function LiveTicketPay({ order, total, ready, onDone }: { operator: strin
       </div>
       {cur === 'NGN' && rate && <p className="text-xs text-slate-400">≈ {money(cost, 'NGN')} at today's rate (₺1 = ₦{rate.ngnPerTry.toFixed(2)} + {(rate.margin * 100).toFixed(1)}%)</p>}
       {cost > 0 && !enough && <p className="text-sm text-rose-300">Not enough in your {cur === 'TRY' ? 'Lira' : 'Naira'} wallet. <Link to="/wallet?a=deposit" className="underline">Top up</Link>{cur === 'TRY' ? <> or <Link to="/wallet?a=convert" className="underline">convert Naira</Link></> : null}.</p>}
-      <p className="text-[11px] text-slate-500">Ride Saver discounts aren't applied to real-money tickets yet.</p>
+      <p className="text-[11px] text-slate-500">Ride Saver discounts aren't applied to these tickets yet.</p>
       {err && <p className="text-sm text-rose-300">{err}</p>}
       <button className="btn-primary py-4" disabled={!ready || !enough} onClick={() => { if (allow('ticket')) setReview(true) }}>Review · {cost ? money(cost, cur) : '…'}</button>
     </div>

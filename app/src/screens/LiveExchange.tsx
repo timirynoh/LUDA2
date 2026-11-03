@@ -44,7 +44,7 @@ export default function LiveExchange() {
         <Link to="/wallet?a=deposit" className="btn-ghost text-sm">Top up first</Link>
         <div className="flex items-start gap-3 rounded-2xl bg-fg/[0.04] p-3 text-sm text-slate-300">
           <Users size={18} className="mt-0.5 shrink-0 text-violet-300" />
-          <div><p className="font-semibold">Person-to-person cash exchange</p><p className="text-xs text-slate-400">Swapping cash with another student (SafeSwap) is coming later. It needs protected escrow and a dispute team for real money. For now, convert instantly above.</p></div>
+          <div><p className="font-semibold">Person-to-person cash exchange</p><p className="text-xs text-slate-400">Swapping cash with another student (SafeSwap) is coming later. It needs protected escrow and a dispute team first. For now, convert instantly above.</p></div>
         </div>
         <p className="flex items-start gap-1.5 text-[11px] text-slate-500"><Info size={12} className="mt-0.5 shrink-0" /> Rates follow the live market and can change a little during the day.</p>
       </div>
