@@ -44,9 +44,9 @@ jobs:
         with: { version: latest }
       - name: Create / update database tables
         run: |
-          # Newer Supabase CLIs read the password from SUPABASE_DB_PASSWORD and need the linked/remote target named.
+          # Newer Supabase CLIs read the password from SUPABASE_DB_PASSWORD and need --remote and --yes (CI cannot answer the prompt).
           supabase link --project-ref "$SUPABASE_PROJECT_REF"
-          supabase db push --linked --password "$SUPABASE_DB_PASSWORD" || supabase db push --remote --password "$SUPABASE_DB_PASSWORD"
+          supabase db push --remote --yes --password "$SUPABASE_DB_PASSWORD"
       - name: Deploy payment functions
         # No Supabase JWT gate: "api" checks the user token itself (public routes are
         # rate-limited) and pay-webhook is protected by the provider signature.
