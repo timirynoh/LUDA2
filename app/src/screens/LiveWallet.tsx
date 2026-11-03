@@ -6,10 +6,11 @@ import { Header, Sheet } from '../components/ui'
 import { KIND_LABEL, money, type Cur, type Me } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 import { NewCaseSheet } from '../components/LiveSupport'
+import { FeesSheet } from '../components/LiveFees'
 import { downloadReceipt, shareReceipt } from '../lib/receipt'
 import { useStore } from '../lib/store'
 
-type Open = null | 'deposit' | 'withdraw' | 'convert' | 'send' | 'kyc'
+type Open = null | 'deposit' | 'withdraw' | 'convert' | 'send' | 'kyc' | 'fees'
 
 export default function LiveWallet() {
   const { s, set } = useStore()
@@ -39,7 +40,10 @@ export default function LiveWallet() {
             </div>
           ))}
         </div>
-        <button className="self-end text-xs text-slate-400" onClick={() => set((p) => ({ ...p, security: { ...p.security, hideBalances: !hide } }))}>{hide ? <><Eye size={12} className="inline" /> Show</> : <><EyeOff size={12} className="inline" /> Hide</>} balances</button>
+        <div className="flex items-center justify-between">
+        <button className="text-xs font-semibold text-mint-300" onClick={() => setOpen('fees')}>💳 Fees</button>
+        <button className="text-xs text-slate-400" onClick={() => set((p) => ({ ...p, security: { ...p.security, hideBalances: !hide } }))}>{hide ? <><Eye size={12} className="inline" /> Show</> : <><EyeOff size={12} className="inline" /> Hide</>} balances</button>
+        </div>
         <div className="grid grid-cols-4 gap-2">
           {[
             { k: 'deposit' as const, icon: <Plus />, label: 'Top up' },
@@ -73,6 +77,7 @@ export default function LiveWallet() {
       {open === 'convert' && <ConvertSheet onClose={close} />}
       {open === 'send' && <SendSheet onClose={close} />}
       {detail && <Details it={detail} onClose={() => setDetail(null)} />}
+      {open === 'fees' && <FeesSheet onClose={close} />}
       {open === 'kyc' && <Sheet open onClose={close} title="Verify your identity"><LiveKyc onDone={close} /></Sheet>}
     </div>
   )

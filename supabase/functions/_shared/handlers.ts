@@ -6,7 +6,7 @@ import { hashPin, randomHex, recover, refresh, setPassword, signIn, signUp, user
 import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion } from './webauthn.ts'
 import { MoneyError, type CaseRow, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
 import { accountMatchesName, diditDecision, diditEnabled, diditSignatureOk, diditStart, docHash, idMatchesName, kycEnabled, lookupId, nameTokens, normDate, type DiditEnv, type KycEnv } from './kyc.ts'
-import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, depositFee, featureFees, foreignEnabled, foreignFee, margin, ngnPerTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
+import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, billFee, depositFee, featureFees, foreignEnabled, foreignFee, margin, ngnPerTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
 import { PayoutRefused, checkTransfer, createRecipient, flwBanks, flwCheckTransfer, flwResolve, flwSendTransfer, listBanks, matchFlwBank, payoutRefusalMessage, resolveAccount, sendTransfer, type PayoutProvider } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
 import { textProblem } from './moderation.ts'
@@ -179,6 +179,31 @@ const adminProfile = (u: Profile) => ({
 
 const CASE_CATEGORIES = ['kyc', 'payment', 'withdrawal', 'account', 'other']
 const cleanText = (v: unknown, max: number) => String(v ?? '').replace(/[<>\u0000-\u0008\u000b-\u001f]/g, '').trim().slice(0, max)
+
+/** The extra details a provider needs (name on the bill, district, IBAN, month…), cleaned. Max 8 short fields. */
+function billDetails(v: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!v || typeof v !== 'object') return out
+  for (const [k, raw] of Object.entries(v as Record<string, unknown>).slice(0, 8)) {
+    if (!/^[a-z_]{2,20}$/.test(k)) continue
+    const val = cleanText(raw, 80)
+    if (!val) continue
+    if (k === 'iban') {
+      const iban = val.replace(/\s+/g, '').toUpperCase()
+      if (!/^TR\d{24}$/.test(iban)) throw new Fail('The IBAN should look like TR + 24 digits')
+      out[k] = iban
+    } else out[k] = val
+  }
+  return out
+}
+/** When the team promises to have a bill paid: ~2 hours inside 09:00–21:00 Cyprus time, else 11:00 the next morning. */
+export function billEta(now: Date) {
+  const H = 3 * 3600_000 // TRNC = UTC+3
+  const local = new Date(now.getTime() + H), h = local.getUTCHours() + local.getUTCMinutes() / 60
+  if (h >= 9 && h < 19) return new Date(now.getTime() + 2 * 3600_000)
+  const next = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + (h >= 19 ? 1 : 0), 11) - H)
+  return next
+}
 
 /** Stores up to 4 attached photos/PDFs privately; returns their storage paths. */
 async function storeFiles(env: Env, d: Deps, userId: string, caseId: string, files: unknown): Promise<string[]> {
@@ -364,7 +389,7 @@ type Route = (ctx: { req: Request; env: Env; d: Deps; body: Body; url: URL }) =>
 
 const routes: Record<string, Route> = {
   /* ---- public ---- */
-  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env), ...featureFees(env) } }),
+  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env), fxMargin: margin(env), ...featureFees(env) } }),
 
   'GET username': async ({ d, url }) => {
     const u = (url.searchParams.get('u') ?? '').toLowerCase()
@@ -942,9 +967,12 @@ const routes: Record<string, Route> = {
     const amount = lira(body.amountMinor, 10, 20_000, 'The bill amount')
     await verifyAuth(p, body, env, d)
     await limit(d, `bill:${p.user_id}`, 10, 86400, 'You can send up to 10 bills a day')
-    const fee = featureFees(env).billMinor
+    const details = billDetails(body.details)
+    if (body.confirmed !== true) throw new Fail('Please confirm the bill details are correct')
+    const fee = billFee(amount, env)
     const files = await storeFiles(env, d, p.user_id, 'bills', body.files)
-    const bill = await d.db.fn<Record<string, unknown>>('luda_bill_create', { p_user: p.user_id, p_type: type, p_provider: provider, p_account: account, p_amount: amount, p_fee: fee, p_files: files }).catch(featureErr)
+    const eta = billEta(d.now?.() ?? new Date())
+    const bill = await d.db.fn<Record<string, unknown>>('luda_bill_create', { p_user: p.user_id, p_type: type, p_provider: provider, p_account: account, p_amount: amount, p_fee: fee, p_files: files, p_details: details, p_eta: eta.toISOString() }).catch(featureErr)
     await d.db.log(String(bill.id), 'bill_new', { user: p.username, type, amount, fee })
     return { bill: { ...bill, files: undefined, user_id: undefined } }
   },

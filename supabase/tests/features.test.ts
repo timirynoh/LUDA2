@@ -49,19 +49,23 @@ test('savings pots: money moves wallet ⇄ pot with the PIN; locked pots stay lo
   assert.match((await call('POST', 'pot-move', { potId: lock.id, amountMinor: -500_00, pin: '4826' }, T.ada)).j.error, /locked/)
   assert.equal((await call('POST', 'pot-move', { potId: lock.id, amountMinor: 100_00, pin: '4826' }, T.kwame)).status, 409, "can't use someone else's pot")
   const f = (await call('GET', 'features', undefined, T.ada)).j
-  assert.equal(f.pots.length, 1); assert.equal(f.fees.billMinor, 10_00)
+  assert.equal(f.pots.length, 1); assert.equal(f.fees.billMinor, 10_00); assert.equal(f.fees.billHighMinor, 20_00)
 })
 
 test('assisted bill pay: held from the wallet, team pays with a receipt, or refunds with a reason', async () => {
   const before = await TRY('ada')
   assert.match((await call('POST', 'bill-create', { type: 'electricity', provider: 'KIB-TEK', account: '12345678', amountMinor: 5_00, pin: '4826' }, T.ada)).j.error, /between/)
-  const r = await call('POST', 'bill-create', { type: 'electricity', provider: 'KIB-TEK', account: '12345678', amountMinor: 640_00, pin: '4826', files: [PHOTO] }, T.ada)
+  const kib = { type: 'electricity', provider: 'KIB-TEK', account: '12345678', amountMinor: 640_00, pin: '4826', files: [PHOTO], details: { name: 'Ada Okafor', district: 'Girne', bad_key_X: 'x' } }
+  assert.match((await call('POST', 'bill-create', kib, T.ada)).j.error, /confirm/, 'user must confirm the details')
+  assert.match((await call('POST', 'bill-create', { ...kib, type: 'rent', details: { iban: 'TR12' }, confirmed: true }, T.ada)).j.error, /IBAN/)
+  const r = await call('POST', 'bill-create', { ...kib, confirmed: true }, T.ada)
   assert.equal(r.status, 200, JSON.stringify(r.j))
+  assert.deepEqual(r.j.bill.details, { name: 'Ada Okafor', district: 'Girne' }); assert.ok(Date.parse(r.j.bill.eta_at) > Date.now(), 'an estimated time is promised')
   assert.equal(await TRY('ada'), before - 650_00, 'bill + ₺10 service fee held')
   assert.equal((await call('GET', 'admin-bills', undefined, T.ada)).status, 404, 'not for normal users')
   const list = (await call('GET', 'admin-bills', undefined, T.boss)).j.bills
   const b = list.find((x: any) => x.id === r.j.bill.id)
-  assert.equal(b.account_ref, '12345678'); assert.equal(b.amount_minor, 640_00); assert.equal(b.username, 'ada'); assert.equal(b.photoUrls.length, 1)
+  assert.equal(b.account_ref, '12345678'); assert.equal(b.amount_minor, 640_00); assert.equal(b.username, 'ada'); assert.equal(b.photoUrls.length, 1); assert.equal(b.details.district, 'Girne', 'admin sees every detail')
   assert.match((await call('POST', 'admin-bill', { billId: b.id, paid: true, pin: '4826' }, T.boss)).j.error, /receipt/)
   assert.equal((await call('POST', 'admin-bill', { billId: b.id, paid: true, pin: '4826', files: [PHOTO] }, T.boss)).status, 200)
   assert.equal((await call('POST', 'admin-bill', { billId: b.id, paid: false, note: 'x', pin: '4826' }, T.boss)).status, 409, 'handled once')
@@ -69,10 +73,20 @@ test('assisted bill pay: held from the wallet, team pays with a receipt, or refu
   assert.equal(mine[0].status, 'paid'); assert.equal(mine[0].receiptUrls.length, 1)
   assert.equal(await TRY('ada'), before - 650_00)
   // refused → everything back
-  const r2 = await call('POST', 'bill-create', { type: 'water', provider: 'Girne Belediyesi', account: 'W-998', amountMinor: 200_00, pin: '4826' }, T.ada)
+  const r2 = await call('POST', 'bill-create', { type: 'water', provider: 'Girne Belediyesi', account: 'W-998', amountMinor: 200_00, pin: '4826', confirmed: true }, T.ada)
   assert.match((await call('POST', 'admin-bill', { billId: r2.j.bill.id, paid: false, pin: '4826' }, T.boss)).j.error, /why/)
   await call('POST', 'admin-bill', { billId: r2.j.bill.id, paid: false, note: 'Account number not found', pin: '4826' }, T.boss)
   assert.equal(await TRY('ada'), before - 650_00, 'refunded incl. fee')
+  // bigger bills: ₺20 fee above ₺1,000
+  const r3 = await call('POST', 'bill-create', { type: 'rent', provider: 'Rent', account: 'ROOM-4', amountMinor: 1_500_00, pin: '4826', confirmed: true, details: { iban: 'TR33 0006 1005 1978 6457 8413 26', landlord: 'Mehmet Y.' } }, T.ada)
+  assert.equal(r3.status, 200, JSON.stringify(r3.j)); assert.equal(r3.j.bill.fee_minor, 20_00); assert.equal(r3.j.bill.details.iban, 'TR330006100519786457841326')
+})
+
+test('bill ETA: ~2h in working hours, next morning 11:00 at night (Cyprus time)', async () => {
+  const { billEta } = await import('../functions/_shared/handlers.ts')
+  assert.equal(billEta(new Date('2026-11-03T08:00:00Z')).toISOString(), '2026-11-03T10:00:00.000Z') // 11:00 local → 13:00 local
+  assert.equal(billEta(new Date('2026-11-03T19:30:00Z')).toISOString(), '2026-11-04T08:00:00.000Z') // 22:30 local → 11:00 next day
+  assert.equal(billEta(new Date('2026-11-03T03:00:00Z')).toISOString(), '2026-11-03T08:00:00.000Z') // 06:00 local → 11:00 same day
 })
 
 test('marketplace: buyer pays into escrow, seller paid on receipt (minus 2%), cancel refunds; scams blocked', async () => {

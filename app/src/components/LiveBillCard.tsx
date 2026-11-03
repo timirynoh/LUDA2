@@ -8,7 +8,7 @@ export const BILL_TINT: Record<string, string> = { electricity: 'from-amber-400 
 export const Ago = ({ iso }: { iso: string }) => <span>{ago(iso)}</span>
 
 /** One bill with its status; used on the user's Bills screen. */
-export function BillCard({ b, footer }: { b: { type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: string; note: string | null; receiptUrls?: (string | null)[] }; footer?: ReactNode }) {
+export function BillCard({ b, footer }: { b: { eta_at?: string | null; created_at?: string; type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: string; note: string | null; receiptUrls?: (string | null)[] }; footer?: ReactNode }) {
   const I = BILL_ICON[b.type] ?? Receipt
   return (
     <div className="card flex flex-col gap-3">
@@ -20,14 +20,36 @@ export function BillCard({ b, footer }: { b: { type: string; provider: string; a
         </div>
         <p className="text-lg font-extrabold">{lira(b.amount_minor)}</p>
       </div>
+      {b.status === 'pending' && <BillProgress eta={b.eta_at ?? null} />}
       <div className="flex flex-wrap items-center gap-2">
-        {b.status === 'pending' && <Pill tone="wait">Being paid by Luda</Pill>}
+        {b.status === 'pending' && <Pill tone="wait">Being paid</Pill>}
         {b.status === 'paid' && <Pill tone="ok">Paid</Pill>}
         {b.status === 'refunded' && <Pill tone="back">Refunded to wallet</Pill>}
         {(b.receiptUrls ?? []).filter(Boolean).map((u, i) => <a key={i} href={u!} target="_blank" rel="noreferrer" className="chip bg-fg/[0.06] text-slate-200"><ExternalLink size={12} /> Receipt{i ? ` ${i + 1}` : ''}</a>)}
       </div>
       {b.status === 'refunded' && b.note && <p className="text-xs text-slate-400">Reason: {b.note}</p>}
       {footer}
+    </div>
+  )
+}
+
+/** Received → Paying → Receipt, with the promised time. */
+function BillProgress({ eta }: { eta: string | null }) {
+  const late = !!eta && Date.parse(eta) < Date.now()
+  const at = eta ? new Date(eta) : null
+  const today = at && at.toDateString() === new Date().toDateString()
+  const label = at ? `${at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${today ? ' today' : ` · ${at.toLocaleDateString([], { weekday: 'short' })}`}` : ''
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-1.5">
+        {['Received', 'Paying', 'Receipt'].map((s, i) => (
+          <div key={s} className="flex flex-1 flex-col gap-1">
+            <div className={`h-1.5 rounded-full ${i === 0 ? 'bg-mint-400' : i === 1 ? 'animate-pulse bg-mint-400/60' : 'bg-fg/10'}`} />
+            <span className={`text-[10px] ${i < 2 ? 'text-mint-200' : 'text-slate-500'}`}>{s}</span>
+          </div>
+        ))}
+      </div>
+      {eta && <p className="text-xs text-slate-300">{late ? '⏳ Taking a little longer than usual. The team is on it.' : <>⚡ Expected by <b>{label}</b></>}</p>}
     </div>
   )
 }

@@ -140,3 +140,30 @@ export const QUESTS = [
   { id: 'promo', title: 'Snap a promo in a shop', xp: 30, to: '/promos' },
   { id: 'ticket', title: 'Buy a bus ticket', xp: 50, to: '/transport' },
 ]
+
+/** Extra details each provider needs before the Luda team can pay (what the official sites / bank transfers ask for). */
+export interface BillField { key: string; label: string; placeholder?: string; options?: string[]; optional?: boolean; tel?: boolean }
+const DISTRICTS = ['Lefkoşa', 'Girne', 'Gazimağusa', 'Güzelyurt', 'İskele', 'Lefke']
+const NAME_ON_BILL: BillField = { key: 'name', label: 'Name on the bill', placeholder: 'As printed on the bill' }
+export const BILL_FIELDS: Record<string, { account: string; accountPlaceholder: string; fields: BillField[]; note?: string }> = {
+  kibtek: { account: 'Subscriber no. (Abone No)', accountPlaceholder: 'e.g. 0123456', note: 'The Abone No is at the top of your KIB-TEK bill.', fields: [
+    { key: 'meter', label: 'Meter type', options: ['Monthly bill', 'Prepaid (kontör) top-up'] }, NAME_ON_BILL, { key: 'district', label: 'District', options: DISTRICTS },
+    { key: 'period', label: 'Bill month', placeholder: 'e.g. October 2026', optional: true }] },
+  water: { account: 'Water subscriber no.', accountPlaceholder: 'From your water bill', fields: [
+    { key: 'municipality', label: 'Municipality (Belediye)', options: DISTRICTS.map((d) => `${d} Belediyesi`) }, NAME_ON_BILL,
+    { key: 'address', label: 'Flat / building', placeholder: 'e.g. Block B, flat 4', optional: true }] },
+  lpg: { account: 'Phone for the delivery', accountPlaceholder: '+90 533 …', fields: [
+    { key: 'address', label: 'Delivery address', placeholder: 'Street, building, flat' }, { key: 'size', label: 'Cylinder', options: ['12 kg', '24 kg', '45 kg'] },
+    { key: 'brand', label: 'Brand (if you know)', placeholder: 'e.g. Aygaz, Ipragaz', optional: true }] },
+  turkcell: { account: 'Phone number', accountPlaceholder: '+90 533 …', fields: [
+    { key: 'kind', label: 'What to pay', options: ['TL top-up (prepaid)', 'Monthly bill (postpaid)', 'Package / bundle'] },
+    { key: 'package', label: 'Package name', placeholder: 'e.g. 20 GB student pack', optional: true }] },
+  telsim: { account: 'Phone number', accountPlaceholder: '+90 542 …', fields: [
+    { key: 'kind', label: 'What to pay', options: ['TL top-up (prepaid)', 'Monthly bill (postpaid)', 'Package / bundle'] },
+    { key: 'package', label: 'Package name', placeholder: 'e.g. 20 GB student pack', optional: true }] },
+  fiber: { account: 'Customer / subscriber no.', accountPlaceholder: 'From your internet bill', fields: [
+    { key: 'isp', label: 'Internet provider', options: ['Telekomünikasyon Dairesi', 'Multimax', 'Kuzey Kıbrıs Turkcell', 'Vodafone Telsim', 'Other'] }, NAME_ON_BILL] },
+  rent: { account: 'Room / flat / dorm ID', accountPlaceholder: 'e.g. Flat 4B or dorm no.', note: 'Rent is sent by bank transfer to the IBAN you enter.', fields: [
+    { key: 'landlord', label: "Landlord's full name (account holder)", placeholder: 'Exactly as on the bank account' }, { key: 'iban', label: 'IBAN', placeholder: 'TR00 0000 0000 0000 0000 0000 00' },
+    { key: 'period', label: 'Rent month', placeholder: 'e.g. November 2026' }, { key: 'reference', label: 'Payment description', placeholder: 'What the landlord wants written', optional: true }] },
+}

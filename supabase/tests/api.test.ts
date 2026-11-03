@@ -169,7 +169,7 @@ test('withdraw to own bank account only; failed payout refunds once; success set
   assert.match((await call('POST', 'withdraw', { amountMinor: 5_000_00, account: '0999999999', bankCode: '058', pin: '4826' }, ada)).j.error, /own account/)
   const before = (await bal(ada)).NGN
   const w = await call('POST', 'withdraw', { amountMinor: 5_000_00, account: '0123456789', bankCode: '058', bankName: 'GTBank', pin: '4826' }, ada)
-  assert.equal(w.j.status, 'processing'); assert.equal((await bal(ada)).NGN, before - 5_000_00 - 50_00, 'amount + ₦50 fee held')
+  assert.equal(w.j.status, 'processing'); assert.equal((await bal(ada)).NGN, before - 5_000_00 - 100_00, 'amount + ₦100 fee held')
   world.transfers.set(w.j.reference, 'failed')
   const raw = JSON.stringify({ event: 'transfer.failed', data: { reference: w.j.reference } })
   await hook(raw, { 'x-paystack-signature': sign.paystack(raw) }); await hook(raw, { 'x-paystack-signature': sign.paystack(raw) })
@@ -177,7 +177,7 @@ test('withdraw to own bank account only; failed payout refunds once; success set
   const w2 = await call('POST', 'withdraw', { amountMinor: 2_000_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
   world.transfers.set(w2.j.reference, 'success')
   assert.equal((await call('GET', `withdrawal?ref=${w2.j.reference}`, undefined, ada)).j.status, 'paid')
-  assert.equal((await bal(ada)).NGN, before - 2_050_00)
+  assert.equal((await bal(ada)).NGN, before - 2_100_00)
   assert.match((await call('POST', 'withdraw', { amountMinor: 9_000_000_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)).j.error, /limit|Not enough/)
   const me = (await call('GET', 'me', undefined, ada)).j
   assert.ok(me.withdrawals.every((x: any) => x.account_number.startsWith('••••') && !x.recipient_code), 'account numbers masked')
@@ -534,7 +534,7 @@ test('Paystack refuses → Flutterwave pays out instead; ₦300 minimum; Kuda ma
   assert.match((await call('POST', 'withdraw', { amountMinor: 299_00, account: '0123456789', bankCode: '50211', pin: '4826' }, ada)).j.error, /Minimum withdrawal is ₦300/)
   const w = await call('POST', 'withdraw', { amountMinor: 300_00, account: '0123456789', bankCode: '50211', pin: '4826' }, ada)
   assert.equal(w.j.status, 'processing', JSON.stringify(w.j))
-  assert.equal((await bal(ada)).NGN, before - 350_00, '₦300 + ₦50 fee held')
+  assert.equal((await bal(ada)).NGN, before - 400_00, '₦300 + ₦100 fee held')
   const row = (await q(`select provider, transfer_code, bank_name from withdrawals where reference=$1`, [w.j.reference]))[0]
   assert.equal(row.provider, 'flutterwave'); assert.ok(row.transfer_code); assert.equal(row.bank_name, 'Kuda Bank')
   const t = world.flwTransfers.get(row.transfer_code)!
@@ -550,11 +550,11 @@ test('Paystack refuses → Flutterwave pays out instead; ₦300 minimum; Kuda ma
   assert.equal(world.flwTransfers.get(r2.transfer_code)!.account_bank, '058')
   world.flwTransfers.get(r2.transfer_code)!.status = 'SUCCESSFUL'
   assert.equal((await call('GET', `withdrawal?ref=${w2.j.reference}`, undefined, ada)).j.status, 'paid')
-  assert.equal((await bal(ada)).NGN, before - 350_00)
+  assert.equal((await bal(ada)).NGN, before - 400_00)
   // Flutterwave down (unknown outcome): money stays held, nothing refunded
   world.flwReply = 'down'
   const w3 = await call('POST', 'withdraw', { amountMinor: 300_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
-  assert.equal(w3.j.status, 'processing'); assert.equal((await bal(ada)).NGN, before - 700_00)
+  assert.equal(w3.j.status, 'processing'); assert.equal((await bal(ada)).NGN, before - 800_00)
   // Paystack works again → Paystack is used first
   world.transferReply = 'pending'; world.flwReply = 'NEW'
   const w4 = await call('POST', 'withdraw', { amountMinor: 300_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)

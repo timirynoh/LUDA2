@@ -108,7 +108,7 @@ export interface Me {
   withdrawals: LiveWithdrawal[]
   deposits: LiveDeposit[]
 }
-export interface LiveConfig { google: boolean; sms: boolean; didit: boolean; nin: boolean; providers: Provider[]; foreign: string[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number; billMinor?: number; marketPct?: number; flashPct?: number } }
+export interface LiveConfig { google: boolean; sms: boolean; didit: boolean; nin: boolean; providers: Provider[]; foreign: string[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number; fxMargin?: number; billMinor?: number; billHighMinor?: number; billStepMinor?: number; marketPct?: number; flashPct?: number } }
 
 let cfg: Promise<LiveConfig> | null = null
 export const liveConfig = () => (cfg ??= raw<LiveConfig>('GET', 'config', undefined, false).catch((e) => { cfg = null; throw e }))

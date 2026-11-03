@@ -235,7 +235,8 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
   const [review, setReview] = useState(false)
   const [result, setResult] = useState('')
   const [resultMsg, setResultMsg] = useState('')
-  const fee = 50_00
+  const [fee, setFee] = useState<number | null>(null) // set by the server (GET config); never decided in the app
+  useEffect(() => { liveConfig().then((c) => setFee(c.fees.withdraw)).catch(() => {}) }, [])
   const verified = me?.profile.kyc === 'verified'
   useEffect(() => { if (verified) api('GET', 'banks').then((r) => setBanks(r.banks)).catch((e) => setErr(errMsg(e))) }, [verified])
   useEffect(() => {
@@ -246,13 +247,13 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
   }, [bank, acct])
   const shown = useMemo(() => banks.filter((b) => b.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8), [banks, q])
   const minor = parseMinor(amt), bal = me?.balances.NGN ?? 0
-  const ready = !!bank && !!name?.matches && minor >= MIN_WITHDRAW && minor + fee <= bal
+  const ready = fee !== null && !!bank && !!name?.matches && minor >= MIN_WITHDRAW && minor + fee <= bal
 
   return (
     <Sheet open onClose={onClose} title="Withdraw to your bank">
       {!verified ? <LiveKyc /> : review ? (
         <ReviewAndPin
-          rows={[['To', <span key="to">{name!.accountName}<br /><span className="text-xs text-slate-400">{bank!.name} · {acct}</span></span>], ['Amount', money(minor, 'NGN')], ['Fee', money(fee, 'NGN')], ['Leaves your wallet', <b key="v">{money(minor + fee, 'NGN')}</b>]]}
+          rows={[['To', <span key="to">{name!.accountName}<br /><span className="text-xs text-slate-400">{bank!.name} · {acct}</span></span>], ['Amount', money(minor, 'NGN')], ['Fee', money(fee ?? 0, 'NGN')], ['Leaves your wallet', <b key="v">{money(minor + (fee ?? 0), 'NGN')}</b>]]}
           warning="Check the account carefully. Money sent to a bank can't be pulled back by Luda."
           holdLabel="Hold to withdraw"
           run={async (auth) => { const r = await api('POST', 'withdraw', { amountMinor: minor, account: acct, bankCode: bank!.code, bankName: bank!.name, ...auth }); setResult(r.status); setResultMsg(r.message ?? ''); await refresh() }}
@@ -271,8 +272,8 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
               ? <p className="flex items-center gap-2 rounded-xl bg-mint-400/10 p-3 text-sm text-mint-200"><BadgeCheck size={16} /> {name.accountName}</p>
               : <p className="rounded-xl bg-rose-500/10 p-3 text-sm text-rose-300">{name.accountName}: this isn't your account. You can only withdraw to an account in your verified name ({me?.profile.kycName}).</p>)}
             <input className="input text-xl font-bold" inputMode="numeric" placeholder="₦ amount" value={amt} onChange={(e) => setAmt(e.target.value.replace(/\D/g, ''))} />
-            <p className="text-xs text-slate-400">Available {money(bal, 'NGN')} · fee {money(fee, 'NGN')} · minimum {money(MIN_WITHDRAW, 'NGN')}</p>
-            {minor + fee > bal && minor > 0 && <p className="text-sm text-rose-300">Not enough in your Naira wallet (amount + fee).</p>}
+            <p className="text-xs text-slate-400">Available {money(bal, 'NGN')} · fee {fee === null ? '…' : money(fee, 'NGN')} · minimum {money(MIN_WITHDRAW, 'NGN')}</p>
+            {minor + (fee ?? 0) > bal && minor > 0 && <p className="text-sm text-rose-300">Not enough in your Naira wallet (amount + fee).</p>}
           </>}
           {err && <p className="text-sm text-rose-300">{err}</p>}
           <button className="btn-primary py-4" disabled={!ready} onClick={() => setReview(true)}>Review withdrawal</button>

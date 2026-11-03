@@ -146,7 +146,7 @@ function Overview({ o, go }: { o: Record<string, any> | null; go: (t: Tab) => vo
 
 /* ------------------------------- bills to pay ------------------------------- */
 
-interface AdminBill { id: string; username: string; type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: string; note: string | null; created_at: string; photoUrls: (string | null)[]; receiptUrls: (string | null)[] }
+interface AdminBill { details?: Record<string, string>; eta_at?: string | null; id: string; username: string; type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: string; note: string | null; created_at: string; photoUrls: (string | null)[]; receiptUrls: (string | null)[] }
 
 function BillsTab({ onChange }: { onChange: () => void }) {
   const [status, setStatus] = useState('pending')
@@ -175,6 +175,7 @@ function BillsTab({ onChange }: { onChange: () => void }) {
   )
 }
 
+const DETAIL_LABEL: Record<string, string> = { name: 'Name on the bill', district: 'District', meter: 'Meter type', period: 'Month', municipality: 'Municipality', address: 'Address', size: 'Cylinder', brand: 'Brand', kind: 'What to pay', package: 'Package', isp: 'Internet provider', landlord: 'Account holder', iban: 'IBAN', reference: 'Payment description' }
 const REFUSE = ['Customer number not found', 'Amount on the bill is different', 'Provider site is down, try again later', 'Bill already paid']
 
 /** Everything the team needs to pay one bill, already filled in: copy the number and amount, pay, attach the receipt. */
@@ -207,7 +208,11 @@ function BillPaySheet({ b, onClose, onDone }: { b: AdminBill; onClose: () => voi
             <div className="my-3 h-px bg-fg/10" />
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Customer / subscriber number</p>
             <div className="mt-1 flex items-center justify-between gap-3"><p className="selectable break-all font-mono text-xl font-bold">{b.account_ref}</p><CopyBtn text={b.account_ref} label="Number" /></div>
-            <p className="mt-3 text-xs text-slate-400">For @{b.username} · sent {when(b.created_at)} · fee earned {lira(b.fee_minor)}</p>
+            {Object.entries(b.details ?? {}).map(([k, v]) => <div key={k}><div className="my-3 h-px bg-fg/10" />
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{DETAIL_LABEL[k] ?? k}</p>
+              <div className="mt-1 flex items-center justify-between gap-3"><p className="selectable break-all font-semibold">{v}</p><CopyBtn text={v} label={DETAIL_LABEL[k] ?? k} /></div></div>)}
+            <p className="mt-3 text-xs text-slate-400">For @{b.username} · sent {when(b.created_at)} · fee earned {lira(b.fee_minor)}{b.eta_at ? <> · <b className={Date.parse(b.eta_at) < Date.now() ? 'text-rose-300' : 'text-gold-200'}>promised by {new Date(b.eta_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></> : null}</p>
+            <p className="mt-1 text-[11px] text-mint-300">✓ The user confirmed these details are correct.</p>
           </div>
           {b.photoUrls.filter(Boolean).length > 0 && <div className="flex gap-2">{b.photoUrls.filter(Boolean).map((u, i) => <a key={i} href={u!} target="_blank" rel="noreferrer"><img src={u!} alt="Bill" className="size-20 rounded-2xl object-cover ring-1 ring-fg/10" /></a>)}<p className="self-center text-xs text-slate-400">The user's photo of the bill. Tap to zoom.</p></div>}
 
