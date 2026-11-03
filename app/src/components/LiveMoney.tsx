@@ -1,9 +1,10 @@
 // Real-money building blocks (live mode): review → hold → PIN, KYC, top-up, withdraw, convert, send.
-import { BadgeCheck, Building2, ExternalLink, Fingerprint, Loader2, Lock, Search, ShieldCheck } from 'lucide-react'
+import { BadgeCheck, ExternalLink, Fingerprint, Loader2, Lock, Search, ShieldCheck } from 'lucide-react'
 import { bioApprove, bioSaved } from '../lib/bio'
 import { NewCaseSheet } from './LiveSupport'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { HoldButton } from './Confirm'
+import { BankBadge, popularity } from './BankBadge'
 import { PinPad, Segmented, Sheet, Success } from './ui'
 import { FOREIGN_CURRENCIES, PENDING_KEY, PROVIDER_LABEL, api, liveConfig, money, type Cur, type LiveConfig, type Provider } from '../lib/live'
 import { COUNTRIES } from '../lib/data'
@@ -245,7 +246,7 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
     api('POST', 'resolve', { account: acct, bankCode: bank.code }).then((r) => alive && setName(r)).catch((e) => alive && setErr(errMsg(e)))
     return () => { alive = false }
   }, [bank, acct])
-  const shown = useMemo(() => banks.filter((b) => b.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8), [banks, q])
+  const shown = useMemo(() => (q.trim() ? banks.filter((b) => b.name.toLowerCase().includes(q.toLowerCase())) : [...banks].sort((a, b) => popularity(a.name) - popularity(b.name))).slice(0, 8), [banks, q])
   const minor = parseMinor(amt), bal = me?.balances.NGN ?? 0
   const ready = fee !== null && !!bank && !!name?.matches && minor >= MIN_WITHDRAW && minor + fee <= bal
 
@@ -263,10 +264,10 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
         <div className="flex flex-col gap-3">
           {!bank ? <>
             <div className="relative"><Search size={16} className="absolute start-4 top-1/2 -translate-y-1/2 text-slate-500" /><input className="input ps-11" placeholder="Search your bank" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-            <div className="flex flex-col gap-1">{shown.map((b) => <button key={b.code} className="glass flex items-center gap-3 rounded-xl p-3 text-start text-sm" onClick={() => setBank(b)}><Building2 size={16} className="text-slate-400" />{b.name}</button>)}</div>
+            <div className="flex flex-col gap-1">{shown.map((b) => <button key={b.code} className="glass flex items-center gap-3 rounded-xl p-3 text-start text-sm" onClick={() => setBank(b)}><BankBadge name={b.name} />{b.name}</button>)}</div>
             {!banks.length && !err && <Loader2 className="mx-auto animate-spin text-slate-500" />}
           </> : <>
-            <button className="glass flex items-center gap-3 rounded-xl p-3 text-start text-sm" onClick={() => { setBank(null); setName(null) }}><Building2 size={16} />{bank.name}<span className="ms-auto text-xs text-mint-300">Change</span></button>
+            <button className="glass flex items-center gap-3 rounded-xl p-3 text-start text-sm" onClick={() => { setBank(null); setName(null) }}><BankBadge name={bank.name} />{bank.name}<span className="ms-auto text-xs text-mint-300">Change</span></button>
             <input className="input font-mono tracking-widest" inputMode="numeric" maxLength={10} placeholder="10-digit account number" value={acct} onChange={(e) => { setAcct(e.target.value.replace(/\D/g, '')); setName(null); setErr('') }} />
             {name && (name.matches
               ? <p className="flex items-center gap-2 rounded-xl bg-mint-400/10 p-3 text-sm text-mint-200"><BadgeCheck size={16} /> {name.accountName}</p>

@@ -7,7 +7,7 @@ import { KIND_LABEL, money, type Cur, type Me } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 import { NewCaseSheet } from '../components/LiveSupport'
 import { FeesSheet } from '../components/LiveFees'
-import { downloadReceipt, shareReceipt } from '../lib/receipt'
+import { downloadReceipt, shareReceipt, type ReceiptFormat } from '../lib/receipt'
 import { useStore } from '../lib/store'
 
 type Open = null | 'deposit' | 'withdraw' | 'convert' | 'send' | 'kyc' | 'fees'
@@ -88,7 +88,6 @@ export default function LiveWallet() {
 type Status = 'success' | 'pending' | 'failed' | 'review' | 'refunded' | 'expired'
 interface Item { key: string; at: string; title: string; sub: string; amountMinor: number; currency: string; status: Status; details: [string, string][]; reference?: string; note?: string }
 
-const PROVIDER = (p?: string) => (p === 'flutterwave' ? 'Flutterwave' : 'Paystack')
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '–')
 
 /** Everything that happened to the wallet: every top-up attempt (even failed), withdrawals with their status, and all other movements. */
@@ -98,10 +97,10 @@ function buildItems(me: Me): Item[] {
     // A checkout left unpaid for over an hour is shown as "Not completed" (it's still re-checked for 2 days, just in case).
     const status: Status = d.status === 'paid' ? 'success' : d.status === 'failed' ? 'failed' : d.status === 'mismatch' ? 'review' : Date.now() - Date.parse(d.createdAt) > 3600e3 ? 'expired' : 'pending'
     out.push({
-      key: 'dep' + d.reference, at: d.paidAt ?? d.createdAt, title: 'Top-up', sub: `${PROVIDER(d.provider)} · ${money(d.chargeMinor, d.currency)}`,
+      key: 'dep' + d.reference, at: d.paidAt ?? d.createdAt, title: 'Top-up', sub: `You paid ${money(d.chargeMinor, d.currency)}`,
       amountMinor: d.creditMinor, currency: d.creditCurrency, status, reference: d.reference,
       note: status === 'pending' ? 'Waiting for the payment to be confirmed. If you paid, it is credited automatically. Tap ↻ at the top to check again.' : status === 'review' ? 'The amount paid didn\'t match. Our team will credit or refund you; share the reference with support.' : status === 'failed' ? 'This payment didn\'t go through. You were not charged.' : status === 'expired' ? 'This checkout was never completed. If money left your account, it will be credited automatically within 2 days, or contact support with the reference.' : undefined,
-      details: [['Status', LABEL[status]], ['Reference', d.reference], ['Started', when(d.createdAt)], ['Completed', when(d.paidAt)], ['Paid with', PROVIDER(d.provider)], ['You paid', money(d.chargeMinor, d.currency)], ['Payment fee', money(d.feeMinor, d.currency)], [`Into your ${d.creditCurrency === 'TRY' ? 'Lira' : 'Naira'} wallet`, money(d.creditMinor, d.creditCurrency)]],
+      details: [['Status', LABEL[status]], ['Reference', d.reference], ['Started', when(d.createdAt)], ['Completed', when(d.paidAt)], ['You paid', money(d.chargeMinor, d.currency)], ['Payment fee', money(d.feeMinor, d.currency)], [`Into your ${d.creditCurrency === 'TRY' ? 'Lira' : 'Naira'} wallet`, money(d.creditMinor, d.creditCurrency)]],
     })
   }
   for (const w of me.withdrawals ?? []) {
@@ -149,10 +148,11 @@ function Details({ it, onClose }: { it: Item; onClose: () => void }) {
   const [report, setReport] = useState(false)
   const { me } = useLive()
   const [rmsg, setRmsg] = useState('')
+  const [fmt, setFmt] = useState<ReceiptFormat>('image')
   const receipt = async (how: 'share' | 'download') => {
     setRmsg('')
     const data = { title: it.title, amount: money(it.amountMinor, it.currency, { sign: true }), status: LABEL[it.status], positive: it.amountMinor > 0, rows: it.details.filter(([k]) => k !== 'Status'), name: me ? `${me.profile.fullName} (@${me.profile.username})` : undefined }
-    try { if (how === 'download') { await downloadReceipt(data); setRmsg('Receipt saved to your downloads') } else if ((await shareReceipt(data)) === 'downloaded') setRmsg('Sharing isn’t supported here, so the receipt was downloaded') } catch (e) { setRmsg(e instanceof Error ? e.message : 'Could not create the receipt') }
+    try { if (how === 'download') { await downloadReceipt(data, fmt); setRmsg('Receipt saved to your downloads') } else if ((await shareReceipt(data, fmt)) === 'downloaded') setRmsg('Sharing isn’t supported here, so the receipt was downloaded') } catch (e) { setRmsg(e instanceof Error ? e.message : 'Could not create the receipt') }
   }
   return (
     <Sheet open onClose={onClose} title={it.title}>
@@ -163,6 +163,8 @@ function Details({ it, onClose }: { it: Item; onClose: () => void }) {
         <div className="divide-y divide-fg/5 rounded-2xl bg-fg/[0.04] text-sm">
           {it.details.map(([k, v]) => <div key={k} className="flex justify-between gap-3 px-4 py-2.5"><span className="shrink-0 text-slate-400">{k}</span><span className="selectable break-all text-end font-medium">{v}</span></div>)}
         </div>
+        <div className="flex items-center justify-between gap-3"><span className="text-xs text-slate-400">Receipt as</span>
+          <div className="flex rounded-xl bg-fg/[0.05] p-1 text-xs font-semibold">{(['image', 'pdf'] as const).map((f) => <button key={f} onClick={() => setFmt(f)} className={`rounded-lg px-4 py-1.5 ${fmt === f ? 'bg-fg/10 text-slate-100' : 'text-slate-400'}`}>{f === 'image' ? '🖼️ Image' : '📄 PDF'}</button>)}</div></div>
         <div className="grid grid-cols-2 gap-2">
           <button className="btn-primary py-3 text-sm" onClick={() => void receipt('share')}><Share2 size={16} /> Share receipt</button>
           <button className="btn-ghost py-3 text-sm" onClick={() => void receipt('download')}><Download size={16} /> Download</button>
