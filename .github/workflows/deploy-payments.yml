@@ -52,7 +52,7 @@ jobs:
         # rate-limited) and pay-webhook is protected by the provider signature.
         run: |
           for fn in api pay-webhook; do
-            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
+            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt --yes
           done
       - name: Print your webhook address
         run: echo "Webhook URL for Paystack and Flutterwave → https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/pay-webhook"
