@@ -26,13 +26,41 @@ export function Header({ title, back, right, sub }: { title: string; back?: bool
   )
 }
 
+// While any sheet is open the page behind it can't scroll. Phones scroll the page when the keyboard opens; without
+// this the sheet was left pushed up and cut off after the keyboard closed (owner's report on the support form).
+let openSheets = 0, savedY = 0
+function lockPage() {
+  if (openSheets++ === 0) { savedY = window.scrollY; document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden' }
+}
+function unlockPage() {
+  if (--openSheets === 0) { document.documentElement.style.overflow = ''; document.body.style.overflow = ''; window.scrollTo(0, savedY) }
+}
+
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    lockPage()
+    const vv = window.visualViewport
+    // Keyboard closed (or rotated): put the page back where it was, so the sheet sits on the bottom again.
+    const settle = () => { if (!vv || vv.height > window.innerHeight * 0.8) window.scrollTo(0, savedY) }
+    // A field gets focus: keep it in view inside the sheet instead of letting the page jump.
+    const focus = (e: FocusEvent) => {
+      const t = e.target as HTMLElement
+      if (t?.matches?.('input, textarea, select')) setTimeout(() => t.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
+    }
+    const el = box.current
+    vv?.addEventListener('resize', settle)
+    el?.addEventListener('focusin', focus)
+    window.addEventListener('focusout', settle)
+    return () => { vv?.removeEventListener('resize', settle); el?.removeEventListener('focusin', focus); window.removeEventListener('focusout', settle); unlockPage() }
+  }, [open])
   return (
     <AnimatePresence>
       {open && (
         <motion.div className="fixed inset-0 z-50 flex items-end justify-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-          <motion.div
+          <motion.div ref={box}
             className="pb-safe relative max-h-[92dvh] w-full max-w-app overflow-y-auto overscroll-contain rounded-t-[2rem] border-t border-fg/10 bg-ink-900 px-5 pt-3 shadow-2xl"
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           >
