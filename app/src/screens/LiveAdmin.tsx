@@ -21,7 +21,7 @@ const lira = (minor: number) => money(Number(minor), 'TRY')
 const BADGE: Record<string, string> = {
   paid: 'bg-mint-400/15 text-mint-300', verified: 'bg-mint-400/15 text-mint-300', valid: 'bg-mint-400/15 text-mint-300', released: 'bg-mint-400/15 text-mint-300',
   pending: 'bg-gold-400/15 text-gold-300', processing: 'bg-gold-400/15 text-gold-300', mismatch: 'bg-gold-400/15 text-gold-300', held: 'bg-gold-400/15 text-gold-300',
-  failed: 'bg-rose-500/15 text-rose-300', reversed: 'bg-rose-500/15 text-rose-300', refunded: 'bg-sky-400/15 text-sky-300', none: 'bg-fg/10 text-slate-400',
+  failed: 'bg-rose-500/15 text-rose-300', appeal: 'bg-rose-500/15 text-rose-300', reversed: 'bg-rose-500/15 text-rose-300', refunded: 'bg-sky-400/15 text-sky-300', none: 'bg-fg/10 text-slate-400',
 }
 const Badge = ({ s }: { s: string }) => <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${BADGE[s] ?? 'bg-fg/10 text-slate-300'}`}>{s}</span>
 const Avatar = ({ name }: { name?: string }) => <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-mint-400/30 to-emerald-700/40 text-sm font-bold text-mint-100">{(name ?? '?').replace('@', '').slice(0, 2).toUpperCase()}</span>
@@ -255,16 +255,16 @@ function DisputesTab({ onChange }: { onChange: () => void }) {
   const list = (data?.escrows ?? []).filter((e) => e.kind !== 'bill')
   return (
     <div className="flex flex-col gap-3">
-      <p className="rounded-2xl bg-fg/[0.04] p-3 text-xs text-slate-400">Buyers' and Flash posters' money waiting for confirmation. It's released automatically (7 days marketplace, 3 days Flash) unless there's an open case. Decide here when someone reports a problem.</p>
+      <p className="rounded-2xl bg-fg/[0.04] p-3 text-xs text-slate-400">Money waiting for confirmation: Market buyers, Flash posters and P2P Naira payers. Market/Flash release automatically (7 / 3 days) unless there's an open case; P2P orders in 'appeal' need your decision. Decide here when someone reports a problem.</p>
       <div className="flex gap-2">{[['held', 'Held now'], ['released', 'Released'], ['refunded', 'Refunded']].map(([v, l]) => <button key={v} onClick={() => setStatus(v)} className={`chip py-2 ${status === v ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}>{l}</button>)}</div>
       {err && <p className="text-sm text-rose-300">{err}</p>}
       {data && list.length === 0 && <p className="rounded-3xl border border-dashed border-fg/10 py-10 text-center text-sm text-slate-400">Nothing here.</p>}
       {list.map((e) => (
         <button key={e.id} onClick={() => status === 'held' && setOpen(e)} className="glass flex items-center gap-3 rounded-3xl p-4 text-start">
-          <span className="text-2xl">{e.kind === 'market' ? '🛍️' : '⚡'}</span>
+          <span className="text-2xl">{e.kind === 'market' ? '🛍️' : e.kind === 'p2p' ? '🤝' : '⚡'}</span>
           <div className="min-w-0 flex-1"><p className="truncate font-bold">{e.item?.title ?? e.kind}</p>
             <p className="truncate text-xs text-slate-400">@{e.payer_name} → {e.payee_name ? `@${e.payee_name}` : 'no helper yet'} · {waited(e.created_at)} ago</p></div>
-          <div className="flex flex-col items-end gap-1"><p className="font-extrabold">{lira(e.amount_minor)}</p><Badge s={e.status} /></div>
+          <div className="flex flex-col items-end gap-1"><p className="font-extrabold">{money(Number(e.amount_minor), e.currency)}</p><Badge s={e.item?.status === 'appeal' ? 'appeal' : e.status} /></div>
         </button>
       ))}
       {open && <DecideSheet e={open} onClose={() => setOpen(null)} onDone={() => { void load(); onChange() }} />}
@@ -275,12 +275,13 @@ function DisputesTab({ onChange }: { onChange: () => void }) {
 function DecideSheet({ e, onClose, onDone }: { e: any; onClose: () => void; onDone: () => void }) {
   const [to, setTo] = useState<'payee' | 'payer' | null>(null)
   const [note, setNote] = useState('')
-  const who = e.kind === 'market' ? ['seller', 'buyer'] : ['helper', 'poster']
+  const who = e.kind === 'market' ? ['seller', 'buyer'] : e.kind === 'p2p' ? ['lira sender', 'Naira payer'] : ['helper', 'poster']
+  const amt = (m: number) => money(m, e.currency)
   return (
     <Sheet open onClose={onClose} title={e.item?.title ?? 'Held payment'}>
       {to ? (
         <ReviewAndPin holdLabel="Hold to decide" onClose={() => setTo(null)}
-          rows={[[to === 'payee' ? `Pay ${who[0]}` : `Refund ${who[1]}`, `@${to === 'payee' ? e.payee_name : e.payer_name}`], ['Amount', lira(to === 'payee' ? Number(e.amount_minor) - Number(e.fee_minor) : e.amount_minor)], ['Reason', note]]}
+          rows={[[to === 'payee' ? `Pay ${who[0]}` : `Refund ${who[1]}`, `@${to === 'payee' ? e.payee_name : e.payer_name}`], ['Amount', amt(to === 'payee' ? Number(e.amount_minor) - Number(e.fee_minor) : Number(e.amount_minor))], ['Reason', note]]}
           run={async (auth) => { await api('POST', 'admin-escrow', { escrowId: e.id, to, note, ...auth }); onDone() }}
           done={<Success title="Decided ✅" sub="Money moved and written to the audit log." onClose={onClose} />} />
       ) : (
@@ -289,8 +290,8 @@ function DecideSheet({ e, onClose, onDone }: { e: any; onClose: () => void; onDo
             <div className="rounded-2xl bg-fg/[0.05] p-3"><p className="text-[11px] text-slate-400">Paid by ({who[1]})</p><p className="font-bold">@{e.payer_name}</p></div>
             <div className="rounded-2xl bg-fg/[0.05] p-3"><p className="text-[11px] text-slate-400">{who[0]}</p><p className="font-bold">{e.payee_name ? `@${e.payee_name}` : '–'}</p></div>
           </div>
-          <p className="text-center text-3xl font-extrabold">{lira(e.amount_minor)}</p>
-          <p className="flex items-start gap-2 text-xs text-slate-400"><LifeBuoy size={14} className="shrink-0" /> Check the user's case in the Cases tab (photos, messages) before deciding.</p>
+          <p className="text-center text-3xl font-extrabold">{amt(Number(e.amount_minor))}</p>
+          {e.item?.type === 'p2p' ? <P2PEvidence id={e.item.id} /> : <p className="flex items-start gap-2 text-xs text-slate-400"><LifeBuoy size={14} className="shrink-0" /> Check the user's case in the Cases tab (photos, messages) before deciding.</p>}
           <input className="input text-sm" maxLength={200} placeholder="Reason (saved, and sent if you link a case)" value={note} onChange={(ev) => setNote(ev.target.value)} />
           <div className="grid grid-cols-2 gap-2">
             <button className="btn-primary py-3 text-sm" disabled={!note.trim() || !e.payee} onClick={() => setTo('payee')}><BadgeCheck size={15} /> Pay {who[0]}</button>
@@ -299,6 +300,21 @@ function DecideSheet({ e, onClose, onDone }: { e: any; onClose: () => void; onDo
         </div>
       )}
     </Sheet>
+  )
+}
+
+/** P2P appeal evidence: where the lira had to go, receipts and the order chat. */
+function P2PEvidence({ id }: { id: string }) {
+  const { data } = useLoad<{ order: any }>(`admin-p2p?id=${id}`)
+  const o = data?.order
+  if (!o) return <p className="text-xs text-slate-500">Loading the order…</p>
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl bg-fg/[0.04] p-3 text-xs">
+      <p><b>₺{(o.amount_try / 100).toLocaleString('en-US')}</b> for <b>{money(o.amount_ngn, 'NGN')}</b> at ₦{Number(o.price).toFixed(2)} · {o.method === 'cash' ? `cash${o.try_to?.area ? ` in ${o.try_to.area}` : ''}` : `to ${o.try_to?.bank} ${o.try_to?.iban} (${o.try_to?.holder})`}</p>
+      <p className="text-slate-400">Status: {o.status}{o.sent_at ? ` · marked sent ${when(o.sent_at)}` : ''}</p>
+      {o.receiptUrls?.filter(Boolean).length > 0 && <div className="flex gap-2">{o.receiptUrls.filter(Boolean).map((u: string, i: number) => <a key={i} href={u} target="_blank" rel="noreferrer"><img src={u} alt="Receipt" className="size-16 rounded-xl object-cover ring-1 ring-fg/10" /></a>)}</div>}
+      <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">{(o.messages ?? []).map((m: any) => <p key={m.id} className="selectable"><b className="text-slate-300">{m.by ? `@${m.by}` : 'Luda'}:</b> {m.body}{m.files?.filter(Boolean).map((u: string, i: number) => <a key={i} href={u} target="_blank" rel="noreferrer" className="ms-1 text-mint-300 underline">photo</a>)}</p>)}</div>
+    </div>
   )
 }
 

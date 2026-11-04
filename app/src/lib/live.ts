@@ -145,6 +145,7 @@ export const KIND_LABEL: Record<string, string> = {
   bill_pay: 'Bill payment', bill_refund: 'Bill refunded',
   market_pay: 'Marketplace purchase', market_refund: 'Purchase refunded', market_earn: 'Item sold',
   flash_pay: 'Flash job reward held', flash_refund: 'Flash reward returned', flash_earn: 'Flash job earned',
+  p2p_pay: 'P2P: Naira held', p2p_refund: 'P2P order refunded', p2p_earn: 'P2P: Naira received',
 }
 
 /* ----------------------------- pending deposit ----------------------------- */

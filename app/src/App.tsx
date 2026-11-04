@@ -50,6 +50,7 @@ import LiveExchange from './screens/LiveExchange'
 import { GuidedTour } from './components/GuidedTour'
 import LiveBoard from './screens/LiveBoard'
 import LiveChats from './screens/LiveChats'
+import LiveP2POrder from './screens/LiveP2P'
 import LiveChatRoom from './screens/LiveChatRoom'
 import LiveBills from './screens/LiveBills'
 import LiveSavings from './screens/LiveSavings'
@@ -157,6 +158,7 @@ export default function App() {
                 <Route path="/promos" element={LIVE ? <LiveBoard key="promo" kind="promo" /> : <Promos />} />
                 <Route path="/places" element={<LiveBoard key="place" kind="place" />} />
                 <Route path="/disputes/:id" element={<DisputeView />} />
+                <Route path="/p2p/:id" element={<LiveP2POrder />} />
                 <Route path="/chats" element={LIVE ? <LiveChats /> : <Chats />} />
                 <Route path="/chats/:id" element={LIVE ? <LiveChatRoom /> : <ChatRoom />} />
                 <Route path="/residency" element={<Residency />} />

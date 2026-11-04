@@ -1,6 +1,7 @@
 // Live: Flash help with escrow. The reward is held from the poster's wallet when the job is posted, so helpers
 // know the money is real; the helper is paid when the poster confirms (or automatically after 3 days).
-import { BadgeCheck, LifeBuoy, MapPin, Plus, Zap } from 'lucide-react'
+import { BadgeCheck, LifeBuoy, Lock, MapPin, Plus, Zap } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { Empty, Pill, Tabs, ago, lira, toMinor, useApi } from '../components/LiveKit'
 import { LiveKyc, ReviewAndPin, errMsg } from '../components/LiveMoney'
@@ -18,7 +19,7 @@ const REWARDS = [50, 100, 200, 500]
 
 export default function LiveFlash() {
   const { s } = useStore()
-  const { refresh } = useLive()
+  const { me, refresh } = useLive()
   const [tab, setTab] = useState<'board' | 'mine' | 'helping'>('board')
   const [here, setHere] = useState(false) // all cities by default (your city first), so nobody misses a job
   const { data, reload } = useApi<Board>(`flash${here ? `?city=${s.city}` : ''}`)
@@ -37,12 +38,20 @@ export default function LiveFlash() {
           <button onClick={() => setHere(!here)} className={`chip self-start py-2 ${here ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}><MapPin size={12} /> {here ? cityName(s.city) || 'My city' : 'All cities'}</button>
           {!data ? <p className="text-sm text-slate-500">Loading…</p> : board.length === 0
             ? <Empty emoji="⚡" title="No open jobs right now" sub="Need a hand? Post a job. The reward is held safely until it's done." action={<button className="btn-primary mt-2 px-5 py-3" onClick={() => setPost(true)}><Plus size={16} /> Ask for help</button>} />
-            : board.map((j) => (
-              <button key={j.id} className="card flex items-center gap-3 text-start" onClick={() => setView(j)}>
-                <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-gold-300 to-amber-500 text-ink-950"><Zap size={22} /></span>
-                <div className="min-w-0 flex-1"><p className="truncate font-semibold">{j.title}</p><p className="truncate text-xs text-slate-400">@{j.poster_name}{j.city ? ` · ${cityName(j.city)}` : ''} · {ago(j.created_at)}</p></div>
-                <p className="text-lg font-extrabold text-mint-300">{lira(j.reward_minor)}</p>
-              </button>))}
+            : <>
+              {me && me.profile.kyc !== 'verified' && <Link to="/wallet" className="flex items-center gap-3 rounded-2xl border border-mint-400/30 bg-mint-400/[0.08] p-3 text-start"><Lock size={18} className="shrink-0 text-mint-300" /><span className="flex-1 text-sm"><b>{`Paid jobs waiting: ${board.length}`}</b><br /><span className="text-xs text-slate-400">Verify your ID once (about 2 minutes) to take them and get paid.</span></span><span className="text-xs font-bold text-mint-300">Verify</span></Link>}
+              {[['near', board.filter((j) => !j.city || j.city === s.city)], ['far', board.filter((j) => j.city && j.city !== s.city)]].map(([k, list]) => (list as Job[]).length > 0 && (
+                <div key={k as string} className="flex flex-col gap-2">
+                  <p className="label">{k === 'near' ? `📍 In ${cityName(s.city) || 'your city'}` : '🚗 Other cities · can you get there?'}</p>
+                  {(list as Job[]).map((j) => (
+                    <button key={j.id} className="card flex items-center gap-3 text-start" onClick={() => setView(j)}>
+                      <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-gold-300 to-amber-500 text-ink-950"><Zap size={22} /></span>
+                      <div className="min-w-0 flex-1"><p className="truncate font-semibold">{j.title}</p><p className="truncate text-xs text-slate-400">@{j.poster_name}{j.city ? ` · ${cityName(j.city)}` : ''} · {ago(j.created_at)}</p>
+                        {k === 'far' && <span className="chip mt-1 bg-sky-400/15 py-0.5 text-[10px] text-sky-200">Not in your city</span>}</div>
+                      <div className="flex flex-col items-end gap-1"><p className="text-lg font-extrabold text-mint-300">{lira(j.reward_minor)}</p>{me?.profile.kyc !== 'verified' && <Lock size={13} className="text-slate-500" />}</div>
+                    </button>))}
+                </div>))}
+            </>}
         </>}
         {tab === 'mine' && (data?.mine.length ? data.mine.map((j) => <MyJob key={j.id} j={j} onChange={done} />) : <Empty emoji="🙋🏾" title="No requests yet" sub="Moving, a parcel, a quick errand: ask and pay only when it's done." />)}
         {tab === 'helping' && (data?.helping.length ? data.helping.map((j) => <Helping key={j.id} j={j} feePct={data.feePct} onChange={done} />) : <Empty emoji="💪🏿" title="You're not helping anyone yet" sub="Take a job from the board and earn into your wallet." />)}

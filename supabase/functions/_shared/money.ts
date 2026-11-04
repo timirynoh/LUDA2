@@ -47,7 +47,7 @@ export function foreignFee(amountMinor: number, env: { FOREIGN_FEE_PCT?: string 
 
 export interface FeeEnv {
   DEPOSIT_FEE_PCT?: string; DEPOSIT_FEE_FLAT?: string; DEPOSIT_FEE_FLAT_WAIVE_BELOW?: string; DEPOSIT_FEE_CAP?: string; WITHDRAW_FEE?: string
-  BILL_FEE?: string; BILL_FEE_HIGH?: string; BILL_FEE_STEP?: string; MARKET_FEE_PCT?: string; FLASH_FEE_PCT?: string
+  BILL_FEE?: string; BILL_FEE_HIGH?: string; BILL_FEE_STEP?: string; P2P_FEE_PCT?: string; MARKET_FEE_PCT?: string; FLASH_FEE_PCT?: string
 }
 const num = (v: string | undefined, d: number) => (v === undefined || v === '' || !Number.isFinite(Number(v)) ? d : Number(v))
 
@@ -64,10 +64,10 @@ export function depositFee(creditMinor: number, env: FeeEnv) {
 }
 // Luda's fee plan (owner chose 'Balanced', 2026-11-03): student-friendly, below banks/BDCs, and every number is set here on the server.
 //   top-up: only the provider's own fee · send to a user: free · NGN⇄TRY: 1.5% (FX_MARGIN) · withdrawal: ₦100 (provider cost ₦10–50)
-//   bills: ₺10 up to ₺1,000, ₺20 above · Market: 2% from the seller · Flash: 5% from the helper
+//   bills: ₺10 up to ₺1,000, ₺20 above · Market: 2% from the seller · Flash: 5% from the helper · P2P: 0.5% from whoever receives the Naira
 export const withdrawFee = (env: FeeEnv) => Math.round(num(env.WITHDRAW_FEE, 100) * 100)
 /** Wallet features (TRY): flat bill-pay service fee; marketplace/Flash fee taken from what the seller/helper receives. */
-export const featureFees = (env: FeeEnv) => ({ billMinor: Math.round(num(env.BILL_FEE, 10) * 100), billHighMinor: Math.round(num(env.BILL_FEE_HIGH, 20) * 100), billStepMinor: Math.round(num(env.BILL_FEE_STEP, 1000) * 100), marketPct: num(env.MARKET_FEE_PCT, 0.02), flashPct: num(env.FLASH_FEE_PCT, 0.05) })
+export const featureFees = (env: FeeEnv) => ({ billMinor: Math.round(num(env.BILL_FEE, 10) * 100), billHighMinor: Math.round(num(env.BILL_FEE_HIGH, 20) * 100), billStepMinor: Math.round(num(env.BILL_FEE_STEP, 1000) * 100), marketPct: num(env.MARKET_FEE_PCT, 0.02), flashPct: num(env.FLASH_FEE_PCT, 0.05), p2pPct: num(env.P2P_FEE_PCT, 0.005) })
 
 export interface FxEnv { FX_FIXED_RATE?: string; FX_FALLBACK_RATE?: string; FX_MARGIN?: string }
 

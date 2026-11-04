@@ -94,7 +94,7 @@ export interface Db {
   removePasskey(userId: string, id: string): Promise<void>
 }
 
-export const MONEY_ERRORS = ['insufficient_funds', 'account_frozen', 'not_available', 'pot_locked', 'too_many_pots', 'own_listing', 'not_found', 'own_post', 'name_taken', 'not_member', 'owner_cannot_leave']
+export const MONEY_ERRORS = ['insufficient_funds', 'account_frozen', 'not_available', 'pot_locked', 'too_many_pots', 'own_listing', 'not_found', 'own_post', 'name_taken', 'not_member', 'owner_cannot_leave', 'too_many_ads', 'too_many_methods', 'p2p_limits', 'p2p_method']
 
 export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
   const base = `${url.replace(/\/$/, '')}/rest/v1`

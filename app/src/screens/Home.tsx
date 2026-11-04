@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { HomeBanners } from '../components/Banners'
+import { OpportunityNudge } from '../components/OpportunityNudge'
 import { BoardStrip } from '../components/LiveBoardKit'
 import { ChevronDown, ChevronRight, ChevronUp, Eye, EyeOff, Flame, GraduationCap, Handshake, Minus, Moon, Pencil, Plus, Sun } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -93,6 +94,7 @@ export default function Home() {
       </motion.div>
 
       <HomeBanners />
+      <OpportunityNudge />
       {s.sections.checkin && <CheckinCard />}
       <UnlockCard />
       {s.sections.welcome && Date.now() - s.createdAt < 30 * 86_400_000 && s.welcomeDone.length < WELCOME_STEPS.length && (
