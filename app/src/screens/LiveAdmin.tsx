@@ -337,6 +337,8 @@ function P2PCaseSheet({ id, canDecide, me, onClose }: { id: string; canDecide: b
   const [to, setTo] = useState<'sender' | 'payer' | null>(null)
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
+  const [who, setWho] = useState<'' | 'both' | 'payer' | 'sender'>('both')
+  const [mins, setMins] = useState<number>(60)
   const o = data?.order
   const act = async (route: string, body: Record<string, unknown>) => { setErr(''); try { await api('POST', route, { id, ...body }); setMsg(''); void load() } catch (e) { setErr(errMsg(e)) } }
   return (
@@ -351,8 +353,14 @@ function P2PCaseSheet({ id, canDecide, me, onClose }: { id: string; canDecide: b
           <P2PEvidence id={id} />
           <p className="text-xs text-slate-400">Stage: <b className="text-slate-200">{o.appeal_stage ?? o.status}</b>{o.assigned_to ? ` · handled by ${o.assigned_to}` : ' · nobody has taken it yet'}{o.appeal_reason ? ` · reason: ${o.appeal_reason}` : ''}</p>
           {o.assigned_to !== me && !['done', 'cancelled'].includes(o.status) && <button className="btn-ghost py-3 text-sm" onClick={() => void act('admin-p2p-claim', {})}>👤 Take this case</button>}
-          {!['done', 'cancelled'].includes(o.status) && <div className="flex gap-2"><input className="input flex-1 text-sm" maxLength={800} placeholder="Message both people (e.g. please upload your bank statement)" value={msg} onChange={(e) => setMsg(e.target.value)} />
-            <button className="btn-primary px-4 text-sm" disabled={!msg.trim()} onClick={() => void act('admin-p2p-msg', { body: msg })}>Send</button></div>}
+          {o.ask_due && !['done', 'cancelled'].includes(o.status) && <AskStatus o={o} />}
+          {!['done', 'cancelled'].includes(o.status) && <div className="flex flex-col gap-2 rounded-2xl bg-fg/[0.04] p-3">
+            <textarea className="input min-h-20 text-sm" maxLength={800} placeholder="Message both people (e.g. please upload today's bank statement)" value={msg} onChange={(e) => setMsg(e.target.value)} />
+            <p className="text-[11px] text-slate-400">Needs a reply from</p>
+            <div className="flex flex-wrap gap-1.5">{([['', 'No reply needed'], ['both', 'Both'], ['payer', `@${o.payer?.username} (Naira)`], ['sender', `@${o.sender?.username} (lira)`]] as const).map(([v, l]) => <button key={v} onClick={() => setWho(v)} className={`chip py-1.5 ${who === v ? 'bg-mint-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{l}</button>)}</div>
+            {who && <><p className="text-[11px] text-slate-400">Within</p><div className="flex flex-wrap gap-1.5">{([[15, '15 min'], [30, '30 min'], [60, '1 hour'], [180, '3 hours'], [1440, '24 hours']] as const).map(([v, l]) => <button key={v} onClick={() => setMins(v)} className={`chip py-1.5 ${mins === v ? 'bg-mint-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{l}</button>)}</div></>}
+            <button className="btn-primary py-2.5 text-sm" disabled={!msg.trim()} onClick={() => void act('admin-p2p-msg', { body: msg, ...(who ? { ask: { who, minutes: mins } } : {}) })}>{who ? 'Send with a reply deadline' : 'Send'}</button>
+          </div>}
           {err && <p className="text-sm text-rose-300">{err}</p>}
           {canDecide && !['done', 'cancelled'].includes(o.status) && <>
             <input className="input text-sm" maxLength={300} placeholder="Decision reason (both people see it)" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -364,6 +372,21 @@ function P2PCaseSheet({ id, canDecide, me, onClose }: { id: string; canDecide: b
         </div>
       )}
     </Sheet>
+  )
+}
+
+/** Who the team is waiting on, and the time left (the order chat gets a warning automatically when it runs out). */
+function AskStatus({ o }: { o: any }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
+  const left = Date.parse(o.ask_due) - now, mm = Math.floor(Math.abs(left) / 60000), ss = Math.floor((Math.abs(left) % 60000) / 1000)
+  const row = (who: string, asked: boolean, at: string | null) => asked && <p key={who} className={at ? 'text-mint-300' : left < 0 ? 'font-semibold text-rose-300' : 'text-slate-300'}>{at ? `✓ @${who} replied ${when(at)}` : left < 0 ? `⚠️ @${who} didn't reply in time` : `⏳ waiting for @${who}`}</p>
+  return (
+    <div className={`rounded-2xl border p-3 text-xs ${left < 0 ? 'border-rose-400/40 bg-rose-500/10' : 'border-gold-400/40 bg-gold-400/10'}`}>
+      <p className="font-bold">{left < 0 ? `Reply time ran out ${mm} min ago` : `Reply deadline: ${mm}:${String(ss).padStart(2, '0')} left`}</p>
+      {row(o.payer?.username, o.ask_who === 'payer' || o.ask_who === 'both', o.ask_payer_at)}
+      {row(o.sender?.username, o.ask_who === 'sender' || o.ask_who === 'both', o.ask_sender_at)}
+    </div>
   )
 }
 

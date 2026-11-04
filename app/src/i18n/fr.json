@@ -2664,5 +2664,22 @@
 "The Luda team is paying your bill": "L'équipe Luda paie votre facture",
 "The Luda team is paying {} bills": "L'équipe Luda paie {} factures",
 "Withdrawal on its way to your bank": "Retrait en route vers votre banque",
-"{}: {} due {}": "{} : {} à payer le {}"
+"{}: {} due {}": "{} : {} à payer le {}",
+"The Luda team needs your reply": "L'équipe Luda attend votre réponse",
+"P2P with @{} · reply before {}": "P2P avec @{} · répondez avant {}",
+"P2P with @{} · the time is up, reply now": "P2P avec @{} · le temps est écoulé, répondez maintenant",
+"🛡️ The Luda team needs your reply ·": "🛡️ L'équipe Luda attend votre réponse ·",
+"⚠️ Your reply is late: answer now in the chat": "⚠️ Votre réponse est en retard : répondez maintenant dans le chat",
+"✓ You replied": "✓ Vous avez répondu",
+"✓ @{} replied": "✓ @{} a répondu",
+"⚠️ @{} didn't reply in time": "⚠️ @{} n'a pas répondu à temps",
+"⏳ Waiting for @{} to reply": "⏳ En attente de la réponse de @{}",
+"Send a message or a photo (statement, receipt) below. No reply in time and the team may decide without your side.": "Envoyez un message ou une photo (relevé, reçu) ci-dessous. Sans réponse à temps, l'équipe pourra décider sans votre version.",
+"The Luda team steps in in": "L'équipe Luda intervient dans",
+"Release or appeal within": "Libérez ou faites appel dans",
+", or the Luda team steps in.": ", sinon l'équipe Luda intervient.",
+"Not released in": "Pas libéré dans",
+"? It goes to the Luda team automatically.": "? Le dossier passe automatiquement à l'équipe Luda.",
+"⏰ The Luda team needs a reply from {} within {}. No reply in time and the team may decide without your side.": "⏰ L'équipe Luda attend une réponse de {} dans {}. Sans réponse à temps, l'équipe pourra décider sans votre version.",
+"⚠️ {} didn't reply in time. The Luda team may now decide with what it has.": "⚠️ {} n'a pas répondu à temps. L'équipe Luda peut maintenant décider avec ce qu'elle a."
 }

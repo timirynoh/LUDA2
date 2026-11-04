@@ -158,6 +158,20 @@ test('dollars too; disputes in stages: negotiation → Luda review (claim, messa
   assert.equal((await call('POST', 'admin-p2p-claim', { id: o.id }, T.new)).status, 200)
   assert.equal((await call('POST', 'admin-p2p-msg', { id: o.id, body: 'Please both upload your bank statements' }, T.new)).status, 200)
   assert.equal((await call('POST', 'admin-p2p-decide', { id: o.id, to: 'payer', note: 'x', pin: '4826' }, T.new)).status, 403, 'deciding needs full')
+  // timed request (Bybit-style): both must reply within the deadline; a message counts as the reply; overdue → warning once
+  assert.match((await call('POST', 'admin-p2p-msg', { id: o.id, body: 'Statements please', ask: { who: 'both', minutes: 7 } }, T.new)).j.error, /how long/)
+  assert.equal((await call('POST', 'admin-p2p-msg', { id: o.id, body: 'Upload your bank statement for today', ask: { who: 'both', minutes: 60 } }, T.new)).status, 200)
+  v = (await call('GET', `p2p-order?id=${o.id}`, undefined, T.ada)).j.order
+  assert.equal(v.ask_who, 'both'); assert.ok(Date.parse(v.ask_due) > Date.now() + 55 * 60e3)
+  assert.ok((await call('GET', 'todo', undefined, T.ada)).j.items.some((x: any) => x.title === 'The Luda team needs your reply'), 'shows on Home')
+  await call('POST', 'p2p-msg', { id: o.id, body: 'Here is my statement' }, T.ada)
+  v = (await call('GET', `p2p-order?id=${o.id}`, undefined, T.ada)).j.order
+  assert.ok(v.ask_payer_at, 'payer replied'); assert.equal(v.ask_sender_at, null)
+  assert.equal((await call('GET', 'todo', undefined, T.ada)).j.items.some((x: any) => x.title === 'The Luda team needs your reply'), false, 'gone once replied')
+  await q(`update p2p_orders set ask_due = now() - interval '1 minute' where id = $1`, [o.id]); await q(`delete from rate_hits`)
+  await call('GET', `p2p-order?id=${o.id}`, undefined, T.ada); await q(`delete from rate_hits`); await call('GET', 'p2p-orders', undefined, T.ada)
+  const warn = (await call('GET', `p2p-order?id=${o.id}`, undefined, T.ada)).j.order.messages.filter((m: any) => /didn't reply in time/.test(m.body))
+  assert.equal(warn.length, 1, 'one warning'); assert.match(warn[0].body, /@kemal/); assert.doesNotMatch(warn[0].body, /@ada/, 'only who did not reply')
   const msgs = (await call('GET', `p2p-order?id=${o.id}`, undefined, T.kemal)).j.order.messages
   const staffMsg = msgs.find((m: any) => m.kind === 'staff'); assert.match(staffMsg.by, /Luda team · new/); assert.equal(staffMsg.mine, false)
   assert.equal((await call('GET', `p2p-order?id=${o.id}`, undefined, T.kemal)).j.order.assigned_to, 'new')

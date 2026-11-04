@@ -30,7 +30,7 @@ interface Market { ads: Ad[]; mine: Ad[]; asset?: Asset; market: number | null; 
 interface PayMethod { id: string; bank: string; iban: string; holder: string; currency?: Asset }
 export interface Order {
   id: string; status: 'waiting' | 'sent' | 'done' | 'cancelled' | 'appeal'; role: 'payer' | 'sender' | 'staff'; iAmMaker: boolean; asset?: Asset
-  appeal_stage?: 'negotiation' | 'review' | 'decided' | null; appeal_reason?: string | null; appeal_at?: string | null; assigned_to?: string | null; iAppealed?: boolean; appealBy?: 'payer' | 'sender' | 'auto' | null
+  appeal_stage?: 'negotiation' | 'review' | 'decided' | null; appeal_reason?: string | null; appeal_at?: string | null; assigned_to?: string | null; ask_who?: 'payer' | 'sender' | 'both' | null; ask_at?: string | null; ask_due?: string | null; ask_payer_at?: string | null; ask_sender_at?: string | null; iAppealed?: boolean; appealBy?: 'payer' | 'sender' | 'auto' | null
   price: number; amount_try: number; amount_ngn: number; fee_ngn: number; fee_try?: number | null; method: 'bank' | 'cash'; try_to: { kind?: string; bank?: string; iban?: string; holder?: string; area?: string }
   pay_by: string; sent_at: string | null; done_at: string | null; note: string | null; created_at: string
   payer: { username: string; name: string; verified: boolean }; sender: { username: string; name: string; verified: boolean }
@@ -348,11 +348,27 @@ function OrderList({ orders }: { orders: Order[] | null }) {
   )
 }
 
+/** The Luda team asked for a reply with a deadline: who still has to answer, and how long is left (Bybit-style). */
+function AskBanner({ o, payer, other }: { o: Order; payer: boolean; other: string }) {
+  const meAsked = o.ask_who === 'both' || o.ask_who === (payer ? 'payer' : 'sender')
+  const themAsked = o.ask_who === 'both' || o.ask_who === (payer ? 'sender' : 'payer')
+  const meDone = payer ? o.ask_payer_at : o.ask_sender_at, themDone = payer ? o.ask_sender_at : o.ask_payer_at
+  const over = Date.parse(o.ask_due!) < Date.now()
+  return (
+    <div className={`mt-2 rounded-2xl border p-3 text-xs ${meAsked && !meDone ? (over ? 'border-rose-400/50 bg-rose-500/15' : 'border-gold-400/50 bg-gold-400/15') : 'border-fg/10 bg-fg/[0.05]'}`}>
+      {meAsked && !meDone && <p className="font-bold text-slate-100">{over ? '⚠️ Your reply is late: answer now in the chat' : <>🛡️ The Luda team needs your reply · <Countdown to={o.ask_due!} /></>}</p>}
+      {meAsked && meDone && <p className="font-semibold text-mint-300">✓ You replied</p>}
+      {themAsked && <p className={`mt-1 ${themDone ? 'text-mint-300' : over ? 'font-semibold text-rose-300' : 'text-slate-300'}`}>{themDone ? `✓ @${other} replied` : over ? `⚠️ @${other} didn't reply in time` : `⏳ Waiting for @${other} to reply`}</p>}
+      {meAsked && !meDone && <p className="mt-1 text-[11px] text-slate-400">Send a message or a photo (statement, receipt) below. No reply in time and the team may decide without your side.</p>}
+    </div>
+  )
+}
+
 function Countdown({ to }: { to: string }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
-  const left = Math.max(0, Date.parse(to) - now), m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000)
-  return <span className={`font-mono font-bold ${left < 5 * 60000 ? 'text-rose-300' : 'text-gold-200'}`}>{left ? `${m}:${String(s).padStart(2, '0')}` : 'time up'}</span>
+  const left = Math.max(0, Date.parse(to) - now), h = Math.floor(left / 3600_000), m = Math.floor((left % 3600_000) / 60000), s = Math.floor((left % 60000) / 1000)
+  return <span className={`font-mono font-bold ${left < 5 * 60000 ? 'text-rose-300' : 'text-gold-200'}`}>{left ? `${h ? `${h}:${String(m).padStart(2, '0')}` : m}:${String(s).padStart(2, '0')}` : 'time up'}</span>
 }
 
 export default function LiveP2POrder() {
@@ -417,13 +433,14 @@ export default function LiveP2POrder() {
         {(o.status === 'sent' || o.status === 'appeal') && payer && <div className="flex flex-col gap-3">
           <div className="rounded-3xl border border-sky-400/30 bg-sky-400/10 p-4 text-sm"><p className="font-bold">Check your bank app now</p><p className="mt-1 text-xs text-slate-300">Did {tl(o.amount_try)} arrive from <b>{other.name}</b>? Only release when you see it in your account, not just a screenshot.</p></div>
           {o.receiptUrls?.filter(Boolean).length ? <div className="flex gap-2">{o.receiptUrls.filter(Boolean).map((u, i) => <a key={i} href={u!} target="_blank" rel="noreferrer"><img src={u!} alt="Receipt" className="size-24 rounded-2xl object-cover ring-1 ring-fg/10" /></a>)}</div> : null}
+          {o.status === 'sent' && o.sent_at && <p className="flex items-center justify-center gap-1 text-xs text-slate-400"><Clock3 size={12} /> Release or appeal within <Countdown to={new Date(Date.parse(o.sent_at) + 60 * 60_000).toISOString()} />, or the Luda team steps in.</p>}
           <button className="btn-primary py-4" onClick={() => setAct('release')}><Check size={17} /> I received it · release {naira(o.amount_ngn)}</button>
           {o.status === 'sent' && (canAppeal ? <button className="btn-ghost py-3 text-sm text-rose-300" onClick={() => setAct('appeal')}>It didn't arrive · appeal</button>
             : <p className="text-center text-xs text-slate-400">Not arrived yet? Banks can take a few minutes. You can appeal in <Countdown to={new Date(appealAt).toISOString()} />.</p>)}
         </div>}
         {o.status === 'sent' && !payer && <div className="rounded-3xl bg-fg/[0.04] p-4 text-sm"><p className="font-semibold">Waiting for @{other.username} to confirm</p><p className="mt-1 text-xs text-slate-400">They check their bank and release. Not answering? You can appeal and the Luda team will check your receipt.</p>
           {canAppeal ? <button className="btn-ghost mt-3 w-full py-3 text-sm" onClick={() => setAct('appeal')}>Appeal</button> : <p className="mt-2 text-xs text-slate-500">Appeal available in <Countdown to={new Date(appealAt).toISOString()} /></p>}
-          <p className="mt-2 text-[11px] text-slate-500">Not released within 1 hour? It goes to the Luda team automatically.</p></div>}
+          <p className="mt-2 text-[11px] text-slate-500">Not released in <Countdown to={new Date(Date.parse(o.sent_at ?? o.created_at) + 60 * 60_000).toISOString()} />? It goes to the Luda team automatically.</p></div>}
         {(o.status === 'appeal' || o.appeal_stage) && <div className="rounded-3xl border border-rose-400/30 bg-rose-500/[0.07] p-4">
           <p className="font-bold">⚖️ Dispute</p>
           <div className="mt-2 flex gap-1.5">{[['negotiation', '1 · Talk it out'], ['review', '2 · Luda review'], ['decided', '3 · Decision']].map(([k, l], i) => {
@@ -431,6 +448,8 @@ export default function LiveP2POrder() {
             return <div key={k} className="flex flex-1 flex-col gap-1"><div className={`h-1.5 rounded-full ${i < at ? 'bg-rose-300' : i === at ? 'animate-pulse bg-rose-300/70' : 'bg-fg/10'}`} /><span className={`text-[10px] ${i <= at ? 'text-rose-100' : 'text-slate-500'}`}>{l}</span></div>
           })}</div>
           <p className="mt-2 text-xs text-slate-300">{o.appeal_stage === 'negotiation' ? 'You have 30 minutes to sort it out here: release if the money arrived, or the sender cancels if it was not sent. Then the Luda team reviews it.' : o.appeal_stage === 'review' ? `The Luda team is reviewing${o.assigned_to ? ` (handled by ${o.assigned_to})` : ''}. Add receipts or bank statements in the chat.` : 'The Luda team has decided. See the chat for the reason.'}</p>
+          {o.status === 'appeal' && o.appeal_stage === 'negotiation' && o.appeal_at && <p className="mt-2 flex items-center gap-1 rounded-xl bg-fg/[0.05] px-3 py-2 text-xs"><Clock3 size={12} /> The Luda team steps in in <Countdown to={new Date(Date.parse(o.appeal_at) + 30 * 60_000).toISOString()} /></p>}
+          {o.status === 'appeal' && o.ask_due && <AskBanner o={o} payer={payer} other={other.username} />}
           {o.appeal_reason && <p className="mt-1 text-[11px] text-slate-400">Reason: {o.appeal_reason}{o.appealBy === 'auto' ? '' : ` (by ${o.appealBy === (payer ? 'payer' : 'sender') ? 'you' : '@' + other.username})`}</p>}
           <p className="mt-1 text-[11px] text-slate-400">The Naira stays locked until it's settled.</p>
           {o.status === 'appeal' && o.iAppealed && o.appeal_stage === 'negotiation' && <button className="btn-ghost mt-3 w-full py-2.5 text-xs" disabled={busy} onClick={() => void doit('p2p-appeal-cancel')}>Withdraw my appeal</button>}
@@ -443,7 +462,7 @@ export default function LiveP2POrder() {
         <p className="label mt-2 flex items-center gap-1"><MessageCircle size={13} /> Order chat</p>
         <div ref={listRef} className="flex max-h-80 flex-col gap-2 overflow-y-auto rounded-3xl bg-fg/[0.03] p-3">
           {(o.messages ?? []).map((m) => m.kind === 'staff'
-            ? <div key={m.id} className="self-center w-full rounded-2xl border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-sm"><p className="text-[11px] font-bold text-violet-200">🛡️ {m.by}</p><p className="selectable whitespace-pre-wrap">{m.body}</p></div>
+            ? <div key={m.id} className="self-center w-full rounded-2xl border border-violet-400/40 bg-violet-500/15 px-3 py-2 text-sm"><p className="flex items-center justify-between gap-2 text-[11px] font-bold text-violet-200"><span>🛡️ {m.by}</span><span className="font-normal text-slate-400">{new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></p><p className="selectable whitespace-pre-wrap text-slate-100">{m.body}</p></div>
             : m.by === null
             ? <p key={m.id} className="text-center text-[11px] text-slate-400">🛡️ {m.body}</p>
             : <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.mine ? 'self-end rounded-br-md bg-gradient-to-br from-emerald-500 to-teal-600 text-white' : 'self-start rounded-bl-md bg-fg/[0.07]'}`}>

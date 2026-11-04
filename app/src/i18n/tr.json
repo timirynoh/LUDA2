@@ -2682,5 +2682,22 @@
 "The Luda team is paying your bill": "Luda ekibi faturanı ödüyor",
 "The Luda team is paying {} bills": "Luda ekibi {} faturanı ödüyor",
 "Withdrawal on its way to your bank": "Para çekme işlemin bankana yolda",
-"{}: {} due {}": "{}: {}, son tarih {}"
+"{}: {} due {}": "{}: {}, son tarih {}",
+"The Luda team needs your reply": "Luda ekibi yanıtını bekliyor",
+"P2P with @{} · reply before {}": "@{} ile P2P · {} saatinden önce yanıtla",
+"P2P with @{} · the time is up, reply now": "@{} ile P2P · süre doldu, hemen yanıtla",
+"🛡️ The Luda team needs your reply ·": "🛡️ Luda ekibi yanıtını bekliyor ·",
+"⚠️ Your reply is late: answer now in the chat": "⚠️ Yanıtın gecikti: hemen sohbette yanıtla",
+"✓ You replied": "✓ Yanıtladın",
+"✓ @{} replied": "✓ @{} yanıtladı",
+"⚠️ @{} didn't reply in time": "⚠️ @{} zamanında yanıtlamadı",
+"⏳ Waiting for @{} to reply": "⏳ @{} kişisinin yanıtı bekleniyor",
+"Send a message or a photo (statement, receipt) below. No reply in time and the team may decide without your side.": "Aşağıya bir mesaj veya fotoğraf (hesap dökümü, dekont) gönder. Zamanında yanıt vermezsen ekip senin tarafını dinlemeden karar verebilir.",
+"The Luda team steps in in": "Luda ekibi devreye giriyor:",
+"Release or appeal within": "Serbest bırak veya itiraz et, kalan süre:",
+", or the Luda team steps in.": ", yoksa Luda ekibi devreye girer.",
+"Not released in": "Serbest bırakılmazsa:",
+"? It goes to the Luda team automatically.": "? Otomatik olarak Luda ekibine gider.",
+"⏰ The Luda team needs a reply from {} within {}. No reply in time and the team may decide without your side.": "⏰ Luda ekibi {} kişisinden {} içinde yanıt bekliyor. Zamanında yanıt gelmezse ekip senin tarafını dinlemeden karar verebilir.",
+"⚠️ {} didn't reply in time. The Luda team may now decide with what it has.": "⚠️ {} zamanında yanıt vermedi. Luda ekibi artık elindekilerle karar verebilir."
 }

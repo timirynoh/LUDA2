@@ -1508,6 +1508,7 @@ const routes: Record<string, Route> = {
   },
   'GET p2p-order': async ({ req, env, d, url }) => {
     const p = await me(req, env, d)
+    if (await d.db.hit('p2pexpire', 1, 60).catch(() => false)) await d.db.fn('luda_p2p_expire', {}).catch(() => {})
     const o = await d.db.fn<Record<string, any> | null>('luda_p2p_order', { p_order: uuid(url.searchParams.get('id')), p_user: p.user_id })
     if (!o) throw new Fail('Not found', 404)
     return { order: await p2pSigned(env, d, o) }
@@ -1562,7 +1563,15 @@ const routes: Record<string, Route> = {
   'POST admin-p2p-msg': async ({ req, env, d, body }) => {
     const a = await staff(req, env, d, 'disputes', 'edit')
     const text = clean(body.body, 800, 'a message')
-    await d.db.fn('luda_p2p_staff_msg', { p_order: uuid(body.id), p_staff: `Luda team · ${a.username}`, p_body: text }).catch(p2pErr)
+    // Optional: ask one or both people for a reply within a deadline (Bybit-style). Their next message counts as the reply.
+    const ask = (body.ask ?? null) as { who?: string; minutes?: number } | null
+    if (ask && ask.who) {
+      const who = ['payer', 'sender', 'both'].includes(String(ask.who)) ? String(ask.who) : ''
+      const minutes = Number(ask.minutes)
+      if (!who || ![15, 30, 60, 180, 1440].includes(minutes)) throw new Fail('Pick who must reply and how long they have')
+      await d.db.fn('luda_p2p_staff_ask', { p_order: uuid(body.id), p_staff: `Luda team · ${a.username}`, p_body: text, p_who: who, p_minutes: minutes }).catch(p2pErr)
+      await d.db.log(String(body.id), 'admin_p2p_ask', { by: a.username, who, minutes })
+    } else await d.db.fn('luda_p2p_staff_msg', { p_order: uuid(body.id), p_staff: `Luda team · ${a.username}`, p_body: text }).catch(p2pErr)
     return { ok: true }
   },
   'POST admin-p2p-decide': async ({ req, env, d, body }) => {
@@ -1833,7 +1842,8 @@ const routes: Record<string, Route> = {
       else if (o.status === 'waiting') items.push({ key: `p2p:${o.id}:wait`, emoji: '⏳', title: `Waiting for @${o.other} to send ${lira}`, sub: 'Your Naira is held safely by Luda', to, level: 'info' })
       else if (o.status === 'sent' && o.payer) items.push({ key: `p2p:${o.id}:release`, emoji: '✅', title: `@${o.other} says they sent ${lira}`, sub: 'Check your own bank app, then release', to, level: 'urgent' })
       else if (o.status === 'sent') items.push({ key: `p2p:${o.id}:sent`, emoji: '⏳', title: `Waiting for @${o.other} to release your Naira`, to, level: 'info' })
-      else if (o.status === 'appeal') items.push({ key: `p2p:${o.id}:appeal:${o.stage}`, emoji: '⚖️', title: `P2P dispute with @${o.other}`, sub: o.stage === 'negotiation' ? 'Try to sort it out in the order chat' : 'The Luda team is reviewing it', to, level: o.stage === 'negotiation' ? 'action' : 'info' })
+      if (o.status === 'appeal' && o.askMe && o.askDue) items.push({ key: `p2p:${o.id}:ask:${o.askDue}`, emoji: '🛡️', title: 'The Luda team needs your reply', sub: Date.parse(o.askDue) > Date.now() ? `P2P with @${o.other} · reply before ${new Date(o.askDue).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Nicosia' })}` : `P2P with @${o.other} · the time is up, reply now`, to: `/p2p/${o.id}`, level: 'urgent' })
+      if (o.status === 'appeal' && !(o.askMe && o.askDue)) items.push({ key: `p2p:${o.id}:appeal:${o.stage}`, emoji: '⚖️', title: `P2P dispute with @${o.other}`, sub: o.stage === 'negotiation' ? 'Try to sort it out in the order chat' : 'The Luda team is reviewing it', to, level: o.stage === 'negotiation' ? 'action' : 'info' })
     }
     for (const l of t.bought ?? []) items.push({ key: `buy:${l.id}`, emoji: '📦', title: `Got "${l.title}"?`, sub: `Confirm you received it so @${l.seller} gets paid`, to: '/market', level: 'urgent' })
     for (const l of t.sold ?? []) items.push({ key: `sold:${l.id}`, emoji: '🛍️', title: `Hand over "${l.title}" to @${l.buyer}`, sub: `${amt(l.price, 'TRY')} is held until they confirm`, to: '/market', level: 'action' })

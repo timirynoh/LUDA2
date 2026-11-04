@@ -2694,5 +2694,22 @@
 "The Luda team is paying your bill": "فريق Luda يدفع فاتورتك",
 "The Luda team is paying {} bills": "فريق Luda يدفع {} فواتير",
 "Withdrawal on its way to your bank": "السحب في طريقه إلى بنكك",
-"{}: {} due {}": "{}: {} مستحق في {}"
+"{}: {} due {}": "{}: {} مستحق في {}",
+"The Luda team needs your reply": "فريق Luda ينتظر ردّك",
+"P2P with @{} · reply before {}": "P2P مع @{} · ردّ قبل {}",
+"P2P with @{} · the time is up, reply now": "P2P مع @{} · انتهى الوقت، ردّ الآن",
+"🛡️ The Luda team needs your reply ·": "🛡️ فريق Luda ينتظر ردّك ·",
+"⚠️ Your reply is late: answer now in the chat": "⚠️ ردّك متأخر: أجب الآن في المحادثة",
+"✓ You replied": "✓ لقد رددت",
+"✓ @{} replied": "✓ ردّ @{}",
+"⚠️ @{} didn't reply in time": "⚠️ لم يردّ @{} في الوقت المحدد",
+"⏳ Waiting for @{} to reply": "⏳ بانتظار ردّ @{}",
+"Send a message or a photo (statement, receipt) below. No reply in time and the team may decide without your side.": "أرسل رسالة أو صورة (كشف حساب، إيصال) أدناه. إن لم تردّ في الوقت المحدد فقد يقرر الفريق دون سماع جانبك.",
+"The Luda team steps in in": "يتدخل فريق Luda خلال",
+"Release or appeal within": "حرّر المبلغ أو اعترض خلال",
+", or the Luda team steps in.": "، وإلا فسيتدخل فريق Luda.",
+"Not released in": "إن لم يُحرَّر خلال",
+"? It goes to the Luda team automatically.": "؟ يُحال تلقائياً إلى فريق Luda.",
+"⏰ The Luda team needs a reply from {} within {}. No reply in time and the team may decide without your side.": "⏰ ينتظر فريق Luda ردًّا من {} خلال {}. إن لم يصل الرد في الوقت المحدد فقد يقرر الفريق دون سماع جانبك.",
+"⚠️ {} didn't reply in time. The Luda team may now decide with what it has.": "⚠️ لم يردّ {} في الوقت المحدد. يمكن لفريق Luda الآن أن يقرر بما لديه."
 }

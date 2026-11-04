@@ -2683,5 +2683,22 @@
 "The Luda team is paying your bill": "Timu ya Luda inalipa bili yako",
 "The Luda team is paying {} bills": "Timu ya Luda inalipa bili {}",
 "Withdrawal on its way to your bank": "Pesa unazotoa ziko njiani kwenda benki yako",
-"{}: {} due {}": "{}: {} inadaiwa {}"
+"{}: {} due {}": "{}: {} inadaiwa {}",
+"The Luda team needs your reply": "Timu ya Luda inahitaji jibu lako",
+"P2P with @{} · reply before {}": "P2P na @{} · jibu kabla ya {}",
+"P2P with @{} · the time is up, reply now": "P2P na @{} · muda umeisha, jibu sasa",
+"🛡️ The Luda team needs your reply ·": "🛡️ Timu ya Luda inahitaji jibu lako ·",
+"⚠️ Your reply is late: answer now in the chat": "⚠️ Jibu lako limechelewa: jibu sasa kwenye mazungumzo",
+"✓ You replied": "✓ Umejibu",
+"✓ @{} replied": "✓ @{} amejibu",
+"⚠️ @{} didn't reply in time": "⚠️ @{} hakujibu kwa wakati",
+"⏳ Waiting for @{} to reply": "⏳ Inasubiri @{} ajibu",
+"Send a message or a photo (statement, receipt) below. No reply in time and the team may decide without your side.": "Tuma ujumbe au picha (taarifa ya benki, risiti) hapa chini. Usipojibu kwa wakati timu inaweza kuamua bila upande wako.",
+"The Luda team steps in in": "Timu ya Luda itaingilia baada ya",
+"Release or appeal within": "Toa au kata rufaa ndani ya",
+", or the Luda team steps in.": ", la sivyo timu ya Luda itaingilia.",
+"Not released in": "Isipotolewa ndani ya",
+"? It goes to the Luda team automatically.": "? Itaenda kwa timu ya Luda moja kwa moja.",
+"⏰ The Luda team needs a reply from {} within {}. No reply in time and the team may decide without your side.": "⏰ Timu ya Luda inahitaji jibu kutoka kwa {} ndani ya {}. Bila jibu kwa wakati timu inaweza kuamua bila upande wako.",
+"⚠️ {} didn't reply in time. The Luda team may now decide with what it has.": "⚠️ {} hakujibu kwa wakati. Timu ya Luda sasa inaweza kuamua kwa ilichonacho."
 }

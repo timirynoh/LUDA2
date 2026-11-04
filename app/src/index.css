@@ -52,6 +52,14 @@ html.light {
   --color-rose-300: #e11d48;
   --color-orange-300: #ea580c;
   --color-violet-300: #7c3aed;
+  /* pale tints used on see-through cards (owner: the Luda team's purple message was unreadable in Day mode) */
+  --color-violet-100: #4c1d95;
+  --color-violet-200: #5b21b6;
+  --color-mint-100: #065f46;
+  --color-rose-100: #9f1239;
+  --color-pink-200: #be185d;
+  --color-fuchsia-100: #86198f;
+  --color-emerald-200: #047857;
   --color-cyan-300: #0891b2;
 }
 html.light body {
