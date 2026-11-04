@@ -1888,19 +1888,22 @@ const routes: Record<string, Route> = {
     if (!PLACE_CITIES[city] || !PLACE_CATS[cat]) throw new Fail('Unknown city or category', 400)
     await limit(d, `places:${clientIp(req)}`, 120, 600)
     const saved = await d.db.fn<{ places: PlaceOut[]; fetchedAt: string; ageHours: number } | null>('luda_places_get', { p_city: city, p_cat: cat })
-    if (saved && saved.ageHours < 24 * 7) return { places: saved.places, fetchedAt: saved.fetchedAt }
+    // The weekly 'Load Nearby places' workflow keeps this fresh; the server only tries itself if a copy is missing or 2+ weeks old.
+    if (saved && saved.ageHours < 24 * 14) return { places: saved.places, fetchedAt: saved.fetchedAt }
     // One refresh at a time per city + category (others get the saved copy, or wait for the next try).
     if (await d.db.hit(`placesfetch:${city}:${cat}`, 1, saved ? 300 : 20)) {
+      const why: string[] = []
       for (const mirror of OVERPASS_MIRRORS) {
         try {
           const r = await (d.fetch ?? fetch)(mirror, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'Luda/1.0 (city directory)' },
-            body: new URLSearchParams({ data: overpassQuery(city, cat) }).toString(), signal: AbortSignal.timeout(25000) })
-          if (!r.ok) continue
+            body: new URLSearchParams({ data: overpassQuery(city, cat) }).toString(), signal: AbortSignal.timeout(saved ? 15000 : 9000) })
+          if (!r.ok) { why.push(`${new URL(mirror).host} ${r.status}`); continue }
           const places = parseOverpass(city, await r.json())
           await d.db.fn('luda_places_put', { p_city: city, p_cat: cat, p_places: { items: places } })
           return { places, fetchedAt: new Date().toISOString() }
-        } catch { /* next mirror */ }
+        } catch (e) { why.push(`${new URL(mirror).host} ${(e as Error).name}`) }
       }
+      if (await d.db.hit('placesfail', 5, 3600).catch(() => false)) await d.db.log('-', 'places_fetch_failed', { city, cat, why }).catch(() => {})
     }
     if (saved) return { places: saved.places, fetchedAt: saved.fetchedAt }
     throw new Fail('The directory is loading. Please try again in a minute.', 503)

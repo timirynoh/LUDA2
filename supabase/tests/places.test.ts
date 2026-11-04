@@ -32,7 +32,7 @@ test('places: fetched once from OpenStreetMap, saved, served from the server; on
   assert.equal(b.j.places.length, 2)
   assert.equal(world.calls.filter((c) => c.startsWith('overpass')).length, n, 'second read comes from the saved copy')
   // A week later Overpass is down: the saved copy is still served
-  await q(`update places_cache set fetched_at = now() - interval '8 days'`)
+  await q(`update places_cache set fetched_at = now() - interval '15 days'`)
   world.overpassDown = true
   const c = await call('places?city=lefkosa&cat=pharmacy')
   assert.equal(c.status, 200); assert.equal(c.j.places.length, 2)
