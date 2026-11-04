@@ -84,21 +84,22 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
 }
 
 /** 4-digit PIN pad. Calls onDone with the entered PIN. */
-export function PinPad({ onDone, error }: { onDone: (pin: string) => void; error?: string }) {
+/** Number pad. length 4 = payment PIN, length 6 = sign-in code. */
+export function PinPad({ onDone, error, length = 4 }: { onDone: (pin: string) => void; error?: string; length?: number }) {
   const [pin, setPin] = useState('')
   const cb = useRef(onDone)
   useEffect(() => { cb.current = onDone })
   useEffect(() => {
-    if (pin.length !== 4) return
+    if (pin.length !== length) return
     const id = setTimeout(() => { cb.current(pin); setPin('') }, 120)
     return () => clearTimeout(id)
-  }, [pin])
+  }, [pin, length])
   useEffect(() => { if (error) setPin('') }, [error])
-  const press = (d: string) => setPin((p) => (p.length < 4 ? p + d : p))
+  const press = (d: string) => setPin((p) => (p.length < length ? p + d : p))
   return (
     <div className="flex w-full flex-col items-center gap-6">
-      <motion.div className="flex gap-4" animate={error ? { x: [0, -10, 10, -6, 6, 0] } : {}} key={error}>
-        {[0, 1, 2, 3].map((i) => (
+      <motion.div className={`flex ${length > 4 ? 'gap-3' : 'gap-4'}`} animate={error ? { x: [0, -10, 10, -6, 6, 0] } : {}} key={error}>
+        {Array.from({ length }, (_, i) => i).map((i) => (
           <div key={i} className={`size-4 rounded-full transition ${i < pin.length ? 'scale-110 bg-mint-400 shadow-[0_0_12px] shadow-mint-400' : 'bg-fg/15'}`} />
         ))}
       </motion.div>

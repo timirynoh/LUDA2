@@ -253,7 +253,7 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
               {st.active && pax > q.seats && <p className="text-[11px] text-slate-500">Saver covers you + {SAVER.companions} companion. Other seats are normal price.</p>}
               {!st.active && !online && <button className="mt-1 text-start text-xs text-violet-300 underline" onClick={() => setSaverOpen(true)}>{st.message} {st.reason === 'not_member' ? `Save ₺${q.off}/seat →` : ''}</button>}
               <div className="mt-1 flex justify-between text-lg font-extrabold"><span>You pay</span><span>{fmt(total, 'TRY')}</span></div>
-              {trip.estimated && <p className="mt-1 text-[11px] text-slate-500">Fare estimated for this route in the demo.</p>}
+              {trip.estimated && <p className="mt-1 text-[11px] text-slate-500">{LIVE ? 'Estimated fare: confirm the price with the driver.' : 'Fare estimated for this route in the demo.'}</p>}
             </div>
             {online && <LiveTicketPay operator={trip.operator} ticketKind={trip.kind} total={total} ready={!!goTime && (!ret || !!(rtime || rtimes[0]))} onDone={onClose}
               order={{ operatorId: trip.opId!, city: trip.city, return: ret, pax, from: trip.from, to: trip.to, date, time: goTime, returnDate: ret ? rd : undefined, returnTime: ret ? rtime || rtimes[0] : undefined, holder: s.name }} />}

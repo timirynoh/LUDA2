@@ -110,7 +110,7 @@ export interface LiveTicket { id: string; code: string; item: Record<string, any
 export interface LiveWithdrawal { reference: string; amount_minor: number; fee_minor: number; fee_currency?: Cur; bank_name: string | null; account_number: string; account_name: string; status: 'processing' | 'paid' | 'failed' | 'reversed'; created_at: string }
 export interface LiveDeposit { reference: string; provider: Provider; status: 'pending' | 'paid' | 'failed' | 'mismatch'; chargeMinor: number; currency: string; feeMinor: number; creditMinor: number; creditCurrency: Cur; createdAt: string; paidAt: string | null }
 export interface Me {
-  profile: { username: string; fullName: string; email: string; kyc: 'none' | 'pending' | 'verified' | 'failed'; kycName: string | null; hasPin: boolean; isAdmin?: boolean; staff?: StaffPerms | null; kycTriesLeft?: number; kycStartedAt?: string | null; frozen: boolean; frozenBy: 'user' | 'admin' | null; phone: string | null; phoneVerified: boolean; moneyHoldUntil: string | null; university?: string | null; termsVersion?: number; termsCurrent?: number }
+  profile: { username: string; fullName: string; email: string; kyc: 'none' | 'pending' | 'verified' | 'failed'; kycName: string | null; hasPin: boolean; isAdmin?: boolean; staff?: StaffPerms | null; kycTriesLeft?: number; kycStartedAt?: string | null; frozen: boolean; frozenBy: 'user' | 'admin' | null; phone: string | null; phoneVerified: boolean; moneyHoldUntil: string | null; university?: string | null; termsVersion?: number; termsCurrent?: number; hasPasscode?: boolean }
   balances: Record<Cur, number>
   history: LedgerRow[]
   tickets: LiveTicket[]

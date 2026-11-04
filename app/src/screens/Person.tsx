@@ -6,9 +6,13 @@ import { TradeChat } from '../components/TradeChat'
 import { Header, Sheet } from '../components/ui'
 import { personOf, SAMPLE_REVIEWS } from '../lib/social'
 import { useStore } from '../lib/store'
+import { LiveTrader } from './LiveTrader'
+import { LIVE } from '../lib/live'
 
 /** Public profile for fixers, exchangers and sellers: trust at a glance. */
-export default function Person() {
+export default function Person() { return LIVE ? <LiveTrader /> : <DemoPerson /> }
+
+function DemoPerson() {
   const { name: raw = '' } = useParams()
   const name = decodeURIComponent(raw)
   const { s, set, toast, allow } = useStore()

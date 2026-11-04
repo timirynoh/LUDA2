@@ -58,7 +58,7 @@ function Copyable({ label, value, mono }: { label: string; value: string; mono?:
 const Trader = ({ name, user, verified, stats, side }: { name?: string; user?: string; verified?: boolean; stats?: Ad['stats']; side?: 'sell' | 'buy' }) => (
   <div className="flex min-w-0 items-center gap-2.5">
     <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-violet-400/40 to-indigo-700/50 font-bold">{(name || user || '?').slice(0, 1).toUpperCase()}</span>
-    <div className="min-w-0"><p className="flex items-center gap-1 truncate text-sm font-bold">{name?.split(' ')[0]} <span className="font-normal text-slate-400">@{user}</span>{verified && <BadgeCheck size={14} className="shrink-0 text-mint-300" />}</p>
+    <div className="min-w-0"><Link to={`/u/${user}`} onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 truncate text-sm font-bold">{name?.split(' ')[0]} <span className="font-normal text-slate-400">@{user}</span>{verified && <BadgeCheck size={14} className="shrink-0 text-mint-300" />}</Link>
       {stats && <p className="text-[11px] text-slate-400">{stats.trades === 1 ? '1 trade' : `${stats.trades} trades`}{stats.rate !== null ? ` · ${stats.rate}% completed` : ' · new trader'}{(stats.good || stats.bad) ? ` · 👍 ${stats.good ?? 0} 👎 ${stats.bad ?? 0}` : ''}</p>}
       {stats && side === 'sell' && stats.sendMin != null && <p className="text-[11px] text-slate-400">⏱ Usually sends in ~{Math.max(1, stats.sendMin)} min</p>}
       {stats && side === 'buy' && stats.releaseMin != null && <p className="text-[11px] text-slate-400">⏱ Usually releases in ~{Math.max(1, stats.releaseMin)} min</p>}</div>

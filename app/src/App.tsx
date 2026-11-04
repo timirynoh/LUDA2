@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeftRight, Grid2x2, Home as HomeIcon, MessageCircle, Wallet as WalletIcon } from 'lucide-react'
 import { Navigate, NavLink, Route, Routes, useLocation, useParams } from 'react-router-dom'
-import { Toasts } from './components/ui'
+import { Header, Toasts } from './components/ui'
 import { UnlockSheet, useTierCelebration } from './components/Verify'
 import { useKycReview } from './components/Kyc'
 import { useStore } from './lib/store'
@@ -13,7 +13,8 @@ import More from './screens/More'
 import Nearby from './screens/Nearby'
 import Onboarding from './screens/Onboarding'
 import { Landing, LockScreen, ResetPassword, SignIn, SignUp, Splash, useOAuthReturn } from './screens/Auth'
-import { LIVE, getSession } from './lib/live'
+import { LIVE, getSession, staffCan } from './lib/live'
+import { useLive } from './lib/liveStore'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IdleGuard } from './components/IdleGuard'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -50,6 +51,8 @@ import LiveExchange from './screens/LiveExchange'
 import { GuidedTour } from './components/GuidedTour'
 import { PrivacyShield } from './components/PrivacyShield'
 import { GuidePage, TermsGate } from './components/LiveGuides'
+import { PasscodeNudge } from './components/Passcode'
+import { TicketCheck } from './components/TicketCheck'
 import { useTodoAlerts } from './components/LiveTodo'
 import { useUniReminders } from './components/LiveUni'
 import LiveBoard from './screens/LiveBoard'
@@ -150,6 +153,7 @@ export default function App() {
                 <Route path="/inbox" element={<Inbox />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/help" element={<Help />} />
+                <Route path="/check" element={<TicketCheckPage />} />
                 <Route path="/terms" element={<GuidePage slug="terms" />} />
                 <Route path="/guide/:slug" element={<GuideRoute />} />
                 <Route path="/disputes" element={LIVE ? <Navigate to="/help" replace /> : <DisputeList />} />
@@ -180,6 +184,7 @@ export default function App() {
           <GuidedTour />
           <PrivacyShield />
           <TermsGate />
+          <PasscodeNudge />
           {!inRoom && <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-app px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <div className="flex items-center justify-around rounded-[1.75rem] border border-fg/10 bg-ink-900/85 px-2 py-2 shadow-2xl shadow-black/50 backdrop-blur-2xl">
               {TABS.map(({ to, icon: Icon, key }) => (
@@ -205,4 +210,11 @@ export default function App() {
 function GuideRoute() {
   const { slug = '' } = useParams()
   return <GuidePage key={slug} slug={slug} />
+}
+
+/** Drivers / staff with the 'tickets' role: scan passengers' bus tickets (checked on the server). Same app, own page. */
+function TicketCheckPage() {
+  const { me } = useLive()
+  const ok = LIVE && staffCan(me?.profile.staff, 'tickets', 'edit')
+  return <div className="pb-10"><Header back title="Ticket check" sub="Scan the passenger's live ticket QR" /><div className="px-5">{ok ? <TicketCheck /> : <p className="pt-10 text-center text-sm text-slate-400">This page is for drivers and the Luda team with ticket-check access.</p>}</div></div>
 }

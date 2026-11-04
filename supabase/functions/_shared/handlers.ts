@@ -98,6 +98,26 @@ async function verifyPin(p: Profile, pin: unknown, d: Deps) {
   if (p.pin_fails) await d.db.updateProfile(p.user_id, { pin_fails: 0, pin_locked_until: null })
 }
 
+/** The 6-digit sign-in code (separate from the 4-digit payment PIN): 5 wrong = locked 15 minutes. */
+async function verifyPasscode(p: Profile, code: unknown, d: Deps) {
+  const now = d.now?.() ?? new Date()
+  if (!p.passcode_hash || !p.passcode_salt) throw new Fail('Set your 6-digit sign-in code first', 409)
+  if (p.passcode_locked_until && new Date(p.passcode_locked_until) > now) throw new Fail('Too many wrong codes. Try again in 15 minutes, or sign in with your password.', 429)
+  if (typeof code !== 'string' || !/^\d{6}$/.test(code) || (await hashPin(code, p.passcode_salt)) !== p.passcode_hash) {
+    const fails = (p.passcode_fails ?? 0) + 1
+    await d.db.updateProfile(p.user_id, fails >= 5 ? { passcode_fails: 0, passcode_locked_until: new Date(now.getTime() + 15 * 60e3).toISOString() } : { passcode_fails: fails })
+    throw new Fail(fails >= 5 ? 'Too many wrong codes. Locked for 15 minutes.' : `Wrong code (${5 - fails} tries left)`, 401)
+  }
+  if (p.passcode_fails) await d.db.updateProfile(p.user_id, { passcode_fails: 0, passcode_locked_until: null })
+}
+const weakCode = (c: string) => /^(\d)\1{5}$/.test(c) || '0123456789012345'.includes(c) || '9876543210987654'.includes(c) || /^(\d\d)\1\1$/.test(c) || /^(\d\d\d)\1$/.test(c)
+const deviceOf = (req: Request) => {
+  const ua = req.headers.get('user-agent') ?? ''
+  const os = /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Unknown device'
+  const br = /Edg\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : ''
+  return br ? `${os} · ${br}` : os
+}
+
 /** Where fingerprint approvals may come from: the app's own address(es). */
 function webauthnSite(env: Env) {
   const origins = [env.APP_URL, ...(env.ALLOWED_ORIGINS ?? '').split(',')].map((o) => o.trim().replace(/\/$/, '')).filter(Boolean)
@@ -604,6 +624,7 @@ const routes: Record<string, Route> = {
     if (r.userId) await d.db.createProfile({ user_id: r.userId, username, full_name: fullName, email, country: body.country ? String(body.country).slice(0, 2) : undefined }).catch(() => {})
     // Joined with a friend's code (LUDA-USERNAME): remember who invited them; the bonus is paid by the server later.
     const ref = String(body.ref ?? '').trim().replace(/^LUDA-/i, '').toLowerCase()
+    if (r.userId) await d.db.fn('luda_sign_in_log', { p_user: r.userId, p_how: 'new account', p_device: deviceOf(req) }).catch(() => {})
     if (r.userId && Number(body.terms) > 0) await d.db.fn('luda_terms_accept', { p_user: r.userId, p_version: Number(body.terms) }).catch(() => {})
     if (r.userId && ref && USERNAME.test(ref) && ref !== username) await d.db.fn('luda_set_inviter', { p_user: r.userId, p_inviter: ref, p_days: REFERRAL_RULES.applyDays }).catch(() => {})
     return { session: r.session, needsConfirm: !r.session }
@@ -620,7 +641,11 @@ const routes: Record<string, Route> = {
       if (!p) throw new Fail('Wrong username/email or password', 401)
       email = p.email
     }
-    try { return { session: await signIn(email, String(body.password ?? ''), authEnv(env), d.fetch) } } catch (e) { throw new Fail(e instanceof Error ? e.message : 'Sign-in failed', 401) }
+    let session
+    try { session = await signIn(email, String(body.password ?? ''), authEnv(env), d.fetch) } catch (e) { throw new Fail(e instanceof Error ? e.message : 'Sign-in failed', 401) }
+    const who = await d.db.profileByEmail(email).catch(() => null)
+    if (who) await d.db.fn('luda_sign_in_log', { p_user: who.user_id, p_how: 'password', p_device: deviceOf(req) }).catch(() => {})
+    return { session }
   },
 
   'POST refresh': async ({ env, d, body }) => {
@@ -666,7 +691,7 @@ const routes: Record<string, Route> = {
     const staffOf = await permsOf(p, env, d)
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
     return {
-      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null, university: p.university ?? null, termsVersion: Number(p.terms_version ?? 0), termsCurrent: Number((await d.db.fn<{ version?: number } | null>('luda_guide', { p_slug: 'terms' }).catch(() => null))?.version ?? 0) },
+      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null, university: p.university ?? null, hasPasscode: !!p.passcode_hash, termsVersion: Number(p.terms_version ?? 0), termsCurrent: Number((await d.db.fn<{ version?: number } | null>('luda_guide', { p_slug: 'terms' }).catch(() => null))?.version ?? 0) },
       // Every top-up attempt with its status (pending / paid / failed / mismatch), so the app can show all of them.
       deposits: deposits.map((x) => ({ reference: x.reference, provider: x.provider, status: x.status, chargeMinor: Number(x.amount_minor), currency: x.currency, feeMinor: Number(x.fee_minor ?? 0), creditMinor: Number(x.credit_minor ?? 0), creditCurrency: x.credit_currency ?? 'NGN', createdAt: x.created_at, paidAt: x.paid_at ?? null })),
       balances, history, tickets, withdrawals: withdrawals.map((w) => ({ ...w, account_number: '••••' + w.account_number.slice(-4), recipient_code: undefined })),
@@ -1863,6 +1888,7 @@ const routes: Record<string, Route> = {
     type Item = { key: string; emoji: string; title: string; sub?: string; to: string; level: 'urgent' | 'action' | 'info' }
     const items: Item[] = []
     if (p.frozen) items.push({ key: 'frozen', emoji: '🧊', title: 'Your account is on hold', sub: 'Money can\'t leave your wallet until it\'s unfrozen', to: '/security', level: 'urgent' })
+    if (p.pin_hash && !p.passcode_hash) items.push({ key: 'passcode', emoji: '🔐', title: 'New: set your 6-digit sign-in code', sub: 'Unlock Luda with 6 digits; your 4-digit PIN is now only for payments', to: '/security?a=passcode', level: 'urgent' })
     if (!p.pin_hash) items.push({ key: 'pin', emoji: '🔢', title: 'Set your payment PIN', sub: 'You need it to move money', to: '/security', level: 'action' })
     if (p.kyc_status === 'pending') items.push({ key: 'kyc-pending', emoji: '🪪', title: 'Your ID check is in progress', sub: 'We\'ll tell you as soon as it\'s done', to: '/wallet?a=kyc', level: 'info' })
     else if (p.kyc_status !== 'verified') items.push({ key: 'kyc', emoji: '🪪', title: 'Verify your ID', sub: 'Unlocks withdrawals, P2P, Market selling, Flash jobs and cash prizes', to: '/wallet?a=kyc', level: 'action' })
@@ -2052,6 +2078,52 @@ const routes: Record<string, Route> = {
     await d.db.fn('luda_ticket_mark', { p_ticket: t.id, p_by: a.username, p_result: ok ? 'ok' : verdict.slice(0, 60), p_used: used })
     await d.db.log(t.code, 'ticket_check', { by: a.username, ok, verdict, manual: !m })
     return { ok, verdict: ok ? (m ? `Valid ${leg === 'return' ? 'return trip' : 'ticket'}` : 'Valid · typed code: check their name and ID') : verdict, ticket: info }
+  },
+
+  /* ---------------- 6-digit sign-in code (unlock / sign in) — the 4-digit PIN stays for payments ---------------- */
+  'POST passcode': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const code = String(body.code ?? '')
+    if (!/^\d{6}$/.test(code) || weakCode(code)) throw new Fail('Choose a 6-digit code that is not easy to guess (no 123456, 111111 or repeats)')
+    // Changing an existing code needs the old one; setting it the first time needs the payment PIN (proves it's you).
+    if (p.passcode_hash) await verifyPasscode(p, body.oldCode, d)
+    else if (p.pin_hash) await verifyPin(p, body.pin, d)
+    const salt = randomHex(16)
+    await d.db.updateProfile(p.user_id, { passcode_salt: salt, passcode_hash: await hashPin(code, salt), passcode_fails: 0, passcode_locked_until: null })
+    await d.db.log(p.user_id, 'passcode_set', { first: !p.passcode_hash })
+    return { ok: true }
+  },
+  'POST passcode-check': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await verifyPasscode(p, body.code, d)
+    await d.db.fn('luda_sign_in_log', { p_user: p.user_id, p_how: 'code', p_device: deviceOf(req) }).catch(() => {})
+    return { ok: true }
+  },
+  'POST sign-in-log': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const how = ['google', 'fingerprint', 'new account'].includes(String(body.how)) ? String(body.how) : ''
+    if (!how) throw new Fail('Bad request')
+    await limit(d, `signinlog:${p.user_id}`, 30, 3600)
+    await d.db.fn('luda_sign_in_log', { p_user: p.user_id, p_how: how, p_device: deviceOf(req) })
+    return { ok: true }
+  },
+  'GET sign-ins': async ({ req, env, d }) => { const p = await me(req, env, d); return { items: await d.db.fn('luda_sign_ins', { p_user: p.user_id }) } },
+
+  /* ---------------- search and trader profiles (live data only) ---------------- */
+  'GET search': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    const q = cleanText(url.searchParams.get('q'), 40).trim()
+    if (q.length < 2) return { posts: [], flash: [], market: [], groups: [], people: [] }
+    await limit(d, `search:${p.user_id}`, 120, 600, 'Slow down a little')
+    return d.db.fn('luda_search', { p_q: q })
+  },
+  'GET trader': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    const u = String(url.searchParams.get('u') ?? '').toLowerCase().replace(/^@/, '')
+    if (!USERNAME.test(u)) throw new Fail('Not found', 404)
+    const t = await d.db.fn<Record<string, unknown> | null>('luda_trader', { p_username: u, p_viewer: p.user_id })
+    if (!t) throw new Fail('No Luda user with that name', 404)
+    return { trader: t }
   },
 
   /* ---------------- team (owner only) ---------------- */

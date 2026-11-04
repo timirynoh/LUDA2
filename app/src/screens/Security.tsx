@@ -9,6 +9,7 @@ import { LIVE, api } from '../lib/live'
 import { bioOn, bioSupported, disableBio, enrollBio } from '../lib/bio'
 import { useLive } from '../lib/liveStore'
 import { NotificationSettings } from './Engage'
+import { PasscodeSheet } from '../components/Passcode'
 
 function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
@@ -32,17 +33,19 @@ export default function Security() {
   const { s, set, toast, notify, reset } = useStore()
   const sec = s.security
   const setSec = (patch: Partial<typeof sec>) => set((p) => ({ ...p, security: { ...p.security, ...patch } }))
-  const [sheet, setSheet] = useState<null | 'pin' | 'password' | 'delete' | 'unfreeze'>(null)
+  const [sheet, setSheet] = useState<null | 'pin' | 'password' | 'delete' | 'unfreeze' | 'passcode'>(() => (LIVE && new URLSearchParams(location.search).get('a') === 'passcode' ? 'passcode' : null))
+  const { me: liveMe } = useLive()
   const { refresh } = useLive()
   const score = [s.phoneVerified, s.verified, s.lockOnOpen, LIVE ? bioOn() : sec.twoStep, !!s.account].filter(Boolean).length
   // Live: freezing is done on the server, so it stops every phone and every payment at once.
   const freezeLive = async () => { try { await api('POST', 'freeze', {}); await refresh(); notify('🧊', 'You froze your wallet. All payments are blocked'); toast({ title: 'Wallet frozen. No money can leave', emoji: '🧊' }) } catch (e) { toast({ title: e instanceof Error ? e.message : 'Could not freeze', emoji: '⚠️' }) } }
 
-  const exportData = () => {
-    // Secrets (PIN/password hashes, salts) are never included.
+  const exportData = async () => {
+    // Secrets (PIN/password hashes, salts) are never included. Live: the server's copy of your account comes first.
     const { pinHash: _p, salt: _s, account, ...rest } = s
     void _p; void _s
-    const data = { exportedAt: new Date().toISOString(), account: account ? { email: account.email, username: account.username } : null, ...rest }
+    const server = LIVE ? { profile: liveMe?.profile, balances: liveMe?.balances, history: liveMe?.history, signIns: await api('GET', 'sign-ins').then((r) => r.items).catch(() => []) } : undefined
+    const data = { exportedAt: new Date().toISOString(), account: account ? { email: account.email, username: account.username } : null, server, phone: rest }
     try {
       const a = document.createElement('a')
       a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
@@ -82,7 +85,8 @@ export default function Security() {
               {[5000, 10000, 20000, 50000, 100000].map((m) => <option key={m} value={m}>₺{m.toLocaleString()}</option>)}</select>
           </Row>}
           <BioRow />
-          <Row icon={<KeyRound size={18} />} title="Change PIN"><button className="chip bg-fg/5 py-2 text-slate-300" onClick={() => setSheet('pin')}>Change</button></Row>
+          {LIVE && <Row icon={<KeyRound size={18} />} title="Sign-in code (6 digits)" sub={liveMe?.profile.hasPasscode ? 'Opens Luda on this and any phone' : 'Not set yet: set it now'}><button className={`chip py-2 ${liveMe?.profile.hasPasscode ? 'bg-fg/5 text-slate-300' : 'bg-gold-400 text-ink-950'}`} onClick={() => setSheet('passcode')}>{liveMe?.profile.hasPasscode ? 'Change' : 'Set'}</button></Row>}
+          <Row icon={<KeyRound size={18} />} title={LIVE ? 'Payment PIN (4 digits)' : 'Change PIN'} sub={LIVE ? 'Approves every payment' : undefined}><button className="chip bg-fg/5 py-2 text-slate-300" onClick={() => setSheet('pin')}>Change</button></Row>
           {s.account && <Row icon={<KeyRound size={18} />} title="Change password"><button className="chip bg-fg/5 py-2 text-slate-300" onClick={() => setSheet('password')}>Change</button></Row>}
         </section>
 
@@ -90,7 +94,7 @@ export default function Security() {
 
         <section className="card">
           <p className="label mb-2 flex items-center gap-1"><History size={12} /> Recent sign-ins</p>
-          {s.logins.length ? s.logins.slice(0, 6).map((l) => (
+          {LIVE ? <LiveSignIns /> : s.logins.length ? s.logins.slice(0, 6).map((l) => (
             <div key={l.ts} className="flex items-center justify-between py-1.5 text-sm"><span>{l.how} · <span className="text-slate-400">{l.device}</span></span><span className="text-xs text-slate-500">{new Date(l.ts).toLocaleString()}</span></div>
           )) : <p className="text-sm text-slate-400">No sign-ins recorded yet.</p>}
           <p className="mt-2 text-[11px] text-slate-500">Don't recognise one? Freeze your wallet and change your password.</p>
@@ -99,12 +103,13 @@ export default function Security() {
         <section className="card divide-y divide-fg/5 py-1">
           <p className="label pt-2 pb-1">Your data</p>
           <Row icon={<Download size={18} />} title="Download my data" sub="Everything Luda stores about you (no passwords)"><button className="chip bg-fg/5 py-2 text-slate-300" onClick={exportData}>Download</button></Row>
-          <Row icon={<Trash2 size={18} />} title="Delete my account" sub="Permanently removes your data from this phone"><button className="chip bg-rose-500/15 py-2 text-rose-300" onClick={() => setSheet('delete')}>Delete</button></Row>
+          <Row icon={<Trash2 size={18} />} title={LIVE ? 'Close my account' : 'Delete my account'} sub={LIVE ? 'Done with the Luda team, after you withdraw your money' : 'Permanently removes your data from this phone'}><button className="chip bg-rose-500/15 py-2 text-rose-300" onClick={() => setSheet('delete')}>{LIVE ? 'How' : 'Delete'}</button></Row>
         </section>
-        <p className="pb-2 text-center text-[11px] text-slate-500">🔐 PIN & password are stored only as salted hashes. Your timetable photos never leave your phone.</p>
+        <p className="pb-2 text-center text-[11px] text-slate-500">{LIVE ? '🔐 Your PIN, sign-in code and password are kept only as protected hashes on Luda\'s server, never on your phone. Timetable photos never leave your phone.' : '🔐 PIN & password are stored only as salted hashes. Your timetable photos never leave your phone.'}</p>
       </div>
 
       {sheet === 'pin' && <ChangePin onClose={() => setSheet(null)} />}
+      {sheet === 'passcode' && <PasscodeSheet onClose={() => setSheet(null)} />}
       {sheet === 'password' && (LIVE ? <LivePasswordSheet onClose={() => setSheet(null)} /> : <PasswordSheet mode="change" onClose={() => setSheet(null)} />)}
       {sheet === 'unfreeze' && (LIVE ? <LiveUnfreeze onClose={() => setSheet(null)} /> : <PasswordSheet mode="unfreeze" onClose={() => setSheet(null)} />)}
       {sheet === 'delete' && (LIVE ? <Sheet open onClose={() => setSheet(null)} title="Close my account"><p className="text-sm text-slate-300">Your account holds money, so closing it is done with the Luda team: they'll help you withdraw your balance first, then delete your data. Go to <b>Help</b> and choose "Close my account".</p></Sheet> : <PasswordSheet mode="delete" onClose={() => setSheet(null)} onDone={reset} />)}
@@ -234,4 +239,17 @@ function PasswordSheet({ mode, onClose, onDone }: { mode: 'change' | 'unfreeze' 
       </div>
     </Sheet>
   )
+}
+
+
+/** Live: sign-in history comes from the server (every password, code, fingerprint and Google sign-in, with the device). */
+function LiveSignIns() {
+  const [items, setItems] = useState<{ how: string; device: string; at: string }[] | null>(null)
+  useEffect(() => { api<{ items: { how: string; device: string; at: string }[] }>('GET', 'sign-ins').then((r) => setItems(r.items)).catch(() => setItems([])) }, [])
+  const label: Record<string, string> = { password: 'Password', code: '6-digit code', fingerprint: 'Fingerprint', google: 'Google', 'new account': 'Account created' }
+  if (!items) return <p className="text-sm text-slate-500">Loading…</p>
+  if (!items.length) return <p className="text-sm text-slate-400">No sign-ins recorded yet.</p>
+  return <>{items.slice(0, 8).map((l, i) => (
+    <div key={i} className="flex items-center justify-between gap-2 py-1.5 text-sm"><span className="min-w-0 truncate">{label[l.how] ?? l.how} · <span className="text-slate-400">{l.device}</span></span><span className="shrink-0 text-xs text-slate-500">{new Date(l.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></div>
+  ))}</>
 }

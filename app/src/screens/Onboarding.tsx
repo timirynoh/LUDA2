@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, Check } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { PinPad } from '../components/ui'
+import { PasscodeSetup } from '../components/Passcode'
 import { hashPin, randomSecret } from '../lib/crypto'
 import { CITIES, COUNTRIES } from '../lib/data'
 import { useStore } from '../lib/store'
@@ -14,15 +15,21 @@ export default function Onboarding() {
 
   const [pinErr, setPinErr] = useState('')
   const [hasServerPin, setHasServerPin] = useState<boolean | null>(LIVE ? null : false)
-  useEffect(() => { if (LIVE) api<Me>('GET', 'me').then((m) => setHasServerPin(m.profile.hasPin)).catch(() => setHasServerPin(false)) }, [])
+  const [hasCode, setHasCode] = useState(false)
+  const [codePin, setCodePin] = useState<string | null>(null) // live: PIN accepted, now create the 6-digit sign-in code
+  useEffect(() => { if (LIVE) api<Me>('GET', 'me').then((m) => { setHasServerPin(m.profile.hasPin); setHasCode(!!m.profile.hasPasscode) }).catch(() => setHasServerPin(false)) }, [])
+  const complete = () => {
+    set((p) => ({ ...p, name: p.name || 'Friend', salt: '', pinHash: 'server', onboarded: true, createdAt: Date.now() }))
+    reward(50, { badge: 'welcome', title: `Welcome to Luda, ${s.name || 'Friend'}!` })
+  }
   const finish = async (pin: string) => {
     if (LIVE) {
       // The real PIN lives on the server (it approves every payment). On a new phone, re-enter the existing one.
       if (hasServerPin === null) { setPinErr('One moment, loading your account…'); return }
       try { await api('POST', hasServerPin ? 'pin-check' : 'pin', { pin }) } catch (e) { setPinErr(e instanceof Error ? e.message : 'Try again'); return }
-      // No PIN (or hash of it) is kept on the phone in live mode.
-      set((p) => ({ ...p, name: p.name || 'Friend', salt: '', pinHash: 'server', onboarded: true, createdAt: Date.now() }))
-      reward(50, { badge: 'welcome', title: `Welcome to Luda, ${s.name || 'Friend'}!` })
+      // No PIN (or hash of it) is kept on the phone in live mode. Next: the 6-digit code that opens the app.
+      if (!hasCode) { setCodePin(pin); return }
+      complete()
       return
     }
     const salt = randomSecret(8)
@@ -59,10 +66,10 @@ export default function Onboarding() {
     </div>,
     <div key="4" className="flex flex-col gap-8">
       <div className="pt-8">
-        <h2 className="text-3xl font-extrabold">{hasServerPin ? 'Enter your Luda PIN' : t('onb.pin')}</h2>
-        <p className="mt-2 text-sm text-slate-400">{LIVE ? (hasServerPin ? '🔐 The PIN you already use for Luda payments.' : '🔐 You\'ll use it to approve every payment. Avoid 1234 or your birthday.') : '🔐 Hashed on-device. Needed for withdrawals and releasing escrow.'}</p>
+        <h2 className="text-3xl font-extrabold">{codePin ? 'One more: your sign-in code' : hasServerPin ? 'Enter your Luda PIN' : t('onb.pin')}</h2>
+        <p className="mt-2 text-sm text-slate-400">{codePin ? '🔐 6 digits to open Luda. Your 4-digit PIN is only for payments.' : LIVE ? (hasServerPin ? '🔐 The PIN you already use for Luda payments.' : '🔐 You\'ll use it to approve every payment. Avoid 1234 or your birthday.') : '🔐 Hashed on-device. Needed for withdrawals and releasing escrow.'}</p>
       </div>
-      <PinPad error={pinErr} onDone={(p) => { setPinErr(''); return finish(p) }} />
+      {codePin ? <PasscodeSetup pin={codePin} onDone={complete} /> : <PinPad error={pinErr} onDone={(p) => { setPinErr(''); return finish(p) }} />}
     </div>,
   ]
 

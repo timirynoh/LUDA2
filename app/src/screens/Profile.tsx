@@ -1,3 +1,5 @@
+import { useLive } from '../lib/liveStore'
+import { staffCan } from '../lib/live'
 import { BadgeCheck, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react'
 import { TourButton } from '../components/GuidedTour'
 import { Link, useNavigate } from 'react-router-dom'
@@ -12,6 +14,7 @@ import { useStore } from '../lib/store'
 import { LIVE } from '../lib/live'
 
 export default function Profile() {
+  const { me: liveMe } = useLive()
   const { s, set, t, level, reset, gate } = useStore()
   const [kyc, setKyc] = useState(false)
   const [armed, setArmed] = useState(false)
@@ -115,6 +118,7 @@ export default function Profile() {
           </label>
         </section>
 
+        {LIVE && staffCan(liveMe?.profile.staff, 'tickets', 'edit') && <Link to="/check" className="card flex items-center gap-3 py-3"><span className="text-2xl">🎫</span><div className="flex-1"><p className="font-semibold">Ticket check</p><p className="text-xs text-slate-400">Scan passengers' bus tickets</p></div></Link>}
         {(!LIVE || s.isAdmin) && <section className="card">
           <div className="flex items-center gap-3">
             <ShieldCheck className={s.isAdmin ? 'text-mint-300' : 'text-slate-500'} />

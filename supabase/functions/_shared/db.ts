@@ -15,7 +15,7 @@ export interface PaymentRow {
 export interface Profile {
   user_id: string; username: string; full_name: string; email: string; country?: string | null
   kyc_status: 'none' | 'pending' | 'verified' | 'failed'; kyc_session_id?: string | null; kyc_doc_hash?: string | null; kyc_country?: string | null; kyc_at?: string | null; kyc_name?: string | null; kyc_dob?: string | null; kyc_id_type?: string | null; kyc_id_last4?: string | null
-  kyc_tries: number; kyc_tries_day?: string | null; kyc_started_at?: string | null; university?: string | null; terms_version?: number; terms_at?: string | null
+  kyc_tries: number; kyc_tries_day?: string | null; kyc_started_at?: string | null; university?: string | null; terms_version?: number; terms_at?: string | null; passcode_hash?: string | null; passcode_salt?: string | null; passcode_fails?: number; passcode_locked_until?: string | null
   pin_hash?: string | null; pin_salt?: string | null; pin_fails: number; pin_locked_until?: string | null
   frozen: boolean; created_at?: string; bio_challenge?: string | null; bio_challenge_exp?: string | null
   phone?: string | null; phone_verified_at?: string | null; money_hold_until?: string | null; frozen_by?: 'user' | 'admin' | null; is_admin?: boolean; invited_by?: string | null; streak?: number; last_checkin?: string | null

@@ -39,11 +39,13 @@ export default function Home() {
   const [hide, setHide] = useState(s.security.hideBalances)
   const home = COUNTRIES.find((c) => c.code === s.country)!
   const city = CITIES.find((c) => c.id === s.city)!
-  const { me } = useLive()
+  const { me, rewards } = useLive()
+  // Live: only quests the server really tracks (it marks them done from what you did).
+  const quests = LIVE ? QUESTS.filter((q) => rewards?.questXp && q.id in rewards.questXp) : QUESTS
   // Live mode shows the real wallet (server); the demo shows its local balances.
   const balances: Record<string, number> = LIVE ? { NGN: (me?.balances.NGN ?? 0) / 100, TRY: (me?.balances.TRY ?? 0) / 100 } : s.balances
   const total = Object.entries(balances).reduce((a, [c, v]) => a + convert(rates, v, c, 'TRY'), 0)
-  const activeTrade = s.trades.find((x) => x.status === 'escrow' || x.status === 'meeting')
+  const activeTrade = LIVE ? undefined : s.trades.find((x) => x.status === 'escrow' || x.status === 'meeting') // demo swaps only; live P2P orders show in To do
 
   const actions = s.shortcuts.map((id) => ACTIONS.find((a) => a.id === id)).filter((a) => a && (!a.admin || s.isAdmin)) as typeof ACTIONS
 
@@ -192,17 +194,17 @@ export default function Home() {
       {s.sections.quests && <section>
         <div className="mb-3 flex items-center justify-between">
           <p className="label">{t('home.quests')}</p>
-          <span className="text-xs text-slate-400">{s.quests.length}/{QUESTS.length}</span>
+          <span className="text-xs text-slate-400">{quests.filter((q) => s.quests.includes(q.id)).length}/{quests.length}</span>
         </div>
         <div className="flex flex-col gap-2">
-          {QUESTS.filter((q) => !s.quests.includes(q.id)).slice(0, 4).map((q) => (
+          {quests.filter((q) => !s.quests.includes(q.id)).slice(0, 4).map((q) => (
             <Link key={q.id} to={q.to} className="card flex items-center gap-3 py-3.5">
               <div className="grid size-9 place-items-center rounded-xl bg-gold-400/15 text-gold-300">★</div>
               <span className="flex-1 text-sm font-semibold">{q.title}</span>
               <span className="chip bg-gold-400/10 text-gold-300">+{q.xp} XP</span>
             </Link>
           ))}
-          {s.quests.length === QUESTS.length && <div className="card text-center text-sm text-slate-300">🏆 All quests done. You're a legend.</div>}
+          {quests.every((q) => s.quests.includes(q.id)) && <div className="card text-center text-sm text-slate-300">🏆 All quests done. You're a legend.</div>}
         </div>
       </section>}
       {editing && <Customize open onClose={() => setEditing(false)} />}
