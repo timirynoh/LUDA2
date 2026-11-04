@@ -48,6 +48,7 @@ import KycReturn from './screens/KycReturn'
 import LiveAdmin from './screens/LiveAdmin'
 import LiveExchange from './screens/LiveExchange'
 import { GuidedTour } from './components/GuidedTour'
+import { PrivacyShield } from './components/PrivacyShield'
 import LiveBoard from './screens/LiveBoard'
 import LiveChats from './screens/LiveChats'
 import LiveP2POrder from './screens/LiveP2P'
@@ -144,7 +145,7 @@ export default function App() {
                 <Route path="/inbox" element={<Inbox />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/help" element={<Help />} />
-                <Route path="/disputes" element={<DisputeList />} />
+                <Route path="/disputes" element={LIVE ? <Navigate to="/help" replace /> : <DisputeList />} />
                 <Route path="/send" element={LIVE ? <Navigate to="/wallet?a=send" replace /> : <SendScreen />} />
                 <Route path="/savings" element={LIVE ? <LiveSavings /> : <Savings />} />
                 <Route path="/market" element={LIVE ? <LiveMarket /> : <Market />} />
@@ -157,7 +158,7 @@ export default function App() {
                 <Route path="/challenges" element={<Challenges />} />
                 <Route path="/promos" element={LIVE ? <LiveBoard key="promo" kind="promo" /> : <Promos />} />
                 <Route path="/places" element={<LiveBoard key="place" kind="place" />} />
-                <Route path="/disputes/:id" element={<DisputeView />} />
+                <Route path="/disputes/:id" element={LIVE ? <Navigate to="/help" replace /> : <DisputeView />} />
                 <Route path="/p2p/:id" element={<LiveP2POrder />} />
                 <Route path="/chats" element={LIVE ? <LiveChats /> : <Chats />} />
                 <Route path="/chats/:id" element={LIVE ? <LiveChatRoom /> : <ChatRoom />} />
@@ -170,6 +171,7 @@ export default function App() {
             </motion.main>
           </AnimatePresence>
           <GuidedTour />
+          <PrivacyShield />
           {!inRoom && <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-app px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <div className="flex items-center justify-around rounded-[1.75rem] border border-fg/10 bg-ink-900/85 px-2 py-2 shadow-2xl shadow-black/50 backdrop-blur-2xl">
               {TABS.map(({ to, icon: Icon, key }) => (

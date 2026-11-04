@@ -46,7 +46,7 @@ export function foreignFee(amountMinor: number, env: { FOREIGN_FEE_PCT?: string 
 }
 
 export interface FeeEnv {
-  DEPOSIT_FEE_PCT?: string; DEPOSIT_FEE_FLAT?: string; DEPOSIT_FEE_FLAT_WAIVE_BELOW?: string; DEPOSIT_FEE_CAP?: string; WITHDRAW_FEE?: string
+  DEPOSIT_FEE_PCT?: string; DEPOSIT_FEE_FLAT?: string; DEPOSIT_FEE_FLAT_WAIVE_BELOW?: string; DEPOSIT_FEE_CAP?: string; WITHDRAW_FEE?: string; WITHDRAW_FEE_TRY?: string; P2P_FEE_MIN_TRY?: string; P2P_FEE_MAX_TRY?: string
   BILL_FEE?: string; BILL_FEE_HIGH?: string; BILL_FEE_STEP?: string; P2P_FEE_PCT?: string; MARKET_FEE_PCT?: string; FLASH_FEE_PCT?: string
 }
 const num = (v: string | undefined, d: number) => (v === undefined || v === '' || !Number.isFinite(Number(v)) ? d : Number(v))
@@ -62,12 +62,21 @@ export function depositFee(creditMinor: number, env: FeeEnv) {
   const gross = Math.ceil((creditMinor + f) / (1 - pct)) // provider takes pct of the gross
   return Math.min(cap, gross - creditMinor)
 }
-// Luda's fee plan (owner chose 'Balanced', 2026-11-03): student-friendly, below banks/BDCs, and every number is set here on the server.
-//   top-up: only the provider's own fee · send to a user: free · NGN⇄TRY: 1.5% (FX_MARGIN) · withdrawal: ₦100 (provider cost ₦10–50)
-//   bills: ₺10 up to ₺1,000, ₺20 above · Market: 2% from the seller · Flash: 5% from the helper · P2P: 0.5% from whoever receives the Naira
-export const withdrawFee = (env: FeeEnv) => Math.round(num(env.WITHDRAW_FEE, 100) * 100)
+// Luda's fee plan: startup-light lira fees (owner, 2026-11-04: 'charge in lira, balanced and fair, still some profit').
+// Every number is set here on the server and every fee is priced and shown in lira.
+//   top-up: only the provider's own fee · send to a user: free · bus tickets: no fee · NGN⇄TRY: 1% (FX_MARGIN)
+//   withdrawal: ₺3 flat (WITHDRAW_FEE_TRY; from the Lira wallet, else the same value in Naira; provider cost ≈ ₦10–50)
+//   bills: ₺10 up to ₺1,000, ₺20 above (the team pays them by hand) · Market: 2% from the seller · Flash: 5% from the helper
+//   P2P: 0.5% of the trade in lira, min ₺1, max ₺25, from whoever receives the Naira
+/** Withdrawal fee in kuruş (lira). */
+export const withdrawFee = (env: FeeEnv) => Math.round(num(env.WITHDRAW_FEE_TRY, 3) * 100)
+/** P2P fee in kuruş for a trade worth `liraMinor`: 0.5%, min ₺1, max ₺25. */
+export function p2pFeeTry(liraMinor: number, env: FeeEnv) {
+  const f = featureFees(env)
+  return Math.min(f.p2pMaxMinor, Math.max(f.p2pMinMinor, Math.round(liraMinor * f.p2pPct)))
+}
 /** Wallet features (TRY): flat bill-pay service fee; marketplace/Flash fee taken from what the seller/helper receives. */
-export const featureFees = (env: FeeEnv) => ({ billMinor: Math.round(num(env.BILL_FEE, 10) * 100), billHighMinor: Math.round(num(env.BILL_FEE_HIGH, 20) * 100), billStepMinor: Math.round(num(env.BILL_FEE_STEP, 1000) * 100), marketPct: num(env.MARKET_FEE_PCT, 0.02), flashPct: num(env.FLASH_FEE_PCT, 0.05), p2pPct: num(env.P2P_FEE_PCT, 0.005) })
+export const featureFees = (env: FeeEnv) => ({ billMinor: Math.round(num(env.BILL_FEE, 10) * 100), billHighMinor: Math.round(num(env.BILL_FEE_HIGH, 20) * 100), billStepMinor: Math.round(num(env.BILL_FEE_STEP, 1000) * 100), marketPct: num(env.MARKET_FEE_PCT, 0.02), flashPct: num(env.FLASH_FEE_PCT, 0.05), p2pPct: num(env.P2P_FEE_PCT, 0.005), p2pMinMinor: Math.round(num(env.P2P_FEE_MIN_TRY, 1) * 100), p2pMaxMinor: Math.round(num(env.P2P_FEE_MAX_TRY, 25) * 100) })
 
 export interface FxEnv { FX_FIXED_RATE?: string; FX_FALLBACK_RATE?: string; FX_MARGIN?: string }
 
@@ -84,7 +93,7 @@ export async function ngnPerTry(env: FxEnv, f: Fetch = fetch): Promise<number> {
   if (!rate || !Number.isFinite(rate) || rate <= 0) throw new Error('Exchange rate unavailable, try again shortly')
   return rate
 }
-export const margin = (env: FxEnv) => num(env.FX_MARGIN, 0.015)
+export const margin = (env: FxEnv) => num(env.FX_MARGIN, 0.01)
 
 let tryRates: { at: number; rates: Record<string, number> } | null = null
 /** Units of `cur` per 1 TRY (mid-market). FX_TRY_RATES='{"USD":0.029}' overrides; else live (cached 10 min). */

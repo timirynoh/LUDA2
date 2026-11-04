@@ -67,7 +67,7 @@ export interface Db {
   post(entries: Entry[]): Promise<{ duplicate?: boolean }>
   depositPaid(reference: string, providerTx: string): Promise<void>
   buyTicket(userId: string, currency: string, amountMinor: number, baseAmount: number, code: string, item: Record<string, unknown>): Promise<TicketRow>
-  withdraw(userId: string, reference: string, amountMinor: number, feeMinor: number, bankCode: string, bankName: string, account: string, name: string, recipient: string): Promise<void>
+  withdraw(userId: string, reference: string, amountMinor: number, feeMinor: number, feeCur: 'NGN' | 'TRY', bankCode: string, bankName: string, account: string, name: string, recipient: string): Promise<void>
   /** Calls one of the luda_* SQL functions with named arguments (wallet features). */
   fn<T = unknown>(name: string, args: Record<string, unknown>): Promise<T>
   setWithdrawal(reference: string, patch: { provider?: string; recipient_code?: string | null; transfer_code?: string | null }): Promise<void>
@@ -166,8 +166,8 @@ export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
     async buyTicket(u, cur, amt, baseAmt, code, item) {
       return (await rpc<{ ticket: TicketRow }>('luda_buy_ticket', { p_user: u, p_currency: cur, p_amount: amt, p_base: baseAmt, p_code: code, p_item: item })).ticket
     },
-    async withdraw(u, ref, amt, fee, bank, bankName, acct, name, rcp) {
-      await rpc('luda_withdraw', { p_user: u, p_reference: ref, p_amount: amt, p_fee: fee, p_bank_code: bank, p_bank_name: bankName, p_account: acct, p_name: name, p_recipient: rcp })
+    async withdraw(u, ref, amt, fee, feeCur, bank, bankName, acct, name, rcp) {
+      await rpc('luda_withdraw2', { p_user: u, p_reference: ref, p_amount: amt, p_fee: fee, p_fee_cur: feeCur, p_bank_code: bank, p_bank_name: bankName, p_account: acct, p_name: name, p_recipient: rcp })
     },
     fn: (name, args) => rpc(name, args),
     async setWithdrawal(ref, patch) { await call(`withdrawals?reference=eq.${q(ref)}`, { method: 'PATCH', headers: { prefer: 'return=minimal' }, body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) }) },

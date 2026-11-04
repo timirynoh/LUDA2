@@ -106,13 +106,14 @@ function buildItems(me: Me): Item[] {
   for (const w of me.withdrawals ?? []) {
     const status: Status = w.status === 'paid' ? 'success' : w.status === 'processing' ? 'pending' : 'refunded'
     out.push({
-      key: 'wdr' + w.reference, at: w.created_at, title: 'Withdrawal', sub: `${w.bank_name ?? 'Bank'} ${w.account_number}`, amountMinor: -(w.amount_minor + w.fee_minor), currency: 'NGN', status, reference: w.reference,
+      key: 'wdr' + w.reference, at: w.created_at, title: 'Withdrawal', sub: `${w.bank_name ?? 'Bank'} ${w.account_number}`, amountMinor: -(w.amount_minor + ((w.fee_currency ?? 'NGN') === 'NGN' ? w.fee_minor : 0)), currency: 'NGN', status, reference: w.reference,
       note: status === 'pending' ? 'On its way to your bank. Usually arrives within minutes.' : status === 'refunded' ? 'The bank transfer failed, so the amount and fee went back into your Naira wallet.' : undefined,
-      details: [['Status', LABEL[status]], ['Reference', w.reference], ['Date', when(w.created_at)], ['To', w.account_name], ['Bank', `${w.bank_name ?? ''} ${w.account_number}`], ['Amount', money(w.amount_minor, 'NGN')], ['Fee', money(w.fee_minor, 'NGN')]],
+      details: [['Status', LABEL[status]], ['Reference', w.reference], ['Date', when(w.created_at)], ['To', w.account_name], ['Bank', `${w.bank_name ?? ''} ${w.account_number}`], ['Amount', money(w.amount_minor, 'NGN')], ['Luda fee', money(w.fee_minor, w.fee_currency ?? 'NGN')]],
     })
   }
   for (const h of me.history) {
-    if (['deposit', 'withdraw', 'withdraw_fee', 'withdraw_reversal'].includes(h.kind)) continue // shown above with their status
+    // shown above with their status (a lira withdrawal fee, and its refund, show here in the Lira wallet)
+    if (['deposit', 'withdraw'].includes(h.kind) || (['withdraw_fee', 'withdraw_reversal'].includes(h.kind) && h.currency === 'NGN')) continue
     const m = h.meta ?? {}
     const sub = h.kind === 'send' ? `to @${m.to}` : h.kind === 'receive' ? `from @${m.from}` : h.kind === 'ticket' ? `${m.label ?? ''} · ${m.code ?? ''}` : h.kind === 'convert' ? (h.amount_minor < 0 ? `to ${m.to === 'TRY' ? 'Lira' : 'Naira'}` : `from ${m.from === 'TRY' ? 'Lira' : 'Naira'}`) : ''
     out.push({

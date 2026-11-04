@@ -6,7 +6,7 @@ import { hashPin, randomHex, recover, refresh, setPassword, signIn, signUp, user
 import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion } from './webauthn.ts'
 import { MoneyError, type CaseRow, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
 import { accountMatchesName, diditDecision, diditEnabled, diditSignatureOk, diditStart, docHash, idMatchesName, kycEnabled, lookupId, nameTokens, normDate, type DiditEnv, type KycEnv } from './kyc.ts'
-import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, billFee, depositFee, featureFees, foreignEnabled, foreignFee, margin, ngnPerTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
+import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, billFee, depositFee, featureFees, foreignEnabled, foreignFee, margin, ngnPerTry, p2pFeeTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
 import { PayoutRefused, checkTransfer, createRecipient, flwBanks, flwCheckTransfer, flwResolve, flwSendTransfer, listBanks, matchFlwBank, payoutRefusalMessage, resolveAccount, sendTransfer, type PayoutProvider } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
 import { textProblem } from './moderation.ts'
@@ -1385,11 +1385,15 @@ const routes: Record<string, Route> = {
     if (!accountMatchesName(name, p.kyc_name ?? '')) throw new Fail(`You can only withdraw to your own account. "${name}" doesn't match your verified name.`)
     // The bank's name comes from Paystack's own list (not from the app), so Flutterwave gets the right bank.
     const bankName = (await listBanks(env.PAYSTACK_SECRET_KEY, d.fetch).catch(() => [])).find((x) => x.code === bank)?.name ?? String(body.bankName ?? '').slice(0, 60)
-    const fee = withdrawFee(env), reference = newRef('wdr')
-    try { await d.db.withdraw(p.user_id, reference, amount, fee, bank, bankName, account, name, '') } catch (e) { moneyMsg(e) }
-    await d.db.log(reference, 'withdraw_init', { amount, fee, bank })
+    // The fee is priced in lira: taken from the Lira wallet when it has enough, otherwise the same value in Naira (today's rate).
+    const feeTry = withdrawFee(env), reference = newRef('wdr')
+    const bal = await d.db.balances(p.user_id)
+    let fee = feeTry, feeCur: 'NGN' | 'TRY' = 'TRY'
+    if ((bal.TRY ?? 0) < feeTry) { fee = feeTry ? Math.ceil(feeTry * (await ngnPerTry(env, d.fetch))) : 0; feeCur = 'NGN' }
+    try { await d.db.withdraw(p.user_id, reference, amount, fee, feeCur, bank, bankName, account, name, '') } catch (e) { moneyMsg(e) }
+    await d.db.log(reference, 'withdraw_init', { amount, fee, feeCur, bank })
     const r = await payOut(reference, amount, bank, bankName, account, name, env, d)
-    return { reference, status: r.status, accountName: name, feeMinor: fee, ...('message' in r ? { message: r.message } : {}) }
+    return { reference, status: r.status, accountName: name, feeMinor: fee, feeCurrency: feeCur, feeTry, ...('message' in r ? { message: r.message } : {}) }
   },
 
   /* ---------------- P2P: saved lira bank accounts ---------------- */
@@ -1429,7 +1433,7 @@ const routes: Record<string, Route> = {
     ads.sort((a, b) => (want === 'buy' ? a.price - b.price : b.price - a.price) || near(b) - near(a))
     const mid = await marketNgnPer(asset, env, d)
     const mine = await d.db.fn<Record<string, any>[]>('luda_p2p_my_ads', { p_user: p.user_id })
-    return { ads: ads.map((a) => ({ ...a, nearby: near(a) })), mine, asset, market: mid, rules: { ...P2P_RULES, feePct: featureFees(env).p2pPct }, canTrade: !p2pBlock(p), why: p2pBlock(p) }
+    return { ads: ads.map((a) => ({ ...a, nearby: near(a) })), mine, asset, market: mid, rules: { ...P2P_RULES, feePct: featureFees(env).p2pPct, feeMinTry: featureFees(env).p2pMinMinor, feeMaxTry: featureFees(env).p2pMaxMinor, assetPerTry: asset === 'TRY' ? 1 : await perTry(asset, env, d.fetch).catch(() => null) }, canTrade: !p2pBlock(p), why: p2pBlock(p) }
   },
   'POST p2p-ad-save': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
@@ -1483,9 +1487,14 @@ const routes: Record<string, Route> = {
       await verifyAuth(p, body, env, d) // Naira leaves the wallet into escrow: PIN / fingerprint
     } else if (method === 'cash') tryTo = { kind: 'cash', area: cleanText(body.area, 40) }
     await limit(d, `p2porder:${p.user_id}`, 10, 86400, 'You can open 10 P2P orders a day')
-    const o = await d.db.fn<Record<string, any>>('luda_p2p_order_create', { p_ad: uuid(body.adId), p_taker: p.user_id, p_try: amountTry, p_fee_pct: featureFees(env).p2pPct, p_method: method, p_try_to: tryTo, p_window_min: P2P_RULES.windowMin }).catch(p2pErr)
-    await d.db.log(String(o.id), 'p2p_order', { user: p.username, amountTry, ngn: o.amount_ngn })
-    return { order: o }
+    // The fee is priced in lira (0.5%, min ₺1, max ₺25) and collected from the held Naira at this trade's own rate.
+    const asset = (ad as { asset?: string }).asset ?? 'TRY'
+    const liraMinor = asset === 'TRY' ? amountTry : Math.round(amountTry / (await perTry(asset, env, d.fetch)))
+    const feeTry = p2pFeeTry(liraMinor, env)
+    const o = await d.db.fn<Record<string, any>>('luda_p2p_order_create', { p_ad: uuid(body.adId), p_taker: p.user_id, p_try: amountTry, p_fee_pct: liraMinor > 0 ? feeTry / liraMinor : 0, p_method: method, p_try_to: tryTo, p_window_min: P2P_RULES.windowMin }).catch(p2pErr)
+    await d.db.fn('luda_p2p_set_fee_try', { p_order: o.id, p_fee: feeTry }).catch(() => {})
+    await d.db.log(String(o.id), 'p2p_order', { user: p.username, amountTry, ngn: o.amount_ngn, feeTry })
+    return { order: { ...o, fee_try: feeTry } }
   },
   'GET p2p-orders': async ({ req, env, d }) => {
     const p = await me(req, env, d)

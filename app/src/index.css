@@ -109,7 +109,9 @@ body { overflow-x: hidden; overscroll-behavior-y: none; }
 img, svg, video { max-width: 100%; }
 
 /* Phone feel: no pull-to-refresh on the page (Luda has its own refresh buttons), no accidental text
-   selection or grey tap flashes. Typing fields and anything marked .selectable stay selectable. */
+   selection or grey tap flashes. Only typing fields stay selectable. */
 html { overscroll-behavior-y: none; }
 body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
-input, textarea, select, [contenteditable="true"], .selectable, .selectable * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+/* Owner (v1.9.0): nothing on screen can be selected or long-pressed to copy; only a clear Copy button copies. */
+input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+img { -webkit-user-drag: none; }

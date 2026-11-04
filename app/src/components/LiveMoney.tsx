@@ -242,8 +242,9 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
   const [review, setReview] = useState(false)
   const [result, setResult] = useState('')
   const [resultMsg, setResultMsg] = useState('')
-  const [fee, setFee] = useState<number | null>(null) // set by the server (GET config); never decided in the app
-  useEffect(() => { liveConfig().then((c) => setFee(c.fees.withdraw)).catch(() => {}) }, [])
+  const [feeTry, setFeeTry] = useState<number | null>(null) // set by the server (GET config) in lira; never decided in the app
+  const [mid, setMid] = useState<number | null>(null)
+  useEffect(() => { liveConfig().then((c) => setFeeTry(c.fees.withdraw)).catch(() => {}); api<{ ngnPerTry: number }>('GET', 'rate').then((r) => setMid(r.ngnPerTry)).catch(() => {}) }, [])
   const verified = me?.profile.kyc === 'verified'
   useEffect(() => { if (verified) api('GET', 'banks').then((r) => setBanks(r.banks)).catch((e) => setErr(errMsg(e))) }, [verified])
   useEffect(() => {
@@ -254,13 +255,18 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
   }, [bank, acct])
   const shown = useMemo(() => (q.trim() ? banks.filter((b) => b.name.toLowerCase().includes(q.toLowerCase())) : [...banks].sort((a, b) => popularity(a.name) - popularity(b.name))).slice(0, 8), [banks, q])
   const minor = parseMinor(amt), bal = me?.balances.NGN ?? 0
+  // The fee is priced in lira: from the Lira wallet when it has enough, otherwise the same value in Naira (the server decides the same way).
+  const fromLira = feeTry !== null && (me?.balances.TRY ?? 0) >= feeTry
+  const feeNgn = feeTry === null ? null : fromLira ? 0 : mid ? Math.ceil(feeTry * mid) : null
+  const fee = feeNgn
+  const feeText = feeTry === null ? '…' : fromLira ? `${money(feeTry, 'TRY')} from your Lira wallet` : `${money(feeTry, 'TRY')} (≈ ${money(feeNgn ?? 0, 'NGN')})`
   const ready = fee !== null && !!bank && !!name?.matches && minor >= MIN_WITHDRAW && minor + fee <= bal
 
   return (
     <Sheet open onClose={onClose} title="Withdraw to your bank">
       {!verified ? <LiveKyc /> : review ? (
         <ReviewAndPin
-          rows={[['To', <span key="to">{name!.accountName}<br /><span className="text-xs text-slate-400">{bank!.name} · {acct}</span></span>], ['Amount', money(minor, 'NGN')], ['Fee', money(fee ?? 0, 'NGN')], ['Leaves your wallet', <b key="v">{money(minor + (fee ?? 0), 'NGN')}</b>]]}
+          rows={[['To', <span key="to">{name!.accountName}<br /><span className="text-xs text-slate-400">{bank!.name} · {acct}</span></span>], ['Amount', money(minor, 'NGN')], ['Luda fee', feeText], ['Leaves your Naira wallet', <b key="v">{money(minor + (fee ?? 0), 'NGN')}</b>]]}
           warning="Check the account carefully. Money sent to a bank can't be pulled back by Luda."
           holdLabel="Hold to withdraw"
           run={async (auth) => { const r = await api('POST', 'withdraw', { amountMinor: minor, account: acct, bankCode: bank!.code, bankName: bank!.name, ...auth }); setResult(r.status); setResultMsg(r.message ?? ''); await refresh() }}
@@ -279,7 +285,7 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
               ? <p className="flex items-center gap-2 rounded-xl bg-mint-400/10 p-3 text-sm text-mint-200"><BadgeCheck size={16} /> {name.accountName}</p>
               : <p className="rounded-xl bg-rose-500/10 p-3 text-sm text-rose-300">{name.accountName}: this isn't your account. You can only withdraw to an account in your verified name ({me?.profile.kycName}).</p>)}
             <input className="input text-xl font-bold" inputMode="numeric" placeholder="₦ amount" value={amt} onChange={(e) => setAmt(e.target.value.replace(/\D/g, ''))} />
-            <p className="text-xs text-slate-400">Available {money(bal, 'NGN')} · fee {fee === null ? '…' : money(fee, 'NGN')} · minimum {money(MIN_WITHDRAW, 'NGN')}</p>
+            <p className="text-xs text-slate-400">Available {money(bal, 'NGN')} · fee {feeText} · minimum {money(MIN_WITHDRAW, 'NGN')}</p>
             {minor + (fee ?? 0) > bal && minor > 0 && <p className="text-sm text-rose-300">Not enough in your Naira wallet (amount + fee).</p>}
           </>}
           {err && <p className="text-sm text-rose-300">{err}</p>}
@@ -306,7 +312,7 @@ export function ConvertSheet({ onClose, initialFrom = 'NGN' }: { onClose: () => 
   return (
     <Sheet open onClose={onClose} title="Convert">
       {review ? (
-        <ReviewAndPin rows={[['You give', money(minor, from)], ['You get', <b key="v">{money(out, to)}</b>], ['Rate', `₺1 = ₦${rate!.ngnPerTry.toFixed(2)} (Luda fee ${(rate!.margin * 100).toFixed(1)}%)`]]}
+        <ReviewAndPin rows={[['You give', money(minor, from)], ['You get', <b key="v">{money(out, to)}</b>], ['Rate', `₺1 = ₦${rate!.ngnPerTry.toFixed(2)}`], ['Luda fee', `${money(Math.round(from === 'TRY' ? minor * rate!.margin : (minor / rate!.ngnPerTry) * rate!.margin), 'TRY')} (${+(rate!.margin * 100).toFixed(2)}%, included)`]]}
           holdLabel="Hold to convert" onClose={() => setReview(false)}
           run={async (auth) => { await api('POST', 'convert', { from, to, amountMinor: minor, expectMinor: out, ...auth }); await refresh() }}
           done={<Success title="Converted ✅" sub={`${money(out, to)} added to your ${to === 'NGN' ? 'Naira' : 'Lira'} wallet`} onClose={onClose} />} />

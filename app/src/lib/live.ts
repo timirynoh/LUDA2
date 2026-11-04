@@ -104,7 +104,7 @@ export async function liveSetPassword(accessToken: string, password: string) {
 
 export interface LedgerRow { id: number; currency: Cur; amount_minor: number; balance_after: number; kind: string; ref: string; meta: Record<string, any> | null; at: string }
 export interface LiveTicket { id: string; code: string; item: Record<string, any>; base_amount: number; paid_minor: number; paid_currency: Cur; status: string; created_at: string }
-export interface LiveWithdrawal { reference: string; amount_minor: number; fee_minor: number; bank_name: string | null; account_number: string; account_name: string; status: 'processing' | 'paid' | 'failed' | 'reversed'; created_at: string }
+export interface LiveWithdrawal { reference: string; amount_minor: number; fee_minor: number; fee_currency?: Cur; bank_name: string | null; account_number: string; account_name: string; status: 'processing' | 'paid' | 'failed' | 'reversed'; created_at: string }
 export interface LiveDeposit { reference: string; provider: Provider; status: 'pending' | 'paid' | 'failed' | 'mismatch'; chargeMinor: number; currency: string; feeMinor: number; creditMinor: number; creditCurrency: Cur; createdAt: string; paidAt: string | null }
 export interface Me {
   profile: { username: string; fullName: string; email: string; kyc: 'none' | 'pending' | 'verified' | 'failed'; kycName: string | null; hasPin: boolean; isAdmin?: boolean; staff?: StaffPerms | null; kycTriesLeft?: number; kycStartedAt?: string | null; frozen: boolean; frozenBy: 'user' | 'admin' | null; phone: string | null; phoneVerified: boolean; moneyHoldUntil: string | null }
@@ -121,7 +121,7 @@ const RANK = { view: 1, edit: 2, full: 3 }
 /** Display only: the server checks every admin action itself. */
 export const staffCan = (s: StaffPerms | null | undefined, area: StaffArea, level: StaffLevel = 'view') => !!s && !!s.perms[area] && RANK[s.perms[area]!] >= RANK[level]
 
-export interface LiveConfig { google: boolean; sms: boolean; didit: boolean; nin: boolean; providers: Provider[]; foreign: string[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number; fxMargin?: number; billMinor?: number; billHighMinor?: number; billStepMinor?: number; marketPct?: number; flashPct?: number } }
+export interface LiveConfig { google: boolean; sms: boolean; didit: boolean; nin: boolean; providers: Provider[]; foreign: string[]; payouts: boolean; kyc: boolean; limits: Record<string, any>; fees: { withdraw: number; fxMargin?: number; billMinor?: number; billHighMinor?: number; billStepMinor?: number; marketPct?: number; flashPct?: number; p2pPct?: number; p2pMinMinor?: number; p2pMaxMinor?: number } }
 
 let cfg: Promise<LiveConfig> | null = null
 export const liveConfig = () => (cfg ??= raw<LiveConfig>('GET', 'config', undefined, false).catch((e) => { cfg = null; throw e }))

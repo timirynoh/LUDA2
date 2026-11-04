@@ -26,12 +26,12 @@ export interface Ad {
   city: string; area: string; terms: string; status: string; maker?: string; makerName?: string; verified?: boolean; mine?: boolean
   stats?: { trades: number; rate: number | null; since: string }; nearby?: number
 }
-interface Market { ads: Ad[]; mine: Ad[]; asset?: Asset; market: number | null; rules: { maxAds: number; maxTry: number; minTry: number; windowMin: number; priceBand: number; feePct: number }; canTrade: boolean; why: string | null }
+interface Market { ads: Ad[]; mine: Ad[]; asset?: Asset; market: number | null; rules: { maxAds: number; maxTry: number; minTry: number; windowMin: number; priceBand: number; feePct: number; feeMinTry?: number; feeMaxTry?: number; assetPerTry?: number | null }; canTrade: boolean; why: string | null }
 interface PayMethod { id: string; bank: string; iban: string; holder: string; currency?: Asset }
 export interface Order {
   id: string; status: 'waiting' | 'sent' | 'done' | 'cancelled' | 'appeal'; role: 'payer' | 'sender' | 'staff'; iAmMaker: boolean; asset?: Asset
   appeal_stage?: 'negotiation' | 'review' | 'decided' | null; appeal_reason?: string | null; appeal_at?: string | null; assigned_to?: string | null; iAppealed?: boolean; appealBy?: 'payer' | 'sender' | 'auto' | null
-  price: number; amount_try: number; amount_ngn: number; fee_ngn: number; method: 'bank' | 'cash'; try_to: { kind?: string; bank?: string; iban?: string; holder?: string; area?: string }
+  price: number; amount_try: number; amount_ngn: number; fee_ngn: number; fee_try?: number | null; method: 'bank' | 'cash'; try_to: { kind?: string; bank?: string; iban?: string; holder?: string; area?: string }
   pay_by: string; sent_at: string | null; done_at: string | null; note: string | null; created_at: string
   payer: { username: string; name: string; verified: boolean }; sender: { username: string; name: string; verified: boolean }
   receiptUrls?: (string | null)[]; messages?: { id: number; kind?: 'user' | 'system' | 'staff'; by: string | null; mine: boolean; body: string; files: (string | null)[]; at: string }[]
@@ -49,7 +49,7 @@ function Copyable({ label, value, mono }: { label: string; value: string; mono?:
     <div className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0"><p className="text-[11px] text-slate-400">{label}</p><p className={`selectable break-all font-semibold ${mono ? 'font-mono text-[15px]' : ''}`}>{value}</p></div>
       <button onClick={() => { void navigator.clipboard?.writeText(value.replace(/\s/g, label === 'IBAN' ? '' : ' ')).then(() => { setOk(true); setTimeout(() => setOk(false), 1400) }) }}
-        className={`shrink-0 rounded-xl px-3 py-2 text-xs font-semibold ${ok ? 'bg-mint-400/25 text-mint-100' : 'bg-fg/[0.07]'}`}>{ok ? <Check size={14} /> : <Copy size={14} />}</button>
+        className={`shrink-0 rounded-xl px-3 py-2 text-xs font-semibold ${ok ? 'bg-mint-400/25 text-mint-100' : 'bg-fg/[0.07]'}`}><span className="inline-flex items-center gap-1">{ok ? <Check size={14} /> : <Copy size={14} />} {ok ? 'Copied' : 'Copy'}</span></button>
     </div>
   )
 }
@@ -92,7 +92,7 @@ export function P2PMarket() {
         <label className="glass flex flex-1 items-center gap-2 rounded-2xl px-4 py-3"><span className="text-slate-400">{sym}</span><input className="w-full bg-transparent text-base font-bold outline-none" inputMode="numeric" placeholder={buying ? 'How much do you need?' : 'How much do you have?'} value={amt} onChange={(e) => setAmt(e.target.value)} /></label>
         <button onClick={() => setSheet('area')} className="glass flex max-w-[45%] shrink-0 items-center gap-1 rounded-2xl px-3 text-xs font-semibold"><MapPin size={14} className="shrink-0 text-mint-300" /><span className="truncate">{area || cityName(s.city) || 'My area'}</span></button>
       </div>
-      {data && <p className="-mt-2 text-[11px] text-slate-500">{data.market ? `Market ${sym}1 ≈ ₦${data.market.toFixed(2)} · ` : ''}Best price first · traders set their own rate · Luda fee {(data.rules.feePct * 100).toFixed(1)}% from whoever receives the Naira</p>}
+      {data && <p className="-mt-2 text-[11px] text-slate-500">{data.market ? `Market ${sym}1 ≈ ₦${data.market.toFixed(2)} · ` : ''}Best price first · traders set their own rate · Luda fee {(data.rules.feePct * 100).toFixed(1)}% in lira (min ₺{((data.rules.feeMinTry ?? 0) / 100).toFixed(0)}, max ₺{((data.rules.feeMaxTry ?? 0) / 100).toFixed(0)}) from whoever receives the Naira</p>}
       {active.length > 0 && <button onClick={() => setSheet('orders')} className="flex items-center gap-3 rounded-2xl border border-gold-400/40 bg-gold-400/10 p-3 text-start"><Clock3 className="shrink-0 text-gold-300" /><span className="flex-1 text-sm"><b>{active.length} order{active.length === 1 ? '' : 's'} in progress</b><br /><span className="text-xs text-slate-400">Tap to continue</span></span><ChevronRight size={18} /></button>}
       {data && !data.canTrade && <div className="flex items-center gap-3 rounded-2xl border border-mint-400/20 bg-mint-400/[0.06] p-3"><ShieldCheck className="shrink-0 text-mint-300" /><p className="flex-1 text-xs text-slate-300">{data.why} You can still look around.</p><Link to="/wallet" className="text-xs font-bold text-mint-300">Verify</Link></div>}
       {err && <p className="text-sm text-rose-300">{err}</p>}
@@ -120,7 +120,7 @@ export function P2PMarket() {
         <button onClick={() => setSheet('banks')} className="glass flex flex-col items-center gap-1 rounded-2xl py-3 text-xs font-semibold"><Landmark size={18} className="text-mint-300" />Bank accounts</button>
       </div>
       <HowItWorks />
-      {take && data && <TakeSheet ad={{ ...take, asset }} want={want} preset={want_} feePct={data.rules.feePct} area={area} onClose={() => setTake(null)} onDone={(id) => { setTake(null); nav(`/p2p/${id}`) }} />}
+      {take && data && <TakeSheet ad={{ ...take, asset }} want={want} preset={want_} fee={data.rules} area={area} onClose={() => setTake(null)} onDone={(id) => { setTake(null); nav(`/p2p/${id}`) }} />}
       {sheet === 'banks' && <BankAccounts onClose={() => setSheet(null)} />}
       {sheet === 'ads' && data && <MyAdSheet market={data} asset={asset} onClose={() => setSheet(null)} onDone={reload} />}
       {sheet === 'orders' && <Sheet open onClose={() => setSheet(null)} title="My P2P orders"><OrderList orders={orders.data?.orders ?? null} /></Sheet>}
@@ -160,7 +160,7 @@ function AreaSheet({ area, onClose, onSave }: { area: string; onClose: () => voi
 }
 
 /* --------------------------------- take an ad --------------------------------- */
-function TakeSheet({ ad, want, preset, feePct, area, onClose, onDone }: { ad: Ad; want: 'buy' | 'sell'; preset: number; feePct: number; area: string; onClose: () => void; onDone: (id: string) => void }) {
+function TakeSheet({ ad, want, preset, fee: rules, area, onClose, onDone }: { ad: Ad; want: 'buy' | 'sell'; preset: number; fee: Market['rules']; area: string; onClose: () => void; onDone: (id: string) => void }) {
   const { me, refresh } = useLive()
   const max = Math.min(ad.max_try, ad.available_try)
   const [amt, setAmt] = useState(preset ? String(preset / 100) : '')
@@ -173,7 +173,10 @@ function TakeSheet({ ad, want, preset, feePct, area, onClose, onDone }: { ad: Ad
   const [addBank, setAddBank] = useState(false)
   const orderId = useRef('')
   const t = Math.round(Number(amt.replace(/[^\d]/g, '') || 0)) * 100
-  const ngn = Math.round(t * ad.price), fee = Math.round(ngn * feePct)
+  // Fee priced in lira (0.5%, min ₺1, max ₺25), taken from the Naira at this trade's rate. The server works it out the same way.
+  const liraMinor = rules.assetPerTry ? Math.round(t / rules.assetPerTry) : 0
+  const feeTry = liraMinor ? Math.min(rules.feeMaxTry ?? Infinity, Math.max(rules.feeMinTry ?? 0, Math.round(liraMinor * rules.feePct))) : 0
+  const ngn = Math.round(t * ad.price), fee = liraMinor ? Math.round(ngn * feeTry / liraMinor) : Math.round(ngn * rules.feePct)
   const myPm = pm || banks.data?.methods[0]?.id || ''
   const okAmt = t >= ad.min_try && t <= max
   const okDest = want === 'sell' || method === 'cash' || !!myPm
@@ -185,7 +188,7 @@ function TakeSheet({ ad, want, preset, feePct, area, onClose, onDone }: { ad: Ad
         <ReviewAndPin holdLabel={want === 'buy' ? `Hold to lock ${naira(ngn)}` : 'Hold to open the order'} onClose={() => setReview(false)}
           rows={want === 'buy'
             ? [['You get', <b key="g">{tl(t)}</b>], ['You pay (locked by Luda)', <b key="p">{naira(ngn)}</b>], ['Price', `₦${Number(ad.price).toFixed(2)} / ${sym}1`], ['Money goes to', method === 'cash' ? `Cash, ${area || ad.area || 'agree in chat'}` : `${chosen?.bank} · ${fmtIban(chosen?.iban ?? '')}`], ['Seller', `@${ad.maker}`]]
-            : [['You send', <b key="s">{tl(t)}</b>], ['You get', <b key="g">{naira(ngn - fee)}</b>], ['Luda fee', naira(fee)], ['Price', `₦${Number(ad.price).toFixed(2)} / ${sym}1`], ['Buyer', `@${ad.maker}`]]}
+            : [['You send', <b key="s">{tl(t)}</b>], ['You get', <b key="g">{naira(ngn - fee)}</b>], ['Luda fee', `₺${(feeTry / 100).toFixed(2)} (≈ ${naira(fee)})`], ['Price', `₦${Number(ad.price).toFixed(2)} / ${sym}1`], ['Buyer', `@${ad.maker}`]]}
           warning={want === 'buy' ? `Your Naira is locked, not sent. It only goes to the seller when you tap Release after the ${nameOf(A)} is in your account.` : `The buyer's Naira is locked by Luda first. You'll see their bank details next. Send the ${nameOf(A)} within 30 minutes and upload the receipt.`}
           run={async (auth) => { const r = await api<{ order: { id: string } }>('POST', 'p2p-order', { adId: ad.id, amountTry: t, method, payMethodId: myPm, area, ...auth }); orderId.current = r.order.id; await refresh() }}
           done={<Success title="Order opened ✅" sub={want === 'buy' ? `The seller now sends the ${nameOf(A)}. Follow it step by step.` : `Now send the ${nameOf(A)} and upload the receipt.`} onClose={() => onDone(orderId.current)} />} />
@@ -195,7 +198,7 @@ function TakeSheet({ ad, want, preset, feePct, area, onClose, onDone }: { ad: Ad
           <div className="rounded-3xl bg-fg/[0.04] p-4">
             <label className="text-xs text-slate-400">{want === 'buy' ? 'I want to buy' : 'I want to sell'}<div className="mt-1 flex items-center gap-2"><span className="text-2xl font-bold text-slate-400">{sym}</span><input autoFocus className="w-full bg-transparent text-3xl font-extrabold outline-none" inputMode="numeric" value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="0" /></div></label>
             <div className="mt-2 flex items-center justify-between text-xs text-slate-400"><span>Limit {tl(ad.min_try)} – {tl(max)}</span><button className="font-semibold text-mint-300" onClick={() => setAmt(String(max / 100))}>Max</button></div>
-            {t > 0 && <p className="mt-3 border-t border-fg/10 pt-3 text-sm">{want === 'buy' ? <>You pay <b>{naira(ngn)}</b> from your Naira wallet</> : <>You get <b>{naira(ngn - fee)}</b> in your Naira wallet <span className="text-xs text-slate-400">(after {(feePct * 100).toFixed(1)}% fee)</span></>}</p>}
+            {t > 0 && <p className="mt-3 border-t border-fg/10 pt-3 text-sm">{want === 'buy' ? <>You pay <b>{naira(ngn)}</b> from your Naira wallet</> : <>You get <b>{naira(ngn - fee)}</b> in your Naira wallet <span className="text-xs text-slate-400">(after the ₺{(feeTry / 100).toFixed(2)} Luda fee)</span></>}</p>}
           </div>
           {ad.methods.length > 1 && <div className="grid grid-cols-2 gap-2">{ad.methods.map((m) => <button key={m} onClick={() => setMethod(m)} className={`rounded-2xl py-3 text-sm font-semibold ${method === m ? 'bg-mint-400/20 text-mint-200 ring-1 ring-mint-400/40' : 'glass'}`}>{m === 'bank' ? '🏦 Bank transfer' : '💵 Cash meet-up'}</button>)}</div>}
           {want === 'buy' && method === 'bank' && <div className="flex flex-col gap-2">
@@ -390,7 +393,7 @@ export default function LiveP2POrder() {
             <div><p className="text-[11px] text-slate-400">{payer ? 'You get' : 'You send'}</p><p className="text-2xl font-extrabold">{tl(o.amount_try)}</p></div>
             <div className="text-end"><p className="text-[11px] text-slate-400">{payer ? 'You pay (locked)' : 'You get'}</p><p className="text-2xl font-extrabold">{naira(payer ? o.amount_ngn : o.amount_ngn - o.fee_ngn)}</p></div>
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">₦{Number(o.price).toFixed(2)} per {symOf(o.asset)}1{!payer ? ` · Luda fee ${naira(o.fee_ngn)}` : ''}</p>
+          <p className="mt-1 text-[11px] text-slate-400">₦{Number(o.price).toFixed(2)} per {symOf(o.asset)}1{!payer ? ` · Luda fee ${o.fee_try ? `₺${(o.fee_try / 100).toFixed(2)} (≈ ${naira(o.fee_ngn)})` : naira(o.fee_ngn)}` : ''}</p>
           {at >= 0 && <div className="mt-3 flex gap-1.5">{steps.map((st, i) => <div key={st} className="flex flex-1 flex-col gap-1"><div className={`h-1.5 rounded-full ${i < at ? 'bg-mint-400' : i === at ? 'animate-pulse bg-mint-400/60' : 'bg-fg/10'}`} /><span className={`text-[10px] ${i <= at ? 'text-mint-200' : 'text-slate-500'}`}>{st}</span></div>)}</div>}
         </div>
 

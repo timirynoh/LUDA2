@@ -1,5 +1,5 @@
 import { setScreenLanguage } from './autoTranslate'
-import { LIVE } from './live'
+import { LIVE, api } from './live'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { BADGES, LANGS, LEVELS, type Lang } from './data'
 import type { Listing } from './housing'
@@ -90,7 +90,7 @@ export interface State {
   account: { email: string; username: string; passHash: string; salt: string; stay: boolean } | null
   signedIn: boolean
   lockOnOpen: boolean
-  security: { frozen: boolean; twoStep: boolean; hideBalances: boolean; dailyWithdraw: number; autoLockMin: number }
+  security: { frozen: boolean; twoStep: boolean; hideBalances: boolean; dailyWithdraw: number; autoLockMin: number; privacyScreen?: boolean }
   logins: { ts: number; how: string; device: string }[]
   inbox: { id: string; ts: number; emoji: string; title: string; read: boolean; to?: string }[]
   referral: string
@@ -147,7 +147,7 @@ export const initialState: State = {
   university: '', classes: [], remind: { on: false, minutes: 15 }, paidFees: [],
   joinedGroups: ['g-help'], myGroups: [], chatMsgs: {}, lastRead: {}, mutedGroups: [], blockedUsers: [], hiddenMsgs: [],
   chatStrikes: { count: 0, until: 0 }, tickets: [], reacts: {}, flash: [], gigs: [], saver: { status: 'none' }, createdAt: Date.now(), toured: false, account: null, signedIn: false, lockOnOpen: true,
-  security: { frozen: false, twoStep: false, hideBalances: false, dailyWithdraw: 20000, autoLockMin: 3 }, logins: [], inbox: [], referral: '', kyc: { status: 'none' }, threads: {}, disputes: [], exchanger: { status: 'none' }, ads: [], cards: [], flashPop: true, reviews: [], alerts: [], pots: [], myItems: [], orders: [], sent: [],
+  security: { frozen: false, twoStep: false, hideBalances: true, dailyWithdraw: 20000, autoLockMin: 3, privacyScreen: true }, logins: [], inbox: [], referral: '', kyc: { status: 'none' }, threads: {}, disputes: [], exchanger: { status: 'none' }, ads: [], cards: [], flashPop: true, reviews: [], alerts: [], pots: [], myItems: [], orders: [], sent: [],
   referrals: [], ambassador: { status: 'none' }, dealsUsed: [], welcomeDone: [], spin: { total: 0 }, newsSaved: [], newsLiked: [], challenges: [],
   notifPrefs: { money: true, chats: true, classes: true, rates: true, deals: false, news: true, security: true }, pushOn: false, myNews: [], myPromos: [], promoVotes: {}, savedPromos: [], activity: {}, recentPosts: [], deposits: 0,
 }
@@ -158,6 +158,8 @@ function load(): State {
     if (!raw) return initialState
     const s = { ...initialState, ...JSON.parse(raw) } as State
     s.sections = { ...initialState.sections, ...s.sections }
+    // Privacy screen (v1.9.0, owner: private by default) — turned on once for existing users too, with balances hidden.
+    if (s.security && s.security.privacyScreen === undefined) s.security = { ...s.security, privacyScreen: true, hideBalances: true }
     s.security = { ...initialState.security, ...s.security }
     if (s.verified && s.kyc.status === 'none') s.kyc = { status: 'verified' } // older demo profiles
     if (s.account && !s.account.stay) s.signedIn = false
@@ -269,7 +271,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
-  const checkPin = useCallback(async (pin: string) => (await hashPin(pin, s.salt)) === s.pinHash, [s.salt, s.pinHash])
+  // Live: the PIN lives only on the server (5 wrong tries = 15-min lock), so every PIN check asks it.
+  const checkPin = useCallback(async (pin: string) => {
+    if (LIVE) { try { await api('POST', 'pin-check', { pin }); return true } catch { return false } }
+    return (await hashPin(pin, s.salt)) === s.pinHash
+  }, [s.salt, s.pinHash])
 
   const gate = useCallback((tier: Tier, what: string) => {
     if (tierOf(s) < tier) { setGateReq({ tier, what }); return false }

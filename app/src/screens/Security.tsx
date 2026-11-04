@@ -74,6 +74,7 @@ export default function Security() {
               {[1, 3, 5, 10, 30].map((m) => <option key={m} value={m}>{m} min</option>)}</select>
           </Row>
           {!LIVE && <Row icon={<Smartphone size={18} />} title="2-step sign-in" sub="SMS code needed when signing in with your password"><Toggle label="2-step" on={sec.twoStep} onChange={(v) => { if (v && !s.phoneVerified) return toast({ title: 'Verify your phone first', emoji: '📱' }); setSec({ twoStep: v }) }} /></Row>}
+          <Row icon={<EyeOff size={18} />} title="Privacy screen" sub="Covers Luda when you switch apps, so the app preview shows no balances or chats. Phones don't let websites block screenshots; the Luda store app will."><Toggle label="Privacy screen" on={sec.privacyScreen !== false} onChange={(v) => setSec({ privacyScreen: v })} /></Row>
           <Row icon={<EyeOff size={18} />} title="Hide balances by default" sub="Tap the eye to show them"><Toggle label="Hide balances" on={sec.hideBalances} onChange={(v) => setSec({ hideBalances: v })} /></Row>
           {LIVE ? <Row icon={<Wallet size={18} />} title="Daily limits" sub="Set by Luda: withdraw up to ₦1,000,000 and send up to ₦500,000 / ₺20,000 a day after identity check" /> :
           <Row icon={<Wallet size={18} />} title="Daily withdrawal limit" sub={`Max ${fmt(sec.dailyWithdraw, 'TRY')} can leave per day`}>

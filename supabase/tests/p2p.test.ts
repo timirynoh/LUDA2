@@ -116,7 +116,7 @@ test('appeal: Naira stays held; Luda team decides from Held money', async () => 
   assert.equal((await call('GET', `admin-p2p?id=${o.id}`, undefined, T.boss)).j.order.receiptUrls.length, 1, 'team sees the receipt')
   const kemalBefore = await NGN('kemal')
   assert.equal((await call('POST', 'admin-escrow', { escrowId: held.id, to: 'payee', note: 'Bank receipt checked', pin: '4826' }, T.boss)).status, 200)
-  assert.equal(await NGN('kemal'), kemalBefore + 4_050_00 - 20_25)
+  assert.equal(await NGN('kemal'), kemalBefore + 4_050_00 - 40_50, '₺100 trade: 0.5% is ₺0.50, so the ₺1 minimum applies (₦40.50 at this trade\'s rate)')
   const msgs = (await call('GET', `p2p-order?id=${o.id}`, undefined, T.ada)).j.order.messages
   assert.match(msgs.at(-1).body, /Luda team decision/)
 })

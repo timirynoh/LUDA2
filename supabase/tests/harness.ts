@@ -56,7 +56,7 @@ export async function makeDb() {
     async post(entries: Entry[]) { return money(async () => (await q(`select luda_post($1::jsonb) r`, [JSON.stringify(entries)]))[0].r) },
     async depositPaid(ref, tx) { await money(() => q(`select luda_deposit_paid($1,$2)`, [ref, tx])) },
     async buyTicket(u, cur, amt, base, code, item) { return money(async () => (await q(`select luda_buy_ticket($1,$2,$3,$4,$5,$6::jsonb) r`, [u, cur, amt, base, code, JSON.stringify(item)]))[0].r.ticket) },
-    async withdraw(u, ref, amt, fee, bank, bankName, acct, name, rcp) { await money(() => q(`select luda_withdraw($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [u, ref, amt, fee, bank, bankName, acct, name, rcp])) },
+    async withdraw(u, ref, amt, fee, feeCur, bank, bankName, acct, name, rcp) { await money(() => q(`select luda_withdraw2($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [u, ref, amt, fee, feeCur, bank, bankName, acct, name, rcp])) },
     async fn(name, args) {
       const k = Object.keys(args)
       const cast = (v: unknown) => (Array.isArray(v) ? '::text[]' : v !== null && typeof v === 'object' ? '::jsonb' : '')
