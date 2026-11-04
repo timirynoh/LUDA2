@@ -47,7 +47,7 @@ export function tx(src: string): string {
   if (!key || !/[A-Za-z]/.test(key) || native.has(key)) return src
   let hit = exact.get(key)
   if (hit === undefined) {
-    for (const [re, v] of patterns) { const r = re.exec(key); if (r) { let i = 1; hit = v.replace(/\{\}/g, () => r[i++] ?? ''); break } }
+    for (const [re, v] of patterns) { const r = re.exec(key); if (r) { let i = 1; hit = v.replace(/\{(\d?)\}/g, (_, n: string) => (n ? r[Number(n)] : r[i++]) ?? '') /* {1} {2}: languages that swap word order */; break } }
   }
   return hit === undefined ? src : m[1] + hit + m[3]
 }

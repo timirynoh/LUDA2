@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion'
 import { HomeBanners } from '../components/Banners'
 import { OpportunityNudge } from '../components/OpportunityNudge'
+import { TodoCard } from '../components/LiveTodo'
+import { useUniDates } from '../components/LiveUni'
 import { BoardStrip } from '../components/LiveBoardKit'
 import { ChevronDown, ChevronRight, ChevronUp, Eye, EyeOff, Flame, GraduationCap, Handshake, Minus, Moon, Pencil, Plus, Sun } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -29,7 +31,9 @@ export default function Home() {
   const [saverOpen, setSaverOpen] = useState(false)
   const nc = useMemo(() => nextClass(s.classes), [s.classes])
   const uni = UNIVERSITIES.find((u) => u.id === s.university)
-  const deadline = useMemo(() => (s.university ? calendarFor(s.university).find((i) => i.kind !== 'term' && daysUntil(i.end ?? i.start) >= 0) : undefined), [s.university])
+  const { dates: liveDates } = useUniDates(LIVE ? s.university || undefined : undefined)
+  // Live: only dates the Luda team entered from the official calendar (never sample dates).
+  const deadline = useMemo(() => (s.university ? (LIVE ? (liveDates ?? []).map((i) => ({ ...i, end: i.end ?? undefined })) : calendarFor(s.university)).find((i) => i.kind !== 'term' && i.kind !== 'holiday' && daysUntil(i.end ?? i.start) >= 0) : undefined), [s.university, liveDates])
   const isLight = s.theme === 'light' || (s.theme === 'system' && !!window.matchMedia?.('(prefers-color-scheme: light)').matches)
   const { rates, live } = useRates()
   const [hide, setHide] = useState(s.security.hideBalances)
@@ -93,6 +97,7 @@ export default function Home() {
         </div>
       </motion.div>
 
+      <TodoCard />
       <HomeBanners />
       <OpportunityNudge />
       {s.sections.checkin && <CheckinCard />}

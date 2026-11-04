@@ -54,7 +54,10 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       // Signed up with Google from an invite link: hand the code to the server once (it checks the 14-day window and 'only once').
       const ref = pendingRef()
       if (ref) { clearRef(); void api('POST', 'referral-apply', { code: ref }).catch(() => {}) }
+      // The university follows the account to every phone.
+      if (m.profile.university) set((p) => (p.university === m.profile.university ? p : { ...p, university: m.profile.university! }))
       void refreshRewards()
+      window.dispatchEvent(new Event('luda:todo'))
       return m
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not load your wallet'); return null } finally { setLoading(false) }
   }, [set, refreshRewards])

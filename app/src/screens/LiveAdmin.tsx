@@ -1,6 +1,6 @@
 // Owner's admin page (live mode). Only accounts the server marks as admin can load any of this.
 import {
-  AlertTriangle, ArrowDownToLine, ArrowUpFromLine, BadgeCheck, Banknote, Check, ChevronRight, Copy, ExternalLink, Gavel, Home as HomeIcon,
+  AlertTriangle, ArrowDownToLine, ArrowUpFromLine, BadgeCheck, Banknote, Check, ChevronRight, Copy, ExternalLink, Gavel, GraduationCap, Home as HomeIcon,
   Inbox, LifeBuoy, Megaphone, Scale, Newspaper, UserCog, Receipt, RefreshCw, Search, ShieldCheck, Snowflake, Ticket, Undo2, Users, Wallet, type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
@@ -10,10 +10,11 @@ import { Attachments, CATEGORY_LABEL, STATUS_LABEL, Thread, type CaseCategory, t
 import { Header, Sheet, Success } from '../components/ui'
 import { KIND_LABEL, api, money, staffCan, type Cur, type StaffArea } from '../lib/live'
 import { BannersTab, ContentTab, TeamTab } from '../components/AdminCommunity'
+import { UniAdminTab } from '../components/LiveUni'
 import { useLive } from '../lib/liveStore'
 
-type Tab = 'overview' | 'bills' | 'cases' | 'disputes' | 'p2p' | 'users' | 'topups' | 'withdrawals' | 'content' | 'banners' | 'team'
-const TAB_AREA: Record<Tab, StaffArea> = { overview: 'overview', bills: 'bills', cases: 'cases', disputes: 'disputes', p2p: 'disputes', users: 'users', topups: 'money', withdrawals: 'money', content: 'content', banners: 'banners', team: 'team' }
+type Tab = 'overview' | 'bills' | 'cases' | 'disputes' | 'p2p' | 'users' | 'topups' | 'withdrawals' | 'content' | 'uni' | 'banners' | 'team'
+const TAB_AREA: Record<Tab, StaffArea> = { overview: 'overview', bills: 'bills', cases: 'cases', disputes: 'disputes', p2p: 'disputes', users: 'users', topups: 'money', withdrawals: 'money', content: 'content', uni: 'content', banners: 'banners', team: 'team' }
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–')
 const waited = (iso: string) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d` }
 const short = (ref: string) => '…' + ref.slice(-8)
@@ -60,7 +61,7 @@ export default function LiveAdmin() {
   const tabs = ([
     { v: 'overview', l: 'Home', i: HomeIcon }, { v: 'bills', l: 'Bills', i: Receipt, n: o?.billsPending }, { v: 'cases', l: 'Cases', i: Inbox, n: o?.openCases },
     { v: 'p2p', l: 'P2P disputes', i: Scale }, { v: 'disputes', l: 'Held money', i: Gavel }, { v: 'users', l: 'Users', i: Users }, { v: 'topups', l: 'Top-ups', i: ArrowDownToLine }, { v: 'withdrawals', l: 'Payouts', i: ArrowUpFromLine },
-    { v: 'content', l: 'Content', i: Newspaper }, { v: 'banners', l: 'Banners', i: Megaphone }, { v: 'team', l: 'Team', i: UserCog },
+    { v: 'content', l: 'Content', i: Newspaper }, { v: 'uni', l: 'Uni calendars', i: GraduationCap }, { v: 'banners', l: 'Banners', i: Megaphone }, { v: 'team', l: 'Team', i: UserCog },
   ] as { v: Tab; l: string; i: LucideIcon; n?: number }[]).filter((t) => allow(t.v))
   const go = (t: Tab) => { setTab(t); void load() }
   return (
@@ -79,6 +80,7 @@ export default function LiveAdmin() {
         {tab === 'content' && <ContentTab staff={st} />}
         {tab === 'p2p' && <P2PDisputes canDecide={staffCan(st, 'disputes', 'full')} me={me?.profile.username ?? ''} />}
         {tab === 'banners' && <BannersTab staff={st} />}
+        {tab === 'uni' && <UniAdminTab staff={st} />}
         {tab === 'team' && <TeamTab />}
         {tab === 'bills' && <BillsTab onChange={load} />}
         {tab === 'cases' && <CasesTab />}

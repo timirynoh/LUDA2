@@ -49,6 +49,8 @@ import LiveAdmin from './screens/LiveAdmin'
 import LiveExchange from './screens/LiveExchange'
 import { GuidedTour } from './components/GuidedTour'
 import { PrivacyShield } from './components/PrivacyShield'
+import { useTodoAlerts } from './components/LiveTodo'
+import { useUniReminders } from './components/LiveUni'
 import LiveBoard from './screens/LiveBoard'
 import LiveChats from './screens/LiveChats'
 import LiveP2POrder from './screens/LiveP2P'
@@ -81,6 +83,8 @@ export default function App() {
   useExchangerReview()
   useRateAlerts()
   useReferralProgress()
+  useTodoAlerts()
+  useUniReminders()
   usePromoConfirms()
   useOAuthReturn()
   const inRoom = loc.pathname.startsWith('/chats/')

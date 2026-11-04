@@ -63,6 +63,11 @@ const json = (body: unknown, status: number, headers: Record<string, string> = {
 
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,}$/i
 const USERNAME = /^[a-z0-9_.]{3,20}$/
+const UNIS = ['neu', 'emu', 'ciu', 'gau', 'metu', 'eul', 'fiu', 'uok', 'cwu', 'bau', 'csu', 'arucad']
+const UNI_KINDS = ['term', 'deadline', 'exam', 'fee', 'holiday']
+const uniId = (v: unknown) => { const u = String(v ?? '').toLowerCase(); if (!UNIS.includes(u)) throw new Fail('Pick a university'); return u }
+const isoDay = (v: unknown, what: string) => { const t = String(v ?? ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || !Number.isFinite(Date.parse(t))) throw new Fail(`Check ${what}`); return t }
+
 const newRef = (p: string) => `${p}_${randomHex(12)}`
 const authEnv = (env: Env): AuthEnv => ({ SUPABASE_URL: env.SUPABASE_URL, AUTH_KEY: env.AUTH_KEY })
 const num = (v: string | undefined, dflt: number) => (v === undefined || v === '' || !Number.isFinite(Number(v)) ? dflt : Number(v))
@@ -653,7 +658,7 @@ const routes: Record<string, Route> = {
     const staffOf = await permsOf(p, env, d)
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
     return {
-      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null },
+      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null, university: p.university ?? null },
       // Every top-up attempt with its status (pending / paid / failed / mismatch), so the app can show all of them.
       deposits: deposits.map((x) => ({ reference: x.reference, provider: x.provider, status: x.status, chargeMinor: Number(x.amount_minor), currency: x.currency, feeMinor: Number(x.fee_minor ?? 0), creditMinor: Number(x.credit_minor ?? 0), creditCurrency: x.credit_currency ?? 'NGN', createdAt: x.created_at, paidAt: x.paid_at ?? null })),
       balances, history, tickets, withdrawals: withdrawals.map((w) => ({ ...w, account_number: '••••' + w.account_number.slice(-4), recipient_code: undefined })),
@@ -1807,6 +1812,107 @@ const routes: Record<string, Route> = {
     if (!(await d.db.fn<boolean>('luda_banner_delete', { p_id: uuid(body.id) }))) throw new Fail('Not found', 404)
     await d.db.log(String(body.id), 'admin_banner_deleted', { by: a.username })
     return { ok: true }
+  },
+
+  /* ---------------- "To do" on Home: everything waiting for this user, worked out on the server ---------------- */
+  'GET todo': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    const t = await d.db.fn<Record<string, any>>('luda_todo', { p_user: p.user_id })
+    const sym: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€', GBP: '£', NGN: '₦' }
+    const amt = (minor: number, cur: string) => `${sym[cur] ?? ''}${(Number(minor) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+    type Item = { key: string; emoji: string; title: string; sub?: string; to: string; level: 'urgent' | 'action' | 'info' }
+    const items: Item[] = []
+    if (p.frozen) items.push({ key: 'frozen', emoji: '🧊', title: 'Your account is on hold', sub: 'Money can\'t leave your wallet until it\'s unfrozen', to: '/security', level: 'urgent' })
+    if (!p.pin_hash) items.push({ key: 'pin', emoji: '🔢', title: 'Set your payment PIN', sub: 'You need it to move money', to: '/security', level: 'action' })
+    if (p.kyc_status === 'pending') items.push({ key: 'kyc-pending', emoji: '🪪', title: 'Your ID check is in progress', sub: 'We\'ll tell you as soon as it\'s done', to: '/wallet?a=kyc', level: 'info' })
+    else if (p.kyc_status !== 'verified') items.push({ key: 'kyc', emoji: '🪪', title: 'Verify your ID', sub: 'Unlocks withdrawals, P2P, Market selling, Flash jobs and cash prizes', to: '/wallet?a=kyc', level: 'action' })
+    if (smsEnabled(env) && !p.phone_verified_at) items.push({ key: 'phone', emoji: '📱', title: 'Verify your phone number', sub: 'Keeps your account safe', to: '/security', level: 'action' })
+    for (const o of t.p2p ?? []) {
+      const lira = amt(o.amount, o.asset), to = `/p2p/${o.id}`
+      if (o.status === 'waiting' && !o.payer) items.push({ key: `p2p:${o.id}:send`, emoji: '💸', title: `Send ${lira} to @${o.other}`, sub: 'Then tap "I\'ve sent it" and add the receipt', to, level: 'urgent' })
+      else if (o.status === 'waiting') items.push({ key: `p2p:${o.id}:wait`, emoji: '⏳', title: `Waiting for @${o.other} to send ${lira}`, sub: 'Your Naira is held safely by Luda', to, level: 'info' })
+      else if (o.status === 'sent' && o.payer) items.push({ key: `p2p:${o.id}:release`, emoji: '✅', title: `@${o.other} says they sent ${lira}`, sub: 'Check your own bank app, then release', to, level: 'urgent' })
+      else if (o.status === 'sent') items.push({ key: `p2p:${o.id}:sent`, emoji: '⏳', title: `Waiting for @${o.other} to release your Naira`, to, level: 'info' })
+      else if (o.status === 'appeal') items.push({ key: `p2p:${o.id}:appeal:${o.stage}`, emoji: '⚖️', title: `P2P dispute with @${o.other}`, sub: o.stage === 'negotiation' ? 'Try to sort it out in the order chat' : 'The Luda team is reviewing it', to, level: o.stage === 'negotiation' ? 'action' : 'info' })
+    }
+    for (const l of t.bought ?? []) items.push({ key: `buy:${l.id}`, emoji: '📦', title: `Got "${l.title}"?`, sub: `Confirm you received it so @${l.seller} gets paid`, to: '/market', level: 'urgent' })
+    for (const l of t.sold ?? []) items.push({ key: `sold:${l.id}`, emoji: '🛍️', title: `Hand over "${l.title}" to @${l.buyer}`, sub: `${amt(l.price, 'TRY')} is held until they confirm`, to: '/market', level: 'action' })
+    for (const j of t.flashPosted ?? []) items.push({ key: `flash:${j.id}`, emoji: '⚡', title: `@${j.helper} is doing "${j.title}"`, sub: 'Tap Job done when it\'s finished', to: '/flash', level: 'action' })
+    for (const j of t.flashHelping ?? []) items.push({ key: `help:${j.id}`, emoji: '💪🏿', title: `Do "${j.title}" for @${j.poster}`, sub: `${amt(j.reward, 'TRY')} when they tap Job done`, to: '/flash', level: 'info' })
+    for (const c of t.cases ?? []) items.push({ key: `case:${c.id}`, emoji: '💬', title: 'The Luda team replied to you', sub: String(c.subject ?? ''), to: '/help', level: 'urgent' })
+    for (const f of t.fees ?? []) items.push({ key: `fee:${f.id}:${f.due}`, emoji: '🎓', title: `${f.title}: ${amt(f.amount, f.currency)} due ${new Date(`${f.due}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`, sub: 'Mark it paid once it\'s done', to: '/uni?tab=fees', level: f.due <= cyprusDay() ? 'urgent' : 'action' })
+    if (Number(t.bills)) items.push({ key: 'bills', emoji: '🧾', title: Number(t.bills) === 1 ? 'The Luda team is paying your bill' : `The Luda team is paying ${t.bills} bills`, to: '/bills', level: 'info' })
+    if (Number(t.withdrawals)) items.push({ key: 'withdrawals', emoji: '🏦', title: 'Withdrawal on its way to your bank', to: '/wallet', level: 'info' })
+    const rank = { urgent: 0, action: 1, info: 2 }
+    return { items: items.sort((a, b) => rank[a.level] - rank[b.level]) }
+  },
+
+  /* ---------------- university calendars (staff enter official dates) + personal fee plans ---------------- */
+  'GET uni': async ({ req, env, d, url }) => {
+    await me(req, env, d)
+    const u = uniId(url.searchParams.get('u'))
+    return { uni: u, dates: await d.db.fn('luda_uni_dates', { p_uni: u }) }
+  },
+  'POST uni-set': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await d.db.fn('luda_set_university', { p_user: p.user_id, p_uni: uniId(body.uni) })
+    return { ok: true }
+  },
+  'GET fee-plan': async ({ req, env, d }) => { const p = await me(req, env, d); return { items: await d.db.fn('luda_fee_plan', { p_user: p.user_id }) } },
+  'POST fee-plan-save': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await limit(d, `feeplan:${p.user_id}`, 40, 86400, 'Too many changes today. Try again tomorrow.')
+    const i = (body.item ?? {}) as Record<string, unknown>
+    const amount = int(i.amountMinor), currency = String(i.currency ?? 'TRY')
+    if (!(amount > 0 && amount <= 1_000_000_00)) throw new Fail('Enter the amount')
+    if (!['TRY', 'USD', 'EUR', 'GBP'].includes(currency)) throw new Fail('Pick a currency')
+    const data = { title: clean(i.title, 60, 'a name, like "2nd instalment"', 2), due: isoDay(i.due, 'the due date'), amountMinor: amount, currency }
+    return { item: await d.db.fn('luda_fee_plan_save', { p_user: p.user_id, p_id: i.id ? uuid(i.id) : null, p: data }).catch((e) => {
+      if (e instanceof MoneyError && e.message === 'too_many_fees') throw new Fail('You can keep up to 24 payments in your plan')
+      if (e instanceof MoneyError && e.message === 'not_found') throw new Fail('Not found', 404)
+      throw e
+    }) }
+  },
+  'POST fee-plan-paid': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    if (!(await d.db.fn<boolean>('luda_fee_plan_mark', { p_user: p.user_id, p_id: uuid(body.id), p_paid: body.paid !== false }))) throw new Fail('Not found', 404)
+    return { ok: true }
+  },
+  'POST fee-plan-remove': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    if (!(await d.db.fn<boolean>('luda_fee_plan_remove', { p_user: p.user_id, p_id: uuid(body.id) }))) throw new Fail('Not found', 404)
+    return { ok: true }
+  },
+  'GET admin-uni': async ({ req, env, d, url }) => { await staff(req, env, d, 'content', 'view'); return d.db.fn('luda_uni_admin', { p_uni: uniId(url.searchParams.get('u')) }) },
+  'POST admin-uni-save': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'content', 'edit')
+    const x = (body.date ?? {}) as Record<string, unknown>
+    const kind = String(x.kind ?? '')
+    if (!UNI_KINDS.includes(kind)) throw new Fail('Pick a type')
+    const source = cleanText(x.source, 300)
+    if (source && !/^https:\/\/[^\s]+\.[^\s]+$/.test(source)) throw new Fail('The source must be a full https:// link to the official calendar')
+    const start = isoDay(x.start, 'the start date'), end = x.end ? isoDay(x.end, 'the end date') : ''
+    if (end && end < start) throw new Fail('The end date is before the start date')
+    const data = { uni: uniId(x.uni), title: clean(x.title, 80, 'a title', 2), kind, start, end, source, note: cleanText(x.note, 200) }
+    const saved = await d.db.fn<Record<string, unknown>>('luda_uni_save', { p_id: x.id ? uuid(x.id) : null, p: data, p_by: a.user_id }).catch((e) => {
+      if (e instanceof MoneyError && e.message === 'not_found') throw new Fail('Not found', 404)
+      throw e
+    })
+    await d.db.log(String(saved.id), 'admin_uni_date', { by: a.username, uni: data.uni, title: data.title, start })
+    return { date: saved }
+  },
+  'POST admin-uni-delete': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'content', 'edit')
+    if (!(await d.db.fn<boolean>('luda_uni_delete', { p_id: uuid(body.id) }))) throw new Fail('Not found', 404)
+    await d.db.log(String(body.id), 'admin_uni_date_deleted', { by: a.username })
+    return { ok: true }
+  },
+  'POST admin-uni-copy': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'content', 'edit')
+    const u = uniId(body.uni), from = isoDay(body.from, 'the first date'), to = isoDay(body.to, 'the last date')
+    const n = await d.db.fn<number>('luda_uni_copy_year', { p_uni: u, p_from: from, p_to: to, p_by: a.user_id })
+    await d.db.log(u, 'admin_uni_copy', { by: a.username, from, to, n })
+    return { copied: n }
   },
 
   /* ---------------- team (owner only) ---------------- */

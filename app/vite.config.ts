@@ -18,7 +18,8 @@ export default defineConfig(({ command, mode }) => {
     // or /chats/abc load their files correctly. The Claude artifact demo (embed mode)
     // is served from an unknown folder, so it uses relative paths and a memory router.
     base: mode === 'embed' ? './' : '/',
-    plugins: [react(), tailwindcss()],
+    // version.json lets an open app notice that a newer version was published (Home shows 'Update Luda').
+    plugins: [react(), tailwindcss(), { name: 'luda-version', generateBundle() { this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version, sha }) }) } }],
     define: { __VERSION__: JSON.stringify(version), __BUILD__: JSON.stringify(`${new Date().toISOString().slice(0, 16).replace('T', ' ')}${sha ? ' · ' + sha : ''}`) },
   }
 })

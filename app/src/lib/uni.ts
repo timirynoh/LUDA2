@@ -60,7 +60,8 @@ export function feesFor(uni: string): { yearly: number; items: Fee[] } {
   }
 }
 
-export const daysUntil = (iso: string) => Math.ceil((new Date(iso + 'T23:59:59').getTime() - Date.now()) / 86_400_000)
+/** Whole calendar days from today to `iso` (today = 0, tomorrow = 1, yesterday = -1). */
+export const daysUntil = (iso: string) => { const t = new Date(); t.setHours(12, 0, 0, 0); return Math.round((new Date(iso + 'T12:00:00').getTime() - t.getTime()) / 86_400_000) }
 
 /** Next start time (as Date) of a weekly class. Class.day: 0=Mon … 6=Sun. */
 export function nextOccurrence(c: ClassItem, from = new Date()) {

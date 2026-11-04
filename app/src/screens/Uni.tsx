@@ -8,14 +8,15 @@ import { DAY_NAMES, readTimetable, type ClassItem } from '../lib/ocr'
 import { askNotificationPermission, canNotify } from '../lib/reminders'
 import { calendarFor, daysUntil, feesFor as feesForUni, nextClass, nextOccurrence, sampleScreenshot, UNIVERSITIES, type CalKind } from '../lib/uni'
 import { fmt } from '../lib/fx'
-import { LIVE } from '../lib/live'
+import { api, LIVE } from '../lib/live'
+import { LiveDeadlines, LiveFeePlan } from '../components/LiveUni'
 import { uid, useStore } from '../lib/store'
 
 type Tab = 'timetable' | 'deadlines' | 'fees'
 
 export default function Uni() {
   const { s } = useStore()
-  const [tab, setTab] = useState<Tab>('timetable')
+  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(location.search).get('tab') === 'fees' ? 'fees' : new URLSearchParams(location.search).get('tab') === 'deadlines' ? 'deadlines' : 'timetable'))
   const [picking, setPicking] = useState(!s.university)
   const uni = UNIVERSITIES.find((u) => u.id === s.university)
 
@@ -27,8 +28,8 @@ export default function Uni() {
       <AnimatePresence mode="wait">
         <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
           {tab === 'timetable' && <Timetable />}
-          {tab === 'deadlines' && <Deadlines uni={uni.id} />}
-          {tab === 'fees' && <Fees uni={uni.id} />}
+          {tab === 'deadlines' && (LIVE ? <LiveDeadlines uni={uni.id} /> : <Deadlines uni={uni.id} />)}
+          {tab === 'fees' && (LIVE ? <LiveFeePlan uni={uni.id} /> : <Fees uni={uni.id} />)}
         </motion.div>
       </AnimatePresence>
       <DemoNote />
@@ -52,6 +53,7 @@ function Picker({ onDone }: { onDone: () => void }) {
             // Instalments already well past their due date are assumed paid at the school.
             const past = feesForUni(u.id).items.filter((f) => daysUntil(f.due) < -14).map((f) => f.id)
             set((p) => ({ ...p, university: u.id, paidFees: [...new Set([...p.paidFees, ...past])] })); onDone()
+            if (LIVE) void api('POST', 'uni-set', { uni: u.id }).catch(() => {})
           }}
             className={`glass flex items-center gap-3 rounded-2xl p-4 text-start ${s.university === u.id ? 'border-mint-400/60 bg-mint-400/10' : ''}`}>
             <div className="grid size-11 place-items-center rounded-xl bg-gradient-to-br from-indigo-400 to-blue-700 text-xs font-black text-white">{u.short.slice(0, 4)}</div>
