@@ -2873,5 +2873,17 @@
 "Not active recently": "Pas actif récemment",
 "{}% completed": "{} % terminés",
 "new trader": "nouveau trader",
-"Bus tickets & airport shuttle": "Billets de bus et navette aéroport"
+"Bus tickets & airport shuttle": "Billets de bus et navette aéroport",
+"Spend-only lira": "Lires à dépenser uniquement",
+"Lira you buy with Instant is for spending inside Luda: bills, bus tickets, Market, Flash jobs and savings. It can't be sent to other people, and if you change it back to Naira you get at most the Naira you paid for it. This stops anyone using Luda's rate to make money from the exchange rate. Lira you earn or receive (Market sales, Flash rewards, money from friends, prizes) works as normal. Limit: ₺5,000 a day.": "Les livres achetées avec Instant servent à dépenser dans Luda : factures, billets de bus, Market, missions Flash et épargne. Elles ne peuvent pas être envoyées à d'autres personnes, et si vous les reconvertissez en nairas, vous récupérez au plus les nairas payés. Cela empêche quiconque de gagner de l'argent sur le taux de change grâce au taux de Luda. Les livres que vous gagnez ou recevez (ventes Market, récompenses Flash, argent d'amis, prix) fonctionnent normalement. Limite : 5 000 ₺ par jour.",
+"Lira you buy here is": "Les livres achetées ici sont",
+"for spending in Luda": "à dépenser dans Luda",
+": bills, bus tickets, Market, Flash and savings. It can't be sent to other people, and changing it back gives at most the Naira you paid. Limit ₺5,000 a day.": ": factures, billets de bus, Market, Flash et épargne. Elles ne peuvent pas être envoyées à d'autres, et les reconvertir rend au plus les nairas payés. Limite 5 000 ₺ par jour.",
+"Part of this is lira you bought with Instant, so you get back the Naira you paid for it, not today's higher amount.": "Une partie est en livres achetées avec Instant : vous récupérez les nairas payés, pas le montant plus élevé du jour.",
+"For bills, tickets, Market, Flash and savings. Can't be sent to others.": "Pour factures, billets, Market, Flash et épargne. Ne peut pas être envoyé à d'autres.",
+"Available {} · {} bought with Instant": "Disponible {} · {} achetés avec Instant",
+"You can send {} · {} bought with Instant is for spending in Luda only": "Vous pouvez envoyer {} · {} achetés avec Instant sont à dépenser dans Luda uniquement",
+"{} spend-only": "{} à dépenser uniquement",
+"You can buy up to ₺5,000 of lira with Instant per 24 hours. Try again later, or use P2P.": "Vous pouvez acheter jusqu'à 5 000 ₺ avec Instant par 24 heures. Réessayez plus tard ou utilisez le P2P.",
+"Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "Les livres achetées avec Instant ne peuvent être dépensées que dans Luda (factures, billets, Market, Flash). Vous pouvez envoyer jusqu'à {}."
 }

@@ -124,7 +124,7 @@ test('convert Naira → Lira with PIN; stale quote refused', async () => {
   const r = await call('POST', 'convert', { from: 'NGN', to: 'TRY', amountMinor: 40_000_00, pin: '4826', expectMinor: 990_00 }, ada)
   assert.equal(r.j.receivedMinor, 990_00)
   assert.deepEqual(await bal(ada), { NGN: 20_000_00, TRY: 990_00 })
-  assert.match((await call('POST', 'convert', { from: 'NGN', to: 'TRY', amountMinor: 999_000_00, pin: '4826' }, ada)).j.error, /Not enough/)
+  assert.match((await call('POST', 'convert', { from: 'NGN', to: 'TRY', amountMinor: 999_000_00, pin: '4826' }, ada)).j.error, /Not enough|₺5,000/)
 })
 
 test('bus ticket from the Lira wallet, and from Naira at today\'s rate', async () => {
@@ -155,9 +155,12 @@ test('send money between users', async () => {
   const look = await call('GET', 'user?u=@bola', undefined, ada); assert.equal(look.j.fullName, 'Bola Adeyemi')
   assert.match((await call('POST', 'send', { to: 'ada', currency: 'TRY', amountMinor: 50_00, pin: '4826' }, ada)).j.error, /yourself/)
   assert.equal((await call('POST', 'send', { to: 'ghost', currency: 'TRY', amountMinor: 50_00, pin: '4826' }, ada)).status, 404)
+  // lira bought with Instant is spend-only (v1.15.0): sending it is refused; earned lira can be sent
+  assert.match((await call('POST', 'send', { to: 'bola', currency: 'TRY', amountMinor: 100_00, pin: '4826' }, ada)).j.error, /only be spent in Luda/)
+  await q(`select luda_post($1::jsonb)`, [JSON.stringify([{ user_id: (await q(`select user_id from profiles where username='ada'`))[0].user_id, currency: 'TRY', amount_minor: 100_00, kind: 'reward', ref: 'earned-for-send' }])])
   const r = await call('POST', 'send', { to: 'bola', currency: 'TRY', amountMinor: 100_00, pin: '4826', note: 'for the bus <script>' }, ada)
   assert.equal(r.status, 200, JSON.stringify(r.j))
-  assert.equal((await bal(ada)).TRY, 640_00); assert.equal((await bal(bola)).TRY, 100_00)
+  assert.equal((await bal(ada)).TRY, 740_00); assert.equal((await bal(bola)).TRY, 100_00)
   const h = (await call('GET', 'me', undefined, bola)).j.history[0]
   assert.equal(h.kind, 'receive'); assert.equal(h.meta.from, 'ada'); assert.ok(!h.meta.note.includes('<'))
 })

@@ -2892,5 +2892,17 @@
 "Not active recently": "Hajakuwa hai hivi karibuni",
 "{}% completed": "{}% zimekamilika",
 "new trader": "mfanyabiashara mpya",
-"Bus tickets & airport shuttle": "Tiketi za basi na usafiri wa uwanja wa ndege"
+"Bus tickets & airport shuttle": "Tiketi za basi na usafiri wa uwanja wa ndege",
+"Spend-only lira": "Lira ya matumizi tu",
+"Lira you buy with Instant is for spending inside Luda: bills, bus tickets, Market, Flash jobs and savings. It can't be sent to other people, and if you change it back to Naira you get at most the Naira you paid for it. This stops anyone using Luda's rate to make money from the exchange rate. Lira you earn or receive (Market sales, Flash rewards, money from friends, prizes) works as normal. Limit: ₺5,000 a day.": "Lira unayonunua kwa Instant ni ya kutumia ndani ya Luda: bili, tiketi za basi, Market, kazi za Flash na akiba. Haiwezi kutumwa kwa watu wengine, na ukiibadilisha kurudi Naira unapata zaidi Naira uliyolipa tu. Hii inazuia mtu yeyote kutumia kiwango cha Luda kupata faida kutokana na mabadiliko ya kiwango. Lira unayopata au kupokea (mauzo ya Market, zawadi za Flash, pesa kutoka kwa marafiki, zawadi) inafanya kazi kawaida. Kikomo: ₺5,000 kwa siku.",
+"Lira you buy here is": "Lira unayonunua hapa ni",
+"for spending in Luda": "ya kutumia ndani ya Luda",
+": bills, bus tickets, Market, Flash and savings. It can't be sent to other people, and changing it back gives at most the Naira you paid. Limit ₺5,000 a day.": ": bili, tiketi za basi, Market, Flash na akiba. Haiwezi kutumwa kwa wengine, na kuibadilisha kurudi kunatoa zaidi Naira uliyolipa tu. Kikomo ₺5,000 kwa siku.",
+"Part of this is lira you bought with Instant, so you get back the Naira you paid for it, not today's higher amount.": "Sehemu ya hii ni lira uliyonunua kwa Instant, kwa hiyo unarudishiwa Naira uliyolipa, si kiasi kikubwa cha leo.",
+"For bills, tickets, Market, Flash and savings. Can't be sent to others.": "Kwa bili, tiketi, Market, Flash na akiba. Haiwezi kutumwa kwa wengine.",
+"Available {} · {} bought with Instant": "Inapatikana {} · {} imenunuliwa kwa Instant",
+"You can send {} · {} bought with Instant is for spending in Luda only": "Unaweza kutuma {} · {} iliyonunuliwa kwa Instant ni ya kutumia ndani ya Luda tu",
+"{} spend-only": "{} ya matumizi tu",
+"You can buy up to ₺5,000 of lira with Instant per 24 hours. Try again later, or use P2P.": "Unaweza kununua hadi ₺5,000 kwa Instant kila saa 24. Jaribu tena baadaye, au tumia P2P.",
+"Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "Lira iliyonunuliwa kwa Instant inaweza kutumika ndani ya Luda tu (bili, tiketi, Market, Flash). Unaweza kutuma hadi {}."
 }

@@ -304,16 +304,23 @@ export function ConvertSheet({ onClose, initialFrom = 'NGN' }: { onClose: () => 
   const [from, setFrom] = useState<Cur>(initialFrom)
   const to: Cur = from === 'NGN' ? 'TRY' : 'NGN'
   const [amt, setAmt] = useState('')
-  const [rate, setRate] = useState<{ ngnPerTry: number; margin: number } | null>(null)
+  const [q, setQ] = useState<{ out: number; rate: number; margin: number; capped?: boolean; fromBought?: number; minor: number } | null>(null)
   const [err, setErr] = useState('')
   const [review, setReview] = useState(false)
-  useEffect(() => { api('GET', 'rate').then(setRate).catch((e) => setErr(errMsg(e))) }, [])
   const minor = parseMinor(amt), bal = me?.balances[from] ?? 0
-  const out = rate ? Math.floor((from === 'NGN' ? minor / rate.ngnPerTry : minor * rate.ngnPerTry) * (1 - rate.margin)) : 0
+  // The quote comes from the server (it knows how much of your lira was bought with Instant: spend-only).
+  useEffect(() => {
+    if (minor <= 0 || minor > bal) { setQ(null); return }
+    setErr('')
+    const t = setTimeout(() => { api<{ out: number; rate: number; margin: number; capped?: boolean; fromBought?: number }>('GET', `convert-quote?from=${from}&amount=${minor}`).then((r) => setQ({ ...r, minor })).catch((e) => { setQ(null); setErr(errMsg(e)) }) }, 350)
+    return () => clearTimeout(t)
+  }, [from, minor, bal])
+  const out = q && q.minor === minor ? q.out : 0
+  const fx = me?.fx
   return (
     <Sheet open onClose={onClose} title="Convert">
-      {review ? (
-        <ReviewAndPin rows={[['You give', money(minor, from)], ['You get', <b key="v">{money(out, to)}</b>], ['Rate', `₺1 = ₦${rate!.ngnPerTry.toFixed(2)}`], ['Luda fee', `${money(Math.round(from === 'TRY' ? minor * rate!.margin : (minor / rate!.ngnPerTry) * rate!.margin), 'TRY')} (${+(rate!.margin * 100).toFixed(2)}%, included)`]]}
+      {review && q ? (
+        <ReviewAndPin rows={[['You give', money(minor, from)], ['You get', <b key="v">{money(out, to)}</b>], ['Rate', `₺1 = ₦${q.rate.toFixed(2)}`], ['Luda fee', `${+(q.margin * 100).toFixed(2)}%, included`], ...(from === 'NGN' ? [['Spend-only lira', 'For bills, tickets, Market, Flash and savings. Can\'t be sent to others.'] as [string, ReactNode]] : [])]}
           holdLabel="Hold to convert" onClose={() => setReview(false)}
           run={async (auth) => { await api('POST', 'convert', { from, to, amountMinor: minor, expectMinor: out, ...auth }); await refresh() }}
           done={<Success title="Converted ✅" sub={`${money(out, to)} added to your ${to === 'NGN' ? 'Naira' : 'Lira'} wallet`} onClose={onClose} />} />
@@ -321,11 +328,13 @@ export function ConvertSheet({ onClose, initialFrom = 'NGN' }: { onClose: () => 
         <div className="flex flex-col gap-3">
           <Segmented value={from} onChange={(v) => { setFrom(v); setAmt('') }} options={[{ value: 'NGN', label: '₦ → ₺' }, { value: 'TRY', label: '₺ → ₦' }]} />
           <input className="input text-2xl font-bold" inputMode="decimal" placeholder={`${from === 'NGN' ? '₦' : '₺'} amount`} value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^\d.]/g, ''))} />
-          <p className="text-xs text-slate-400">Available {money(bal, from)}</p>
-          {minor > 0 && rate && <p className="rounded-xl bg-fg/[0.04] p-3 text-sm">You get about <b>{money(out, to)}</b></p>}
+          <p className="text-xs text-slate-400">Available {money(bal, from)}{from === 'TRY' && fx && fx.boughtTry > 0 ? ` · ${money(fx.boughtTry, 'TRY')} bought with Instant` : ''}</p>
+          {minor > 0 && out > 0 && <p className="rounded-xl bg-fg/[0.04] p-3 text-sm">You get <b>{money(out, to)}</b></p>}
+          {from === 'NGN' && <p className="flex items-start gap-2 rounded-xl bg-sky-400/10 p-3 text-xs text-sky-100"><span className="flex-1">Lira you buy here is <b>for spending in Luda</b>: bills, bus tickets, Market, Flash and savings. It can't be sent to other people, and changing it back gives at most the Naira you paid. Limit ₺5,000 a day.</span><InfoTip slug="tip-spend-only" /></p>}
+          {from === 'TRY' && q?.capped && <p className="rounded-xl bg-gold-400/10 p-3 text-xs text-gold-100">Part of this is lira you bought with Instant, so you get back the Naira you paid for it, not today's higher amount.</p>}
           {minor > bal && <p className="text-sm text-rose-300">Not enough in your {from === 'NGN' ? 'Naira' : 'Lira'} wallet.</p>}
           {err && <p className="text-sm text-rose-300">{err}</p>}
-          <button className="btn-primary py-4" disabled={!rate || minor <= 0 || minor > bal || out <= 0} onClick={() => setReview(true)}>Review</button>
+          <button className="btn-primary py-4" disabled={!q || minor <= 0 || minor > bal || out <= 0} onClick={() => setReview(true)}>Review</button>
         </div>
       )}
     </Sheet>
@@ -351,7 +360,7 @@ export function SendSheet({ onClose, to: initialTo = '' }: { onClose: () => void
     const t = setTimeout(() => api('GET', `user?u=${encodeURIComponent(u)}`).then((r) => alive && (setWho(r), setErr(''))).catch((e) => alive && (setWho(null), setErr(errMsg(e)))), 400)
     return () => { alive = false; clearTimeout(t) }
   }, [to])
-  const minor = parseMinor(amt), bal = me?.balances[cur] ?? 0
+  const minor = parseMinor(amt), bal = cur === 'TRY' && me?.fx ? Math.min(me.balances.TRY ?? 0, me.fx.freeTry) : me?.balances[cur] ?? 0 // bought lira is spend-only
   return (
     <Sheet open onClose={onClose} title="Send money">
       {!verified ? <LiveKyc /> : review ? (
@@ -366,7 +375,7 @@ export function SendSheet({ onClose, to: initialTo = '' }: { onClose: () => void
           {who && <p className="flex items-center gap-2 rounded-xl bg-fg/[0.04] p-3 text-sm">{who.fullName} {who.verified && <BadgeCheck size={14} className="text-mint-300" />}</p>}
           <Segmented value={cur} onChange={setCur} options={[{ value: 'TRY', label: '₺ Lira' }, { value: 'NGN', label: '₦ Naira' }]} />
           <input className="input text-2xl font-bold" inputMode="decimal" placeholder="Amount" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^\d.]/g, ''))} />
-          <p className="text-xs text-slate-400">Available {money(bal, cur)}</p>
+          <p className="text-xs text-slate-400">{cur === 'TRY' && me?.fx && me.fx.boughtTry > 0 ? `You can send ${money(bal, cur)} · ${money(me.fx.boughtTry, 'TRY')} bought with Instant is for spending in Luda only` : `Available ${money(bal, cur)}`}</p>
           <input className="input" maxLength={80} placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
           {err && <p className="text-sm text-rose-300">{err}</p>}
           {minor > bal && <p className="text-sm text-rose-300">Not enough money in this wallet.</p>}

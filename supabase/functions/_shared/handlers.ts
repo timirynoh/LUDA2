@@ -28,6 +28,7 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv {
   PAYOUT_PROVIDERS?: string // order to try for withdrawals, default "paystack,flutterwave"
   SERVICE_KEY?: string // for private file storage (support-case photos)
   REWARDS_MONTHLY_CAP?: string // ₺ of cash rewards per month for everyone (default 5,000); after that prizes become points
+  FX_TRY_DAY_CAP?: string // ₺ of lira one person can buy with Instant per 24 h (default 5,000)
   ADMIN_EMAILS?: string // comma-separated Luda account emails that can open the owner's admin page
 }
 export interface Deps { db: Db; fetch?: Fetch; now?: () => Date }
@@ -485,6 +486,13 @@ async function ticketOtp(env: Env, ticketId: string, win: number) {
   const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${ticketId}:${win}`)))
   return String((((sig[0] << 24) | (sig[1] << 16) | (sig[2] << 8) | sig[3]) >>> 0) % 1_000_000).padStart(6, '0')
 }
+const fxDayCap = (env: Env) => Math.round(num(env.FX_TRY_DAY_CAP, 5_000) * 100)
+const convertErr = (e: unknown): never => {
+  if (e instanceof MoneyError && e.message === 'fx_daily_cap') throw new Fail('You can buy up to ₺5,000 of lira with Instant per 24 hours. Try again later, or use P2P.', 409)
+  if (e instanceof MoneyError && e.message === 'rate_moved') throw new Fail('The rate just changed. Check the new amount and try again.', 409)
+  if (e instanceof MoneyError && e.message === 'too_small') throw new Fail('Amount too small to convert')
+  return moneyMsg(e)
+}
 const cyprusDay = (d = new Date()) => new Date(d.getTime() + 3 * 3600e3).toISOString().slice(0, 10)
 type Activity = Record<string, any>
 function questsDone(a: Activity) {
@@ -698,6 +706,7 @@ const routes: Record<string, Route> = {
       profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null, university: p.university ?? null, hasPasscode: !!p.passcode_hash, termsVersion: Number(p.terms_version ?? 0), termsCurrent: Number((await d.db.fn<{ version?: number } | null>('luda_guide', { p_slug: 'terms' }).catch(() => null))?.version ?? 0) },
       // Every top-up attempt with its status (pending / paid / failed / mismatch), so the app can show all of them.
       deposits: deposits.map((x) => ({ reference: x.reference, provider: x.provider, status: x.status, chargeMinor: Number(x.amount_minor), currency: x.currency, feeMinor: Number(x.fee_minor ?? 0), creditMinor: Number(x.credit_minor ?? 0), creditCurrency: x.credit_currency ?? 'NGN', createdAt: x.created_at, paidAt: x.paid_at ?? null })),
+      fx: await d.db.fn('luda_fx', { p_user: p.user_id }).catch(() => null),
       balances, history, tickets, withdrawals: withdrawals.map((w) => ({ ...w, account_number: '••••' + w.account_number.slice(-4), recipient_code: undefined })),
     }
   },
@@ -777,6 +786,16 @@ const routes: Record<string, Route> = {
   },
 
   // Naira ⇄ Lira inside Luda at today's rate minus Luda's margin.
+  // Instant conversion (v1.15.0, spend-only lira): priced and booked in one SQL function. Bought lira can be spent in
+  // Luda but not sent; changing it back gives at most the Naira paid for it (no profit from rate moves at Luda's cost).
+  'GET convert-quote': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    const from = url.searchParams.get('from'), amount = int(Number(url.searchParams.get('amount')))
+    if (!isCur(from) || !(amount > 0)) throw new Fail('Enter an amount')
+    const mid = await ngnPerTry(env, d.fetch), m = margin(env)
+    const q = await d.db.fn<{ out: number; capped?: boolean; fromBought?: number }>('luda_convert', { p_user: p.user_id, p_from: from, p_amount: amount, p_mid: mid, p_margin: m, p_ref: 'quote', p_try_day_cap: fxDayCap(env), p_min_out: 0, p_quote: true }).catch(convertErr)
+    return { ...q, rate: mid, margin: m, fx: await d.db.fn('luda_fx', { p_user: p.user_id }) }
+  },
   'POST convert': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
     const from = body.from, to = body.to, amount = int(body.amountMinor)
@@ -785,19 +804,12 @@ const routes: Record<string, Route> = {
     await verifyAuth(p, body, env, d)
     if ((await d.db.spent(p.user_id, from, ['convert'], 24)) + amount > LIMITS.convertDay[from]) throw new Fail('Daily conversion limit reached')
     const mid = await ngnPerTry(env, d.fetch), m = margin(env)
-    const out = convertOut(from, to, amount, mid, m)
-    if (out <= 0) throw new Fail('Amount too small to convert')
-    // The user saw a quote; refuse if the rate moved against them by more than 1%.
+    // The user saw a quote; refuse if it got worse by more than 1%.
     const seen = int(body.expectMinor)
-    if (seen > 0 && out < seen * 0.99) throw new Fail('The rate just changed. Check the new amount and try again.', 409)
     const ref = newRef('cvt')
-    try {
-      await d.db.post([
-        { user_id: p.user_id, currency: from, amount_minor: -amount, kind: 'convert', ref, meta: { to, rate: mid, margin: m } },
-        { user_id: p.user_id, currency: to, amount_minor: out, kind: 'convert', ref, meta: { from, rate: mid, margin: m } },
-      ])
-    } catch (e) { moneyMsg(e) }
-    return { ok: true, receivedMinor: out, currency: to }
+    const r = await d.db.fn<{ out: number; capped?: boolean }>('luda_convert', { p_user: p.user_id, p_from: from, p_amount: amount, p_mid: mid, p_margin: m, p_ref: ref, p_try_day_cap: fxDayCap(env), p_min_out: seen > 0 ? Math.floor(seen * 0.99) : 1, p_quote: false }).catch(convertErr)
+    await d.db.log(ref, 'convert', { user: p.username, from, amount, out: r.out, capped: !!r.capped })
+    return { ok: true, receivedMinor: r.out, currency: to, capped: !!r.capped }
   },
 
   // Bus / airport ticket paid from the wallet (Lira, or Naira at today's rate).
@@ -838,6 +850,10 @@ const routes: Record<string, Route> = {
     if (to.user_id === p.user_id) throw new Fail("You can't send money to yourself")
     await verifyAuth(p, body, env, d)
     if ((await d.db.spent(p.user_id, cur, ['send'], 24)) + amount > LIMITS.sendDay[cur]) throw new Fail('Daily sending limit reached')
+    if (cur === 'TRY') {
+      const fx = await d.db.fn<{ freeTry: number; boughtTry: number }>('luda_fx', { p_user: p.user_id })
+      if (amount > Number(fx.freeTry)) throw new Fail(`Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to ₺${(Number(fx.freeTry) / 100).toLocaleString('en-US')}.`, 409)
+    }
     const note = String(body.note ?? '').replace(/[<>\u0000-\u001f]/g, '').slice(0, 80)
     const ref = newRef('snd')
     try {

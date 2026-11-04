@@ -37,6 +37,7 @@ export default function LiveWallet() {
             <div key={c} className={`rounded-3xl p-4 text-white ${c === 'NGN' ? 'bg-gradient-to-br from-emerald-500 to-emerald-900' : 'bg-gradient-to-br from-rose-500 to-rose-900'}`}>
               <p className="text-xs text-white/70">{c === 'NGN' ? '🇳🇬 Naira' : '🇹🇷 Lira'}</p>
               <p className="mt-1 truncate text-2xl font-extrabold">{me ? show(c) : '…'}</p>
+              {c === 'TRY' && !hide && me?.fx && me.fx.boughtTry > 0 && <p className="truncate text-[10px] opacity-80">{`${money(me.fx.boughtTry, 'TRY')} spend-only`}</p>}
             </div>
           ))}
         </div>

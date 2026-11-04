@@ -115,6 +115,7 @@ export interface Me {
   history: LedgerRow[]
   tickets: LiveTicket[]
   withdrawals: LiveWithdrawal[]
+  fx?: { boughtTry: number; freeTry: number; costNgn: number; balanceTry: number; boughtToday: number } | null
   deposits: LiveDeposit[]
 }
 export type StaffArea = 'overview' | 'users' | 'kyc' | 'money' | 'bills' | 'disputes' | 'cases' | 'content' | 'banners' | 'tickets' | 'team'
