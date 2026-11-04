@@ -1,5 +1,6 @@
 import { Check, ChevronRight } from 'lucide-react'
 import { useEffect } from 'react'
+import { LIVE } from '../lib/live'
 import { useStore } from '../lib/store'
 import { Ring } from './ui'
 
@@ -21,7 +22,8 @@ export function ProfileComplete({ onStep }: { onStep: (key: string) => void }) {
   const steps = useProfileSteps()
   const done = steps.filter((x) => x.done).length
   const pct = done / steps.length
-  useEffect(() => { if (pct === 1 && !s.badges.includes('allstar')) reward(100, { badge: 'allstar', title: 'Profile 100% complete 🌟' }) }, [pct, s.badges, reward])
+  // Demo only: live badges come from the server (this one used to fire again on every refresh and stack toasts).
+  useEffect(() => { if (!LIVE && pct === 1 && !s.badges.includes('allstar')) reward(100, { badge: 'allstar', title: 'Profile 100% complete 🌟' }) }, [pct, s.badges, reward])
   if (pct === 1) return <div className="card flex items-center gap-3 border-mint-400/30 bg-mint-400/5"><span className="text-2xl">🌟</span><p className="text-sm font-semibold">All-Star profile: people trust you more</p></div>
   return (
     <div className="card">

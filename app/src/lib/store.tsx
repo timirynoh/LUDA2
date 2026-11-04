@@ -233,7 +233,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const toast = useCallback((x: Omit<Toast, 'id'>) => {
     const id = Date.now() + Math.random()
-    setToasts((ts) => [...ts, { ...x, id }])
+    // Never stack: the same message already on screen is not shown again, and at most 3 toasts show at once.
+    setToasts((ts) => (ts.some((y) => y.title === x.title) ? ts : [...ts, { ...x, id }].slice(-3)))
     setTimeout(() => setToasts((ts) => ts.filter((y) => y.id !== id)), 3200)
   }, [])
 
