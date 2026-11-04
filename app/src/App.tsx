@@ -94,7 +94,17 @@ export default function App() {
   const inRoom = loc.pathname.startsWith('/chats/')
   const [splash, setSplash] = useState(true)
   const [authView, setAuthView] = useState<'landing' | 'signup' | 'signin'>('landing')
-  const [unlocked, setUnlocked] = useState(false)
+  // Coming back from Paystack/Flutterwave or the ID check reloads the page: don't ask for the code again if this
+  // tab was unlocked in the last 30 minutes (owner: the top-up flow asked for the PIN again right after paying).
+  const [unlocked, setUnlocked] = useState(() => {
+    try { return /^\/(pay|kyc)\/return/.test(window.location.pathname) && Date.now() - Number(sessionStorage.getItem('luda.unlockedAt') ?? 0) < 30 * 60e3 } catch { return false }
+  })
+  useEffect(() => {
+    if (!unlocked) return
+    const mark = () => { try { sessionStorage.setItem('luda.unlockedAt', String(Date.now())) } catch { /* private mode */ } }
+    mark(); window.addEventListener('pagehide', mark) // leaving for the payment page counts as 'just used'
+    return () => window.removeEventListener('pagehide', mark)
+  }, [unlocked])
   const [forceLock, setForceLock] = useState(false)
   const lockNow = useCallback(() => { setUnlocked(false); setForceLock(true) }, [])
   useEffect(() => { const t = setTimeout(() => setSplash(false), 1700); return () => clearTimeout(t) }, [])
@@ -188,7 +198,7 @@ export default function App() {
           {!inRoom && <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-app px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <div className="flex items-center justify-around rounded-[1.75rem] border border-fg/10 bg-ink-900/85 px-2 py-2 shadow-2xl shadow-black/50 backdrop-blur-2xl">
               {TABS.map(({ to, icon: Icon, key }) => (
-                <NavLink key={to} to={to} end={to === '/'} data-tour={`nav${to}`} className="relative flex flex-1 flex-col items-center gap-0.5 py-1.5">
+                <NavLink key={to} to={to} end={to === '/'} replace={loc.pathname !== '/'} data-tour={`nav${to}`} className="relative flex flex-1 flex-col items-center gap-0.5 py-1.5">
                   {({ isActive }) => (
                     <>
                       {isActive && <motion.div layoutId="tab" className="absolute inset-0 rounded-2xl bg-gradient-to-b from-mint-400/20 to-transparent" />}

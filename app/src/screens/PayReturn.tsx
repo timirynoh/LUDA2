@@ -44,7 +44,7 @@ export default function PayReturn() {
           st === 'mismatch' ? <><XCircle size={56} className="text-gold-300" /><p className="text-lg font-bold">We're reviewing this payment</p><p className="text-sm text-slate-400">The amount paid didn't match. Our team will credit or refund you. Reference <b>{ref.slice(-8)}</b>.</p></> :
           st === 'pending' && tries >= 10 ? <><Clock size={56} className="text-gold-300" /><p className="text-lg font-bold">Waiting for your bank</p><p className="text-sm text-slate-400">If you paid, your wallet is credited automatically when the payment confirms. You can leave this page.</p></> :
           <><Loader2 size={56} className="animate-spin text-violet-300" /><p className="text-lg font-bold">Confirming your payment…</p><p className="text-sm text-slate-400">Please don't close this page.</p></>}
-        <Link to="/wallet" className="btn-primary mt-4 w-full max-w-xs py-4">Go to my wallet</Link>
+        <Link to="/wallet" replace className="btn-primary mt-4 w-full max-w-xs py-4">Go to my wallet</Link>
       </div>
     </div>
   )

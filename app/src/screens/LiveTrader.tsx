@@ -5,11 +5,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { errMsg } from '../components/LiveMoney'
 import { Header } from '../components/ui'
+import { Presence } from '../components/Presence'
 import { COUNTRIES } from '../lib/data'
 import { api } from '../lib/live'
 
 interface Trader {
-  username: string; name: string; verified: boolean; country: string | null; since: string; ads: number; blocked: boolean; me: boolean
+  username: string; name: string; verified: boolean; country: string | null; since: string; ads: number; blocked: boolean; me: boolean; lastSeen?: string | null
   stats: { trades: number; rate: number | null; good?: number; bad?: number; releaseMin?: number | null; sendMin?: number | null }
   reviews: { good: boolean; body: string; at: string; by: string }[]
 }
@@ -35,6 +36,7 @@ export function LiveTrader() {
             <p className="flex items-center gap-1.5 text-lg font-bold">{t.name} {t.verified && <BadgeCheck size={18} className="text-mint-300" />}</p>
             <p className="text-xs text-slate-400">{c ? `${c.flag} ${c.name} · ` : ''}{`On Luda since ${new Date(t.since).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}`}</p>
             <p className="text-xs text-slate-400">{t.verified ? 'ID verified' : 'ID not verified yet'}</p>
+            {!t.me && <Presence at={t.lastSeen ?? null} />}
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center">

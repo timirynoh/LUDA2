@@ -37,8 +37,34 @@ function unlockPage() {
   if (--openSheets === 0) { document.documentElement.style.overflow = ''; document.body.style.overflow = ''; window.scrollTo(0, savedY) }
 }
 
+// The phone's Back button closes the top pop-up instead of leaving the page (owner: 'going back doesn't flow nicely').
+// Each open sheet adds one history step; closing it with ✕ removes that step again.
+const sheetStack: { id: number; close: () => void; byBack: boolean }[] = []
+let sheetSeq = 0, ignorePops = 0
+if (typeof window !== 'undefined') window.addEventListener('popstate', () => {
+  if (ignorePops > 0) { ignorePops--; return }
+  // Landed on the step of a pop-up that already closed (it led to another page): skip it, one Back is enough.
+  const st = (history.state as { ludaSheet?: number } | null)?.ludaSheet
+  if (st && !sheetStack.some((x) => x.id === st)) { history.back(); return }
+  const top = sheetStack[sheetStack.length - 1]
+  if (top && (history.state as { ludaSheet?: number } | null)?.ludaSheet !== top.id) { top.byBack = true; top.close() }
+})
+
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null)
+  const closeRef = useRef(onClose)
+  useEffect(() => { closeRef.current = onClose })
+  useEffect(() => {
+    if (!open) return
+    const me = { id: ++sheetSeq, close: () => closeRef.current(), byBack: false }
+    sheetStack.push(me)
+    try { history.pushState({ ...(history.state ?? {}), ludaSheet: me.id }, '') } catch { /* sandboxed */ }
+    return () => {
+      const i = sheetStack.indexOf(me); if (i >= 0) sheetStack.splice(i, 1)
+      // Closed with ✕ / Done: take our history step back off (unless the page already moved on).
+      if (!me.byBack && (history.state as { ludaSheet?: number } | null)?.ludaSheet === me.id) { ignorePops++; history.back() }
+    }
+  }, [open])
   useEffect(() => {
     if (!open) return
     lockPage()

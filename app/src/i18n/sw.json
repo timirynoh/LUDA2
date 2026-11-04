@@ -2881,5 +2881,16 @@
 "Too many wrong codes. Locked for 15 minutes.": "Misimbo mingi isiyo sahihi. Imefungwa kwa dakika 15.",
 "Wrong code ({} tries left)": "Msimbo si sahihi (majaribio {} yamebaki)",
 "6-digit code": "Msimbo wa tarakimu 6",
-"How": "Vipi"
+"How": "Vipi",
+"Online": "Yuko mtandaoni",
+"Online now": "Walio mtandaoni sasa",
+"Active {} min ago": "Alikuwa hai dakika {} zilizopita",
+"Active 1 hour ago": "Alikuwa hai saa 1 iliyopita",
+"Active {} hours ago": "Alikuwa hai saa {} zilizopita",
+"Active yesterday": "Alikuwa hai jana",
+"Active {} days ago": "Alikuwa hai siku {} zilizopita",
+"Not active recently": "Hajakuwa hai hivi karibuni",
+"{}% completed": "{}% zimekamilika",
+"new trader": "mfanyabiashara mpya",
+"Bus tickets & airport shuttle": "Tiketi za basi na usafiri wa uwanja wa ndege"
 }

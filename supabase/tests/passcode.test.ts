@@ -56,3 +56,14 @@ test('search finds only live things; trader profile comes from real orders and r
   assert.equal(t.name, 'Kemal'); assert.equal(t.ads, 1); assert.equal(t.blocked, false); assert.equal(t.stats.trades, 0)
   assert.equal((await call('GET', 'trader?u=nobody', undefined, T.ada)).status, 404)
 })
+
+test('presence: the server records when people were last active; ads, orders and profiles show it', async () => {
+  await q(`update profiles set last_seen = now() - interval '2 hours' where username='kemal'`)
+  let t = (await call('GET', 'trader?u=kemal', undefined, T.ada)).j.trader
+  assert.ok(Date.now() - Date.parse(t.lastSeen) > 3600e3, 'kemal inactive')
+  await call('GET', 'me', undefined, T.kemal) // kemal opens the app
+  t = (await call('GET', 'trader?u=kemal', undefined, T.ada)).j.trader
+  assert.ok(Date.now() - Date.parse(t.lastSeen) < 60e3, 'now online')
+  const ad = (await call('GET', 'p2p?want=buy', undefined, T.ada)).j.ads.find((a: any) => a.maker === 'kemal')
+  assert.ok(ad.lastSeen, 'ads carry the trader\'s last activity')
+})

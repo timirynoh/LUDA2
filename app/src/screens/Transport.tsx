@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeftRight, BadgePercent, Bus, Car, CreditCard, ExternalLink, Minus, Plane, Plus, Share2, Ticket as TicketIcon, Wallet } from 'lucide-react'
+import { ArrowLeftRight, BadgePercent, Bus, CreditCard, ExternalLink, Minus, Plane, Plus, Ticket as TicketIcon, Wallet } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -8,7 +8,7 @@ import { GIRNE_LEFKOSA, KIBHAS_FARES, SAVER, TICKET_DISCOUNT } from '../config'
 import { SaverCard, SaverSheet } from '../components/RideSaver'
 import { handshakeCode, randomSecret } from '../lib/crypto'
 import { quote, refundsThisMonth, saverState } from '../lib/saver'
-import { CITIES, SAFE_SPOTS } from '../lib/data'
+import { CITIES } from '../lib/data'
 import { convert, fmt, useRates } from '../lib/fx'
 import { COUNTRIES, CURRENCIES } from '../lib/data'
 import { uid, useStore } from '../lib/store'
@@ -18,9 +18,9 @@ import { LiveTicketPay } from '../components/LiveTicketPay'
 import { api, LIVE } from '../lib/live'
 import { KibhasLive } from '../components/KibhasBooking'
 import { brandOf } from '../lib/cards'
-import { ERCAN, km, taxiFare } from '../lib/transport'
+import { ERCAN, km } from '../lib/transport'
 
-type Tab = 'tickets' | 'airport' | 'taxi'
+type Tab = 'tickets' | 'airport'
 
 export default function Transport() {
   const { s, t } = useStore()
@@ -29,14 +29,13 @@ export default function Transport() {
   const [saver, setSaver] = useState(false)
   return (
     <div>
-      <Header back title={t('act.transport')} sub="Bus tickets, airport shuttle & taxis" />
-      {tab !== 'taxi' && !LIVE && <div className="px-5 pb-3"><SaverCard onOpen={() => setSaver(true)} /></div>}
+      <Header back title={t('act.transport')} sub="Bus tickets & airport shuttle" />
+      {!LIVE && <div className="px-5 pb-3"><SaverCard onOpen={() => setSaver(true)} /></div>}
       {saver && <SaverSheet onClose={() => setSaver(false)} />}
-      <div className="px-5"><Segmented value={tab} onChange={setTab} options={[{ value: 'tickets', label: '🎟️ Bus tickets' }, { value: 'airport', label: '✈️ Airport' }, { value: 'taxi', label: '🚕 Taxi' }]} /></div>
+      <div className="px-5"><Segmented value={tab} onChange={setTab} options={[{ value: 'tickets', label: '🎟️ Bus tickets' }, { value: 'airport', label: '✈️ Airport' }]} /></div>
       {valid.length > 0 && <MyTickets tickets={valid} />}
       {tab === 'tickets' && <BusTickets />}
       {tab === 'airport' && (LIVE ? <KibhasLive /> : <Airport />)}
-      {tab === 'taxi' && <Taxi />}
       <DemoNote />
     </div>
   )
@@ -350,42 +349,3 @@ function Airport() {
   )
 }
 
-/* ------------------------------ Taxi ------------------------------ */
-
-function Taxi() {
-  const { s, toast } = useStore()
-  const city = CITIES.find((c) => c.id === s.city)!
-  const dests = useMemo(() => [
-    ...(SAFE_SPOTS[s.city] ?? []).map((n, i) => ({ name: n.split('·')[0].trim(), d: 2 + i * 2.5 })),
-    ...CITIES.filter((c) => c.id !== s.city).slice(0, 3).map((c) => ({ name: c.name, d: km(city, c) })),
-    { name: 'Ercan Airport', d: km(city, ERCAN) },
-  ], [s.city, city])
-  const [dest, setDest] = useState(0)
-  const [plate, setPlate] = useState('')
-  const fare = taxiFare(dests[dest].d)
-  const msg = `🚕 I'm in a taxi from ${city.name} to ${dests[dest].name}. Plate: ${plate || '—'}. Left at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Sent via Luda.`
-  const share = async () => {
-    try { await navigator.clipboard.writeText(msg); toast({ title: 'Trip details copied. Paste to a friend', emoji: '📋' }) }
-    catch { toast({ title: 'Copy blocked. Use WhatsApp share', emoji: 'ℹ️' }) }
-  }
-  return (
-    <div className="flex flex-col gap-3 px-5 pt-4">
-      <div className="card">
-        <p className="label mb-2">Fare estimate from {city.name}</p>
-        <div className="flex flex-wrap gap-2">{dests.map((x, i) => <button key={x.name} onClick={() => setDest(i)} className={`chip py-2 ${dest === i ? 'bg-gold-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{x.name}</button>)}</div>
-        <p className="mt-4 text-4xl font-extrabold">~₺{fare.toLocaleString()}</p>
-        <p className="text-xs text-slate-400">{Math.round(dests[dest].d)} km · agree the price <b>before</b> you get in. Taxis here rarely use meters.</p>
-      </div>
-      <Link to="/nearby?cat=taxi" className="btn-gold"><Car size={18} /> Find taxi ranks near me</Link>
-      <div className="card">
-        <p className="flex items-center gap-2 font-bold"><Share2 size={18} className="text-mint-300" /> Share my trip (safety)</p>
-        <p className="mt-1 text-xs text-slate-400">Send your route and the taxi's plate number to a friend before you ride.</p>
-        <input className="input mt-3 uppercase" placeholder="Plate number, e.g. TAK 123" value={plate} onChange={(e) => setPlate(e.target.value)} />
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <button className="btn-ghost text-sm" onClick={share}>Copy</button>
-          <a className="btn-primary text-sm" href={`https://wa.me/?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer">WhatsApp</a>
-        </div>
-      </div>
-    </div>
-  )
-}

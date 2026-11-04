@@ -319,7 +319,11 @@ async function me(req: Request, env: Env, d: Deps): Promise<Profile> {
   const u = await userFromToken(token, authEnv(env), d.fetch)
   if (!u) throw new Fail('Please sign in again', 401)
   const p = await d.db.profile(u.id)
-  if (p) return p
+  if (p) {
+    // Presence: 'Online / Active 5 min ago' for other people, from real use (written at most once a minute).
+    if (!p.last_seen || Date.now() - Date.parse(p.last_seen) > 60_000) await d.db.fn('luda_seen', { p_user: p.user_id }).catch(() => {})
+    return p
+  }
   const meta = u.user_metadata ?? {}
   const base = String(meta.username ?? u.email.split('@')[0]).toLowerCase().replace(/[^a-z0-9_.]/g, '').slice(0, 20).padEnd(3, '0')
   const fullName = String(meta.full_name ?? meta.name ?? base).replace(/\s+/g, ' ').trim().slice(0, 80) // Google gives full_name / name
@@ -1467,6 +1471,8 @@ const routes: Record<string, Route> = {
     let ads = await d.db.fn<Record<string, any>[]>('luda_p2p_ads2', { p_side: want === 'buy' ? 'sell' : 'buy', p_asset: asset, p_viewer: p.user_id })
     const hidden = new Set((await d.db.fn<{ hidden: string[] }>('luda_p2p_blocks', { p_user: p.user_id })).hidden)
     ads = ads.filter((a) => !hidden.has(a.maker))
+    const seen = ads.length ? await d.db.fn<Record<string, string | null>>('luda_presence', { p_usernames: [...new Set(ads.map((x) => String(x.maker)))] }) : {}
+    ads = ads.map((x) => ({ ...x, lastSeen: seen[x.maker] ?? null }))
     const near = (a: Record<string, any>) => (area && String(a.area).toLowerCase() === area ? 2 : 0) + (city && a.city === city ? 1 : 0)
     if (url.searchParams.get('near') === '1') ads = ads.filter((a) => near(a) > 0)
     // Bybit-style: best price first (cheapest when you buy, highest when you sell); nearby breaks ties.

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { BankBadge } from '../components/BankBadge'
 import { GuideLink, InfoTip } from '../components/LiveGuides'
+import { Presence, presenceOf } from '../components/Presence'
 import { Empty, ago, useApi } from '../components/LiveKit'
 import { ReviewAndPin, errMsg } from '../components/LiveMoney'
 import { Attachments, type Upload } from '../components/LiveSupport'
@@ -25,7 +26,7 @@ const APPEAL_WAIT_MIN = 15 // the server enforces the same wait
 export interface Ad {
   id: string; side: 'sell' | 'buy'; asset?: Asset; price: number; min_try: number; max_try: number; available_try: number; methods: ('bank' | 'cash')[]
   city: string; area: string; terms: string; status: string; maker?: string; makerName?: string; verified?: boolean; mine?: boolean
-  stats?: { trades: number; rate: number | null; since: string; good?: number; bad?: number; releaseMin?: number | null; sendMin?: number | null }; nearby?: number
+  stats?: { trades: number; rate: number | null; since: string; good?: number; bad?: number; releaseMin?: number | null; sendMin?: number | null }; nearby?: number; lastSeen?: string | null
 }
 interface Market { ads: Ad[]; mine: Ad[]; asset?: Asset; market: number | null; rules: { maxAds: number; maxTry: number; minTry: number; windowMin: number; priceBand: number; feePct: number; feeMinTry?: number; feeMaxTry?: number; assetPerTry?: number | null }; canTrade: boolean; why: string | null }
 interface PayMethod { id: string; bank: string; iban: string; holder: string; currency?: Asset }
@@ -34,7 +35,7 @@ export interface Order {
   appeal_stage?: 'negotiation' | 'review' | 'decided' | null; appeal_reason?: string | null; appeal_at?: string | null; assigned_to?: string | null; ask_who?: 'payer' | 'sender' | 'both' | null; ask_at?: string | null; ask_due?: string | null; ask_payer_at?: string | null; ask_sender_at?: string | null; iAppealed?: boolean; appealBy?: 'payer' | 'sender' | 'auto' | null
   price: number; amount_try: number; amount_ngn: number; fee_ngn: number; fee_try?: number | null; method: 'bank' | 'cash'; try_to: { kind?: string; bank?: string; iban?: string; holder?: string; area?: string }
   pay_by: string; sent_at: string | null; done_at: string | null; note: string | null; created_at: string
-  payer: { username: string; name: string; verified: boolean }; sender: { username: string; name: string; verified: boolean }
+  payer: { username: string; name: string; verified: boolean; lastSeen?: string | null }; sender: { username: string; name: string; verified: boolean; lastSeen?: string | null }
   receiptUrls?: (string | null)[]; messages?: { id: number; kind?: 'user' | 'system' | 'staff'; by: string | null; mine: boolean; body: string; files: (string | null)[]; at: string; private?: boolean }[]; reviewed?: boolean
 }
 
@@ -55,11 +56,12 @@ function Copyable({ label, value, mono }: { label: string; value: string; mono?:
   )
 }
 // side 'sell' = this trader sends the lira (show how fast they send); 'buy' = they pay Naira and release (show how fast they release).
-const Trader = ({ name, user, verified, stats, side }: { name?: string; user?: string; verified?: boolean; stats?: Ad['stats']; side?: 'sell' | 'buy' }) => (
+const Trader = ({ name, user, verified, stats, side, seen }: { name?: string; user?: string; verified?: boolean; stats?: Ad['stats']; side?: 'sell' | 'buy'; seen?: string | null }) => (
   <div className="flex min-w-0 items-center gap-2.5">
     <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-violet-400/40 to-indigo-700/50 font-bold">{(name || user || '?').slice(0, 1).toUpperCase()}</span>
     <div className="min-w-0"><Link to={`/u/${user}`} onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 truncate text-sm font-bold">{name?.split(' ')[0]} <span className="font-normal text-slate-400">@{user}</span>{verified && <BadgeCheck size={14} className="shrink-0 text-mint-300" />}</Link>
-      {stats && <p className="text-[11px] text-slate-400">{stats.trades === 1 ? '1 trade' : `${stats.trades} trades`}{stats.rate !== null ? ` · ${stats.rate}% completed` : ' · new trader'}{(stats.good || stats.bad) ? ` · 👍 ${stats.good ?? 0} 👎 ${stats.bad ?? 0}` : ''}</p>}
+      {seen !== undefined && <Presence at={seen} />}
+      {stats && <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-slate-400">{stats.trades === 1 ? '1 trade' : `${stats.trades} trades`}{stats.rate !== null ? <span className={`rounded-md px-1.5 font-bold ${stats.rate >= 90 ? 'bg-mint-400/15 text-mint-300' : stats.rate >= 70 ? 'bg-gold-400/15 text-gold-300' : 'bg-rose-500/15 text-rose-300'}`}>{`${stats.rate}% completed`}</span> : <span>new trader</span>}{(stats.good || stats.bad) ? <span>{`👍 ${stats.good ?? 0} 👎 ${stats.bad ?? 0}`}</span> : null}</p>}
       {stats && side === 'sell' && stats.sendMin != null && <p className="text-[11px] text-slate-400">⏱ Usually sends in ~{Math.max(1, stats.sendMin)} min</p>}
       {stats && side === 'buy' && stats.releaseMin != null && <p className="text-[11px] text-slate-400">⏱ Usually releases in ~{Math.max(1, stats.releaseMin)} min</p>}</div>
   </div>
@@ -72,6 +74,7 @@ export function P2PMarket() {
   const [want, setWant] = useState<'buy' | 'sell'>('buy')
   const [asset, setAsset] = useState<Asset>('TRY')
   const [nearOnly, setNearOnly] = useState(false)
+  const [onlineOnly, setOnlineOnly] = useState(false)
   const sym = symOf(asset)
   const [area, setArea] = useState(() => { try { return localStorage.getItem(AREA_KEY) ?? '' } catch { return '' } })
   const [amt, setAmt] = useState('')
@@ -81,7 +84,7 @@ export function P2PMarket() {
   const [take, setTake] = useState<Ad | null>(null)
   const [sheet, setSheet] = useState<'ads' | 'banks' | 'orders' | 'area' | null>(null)
   const want_ = Math.round(Number(amt.replace(/[^\d.]/g, '') || 0) * 100)
-  const ads = useMemo(() => (data?.ads ?? []).filter((a) => !a.mine && (!want_ || (want_ >= a.min_try && want_ <= Math.min(a.max_try, a.available_try)))), [data, want_])
+  const ads = useMemo(() => (data?.ads ?? []).filter((a) => !a.mine && (!onlineOnly || presenceOf(a.lastSeen).online) && (!want_ || (want_ >= a.min_try && want_ <= Math.min(a.max_try, a.available_try)))), [data, want_, onlineOnly])
   const buying = want === 'buy'
   return (
     <div className="flex flex-col gap-4">
@@ -91,6 +94,7 @@ export function P2PMarket() {
       <div className="-mx-5 flex gap-2 overflow-x-auto px-5">
         {ASSETS.map((a) => <button key={a.v} onClick={() => setAsset(a.v)} className={`chip shrink-0 py-2 ${asset === a.v ? 'bg-mint-400/20 text-mint-100 ring-1 ring-mint-400/40' : 'bg-fg/[0.06] text-slate-300'}`}>{a.flag} {a.sym} {a.label}</button>)}
         <button onClick={() => setNearOnly(!nearOnly)} className={`chip shrink-0 py-2 ${nearOnly ? 'bg-sky-400/20 text-sky-100 ring-1 ring-sky-400/40' : 'bg-fg/[0.06] text-slate-300'}`}><MapPin size={12} /> Near me only</button>
+        <button onClick={() => setOnlineOnly(!onlineOnly)} className={`chip shrink-0 py-2 ${onlineOnly ? 'bg-mint-400/20 text-mint-100 ring-1 ring-mint-400/40' : 'bg-fg/[0.06] text-slate-300'}`}><span className="size-2 rounded-full bg-mint-400" /> Online now</button>
       </div>
       <div className="flex gap-2">
         <label className="glass flex flex-1 items-center gap-2 rounded-2xl px-4 py-3"><span className="text-slate-400">{sym}</span><input className="w-full bg-transparent text-base font-bold outline-none" inputMode="numeric" placeholder={buying ? 'How much do you need?' : 'How much do you have?'} value={amt} onChange={(e) => setAmt(e.target.value)} /></label>
@@ -104,7 +108,7 @@ export function P2PMarket() {
       {data && ads.length === 0 && <Empty emoji="🤝" title={want_ ? 'No offer for that amount yet' : buying ? `No one is selling ${nameOf(asset)} yet` : `No one is buying ${nameOf(asset)} yet`} sub="Post your own ad and let people come to you." action={data.canTrade ? <button className="btn-primary mt-2 px-5 py-3" onClick={() => setSheet('ads')}><Plus size={16} /> Post an ad</button> : undefined} />}
       {ads.map((a) => (
         <div key={a.id} className="card flex flex-col gap-3">
-          <div className="flex items-start justify-between gap-2"><Trader name={a.makerName} user={a.maker} verified={a.verified} stats={a.stats} side={a.side} />
+          <div className="flex items-start justify-between gap-2"><Trader name={a.makerName} user={a.maker} verified={a.verified} stats={a.stats} side={a.side} seen={a.lastSeen ?? null} />
             {!!a.nearby && <span className="chip shrink-0 bg-mint-400/15 py-0.5 text-[10px] text-mint-200"><MapPin size={10} /> {a.nearby >= 2 ? 'Your area' : 'Your city'}</span>}</div>
           <div className="flex items-end justify-between gap-3">
             <div><p className="text-[11px] text-slate-400">Price</p><p className="text-2xl font-extrabold">₦{Number(a.price).toFixed(2)}<span className="text-sm font-semibold text-slate-400"> / {sym}1</span></p>
@@ -198,7 +202,7 @@ function TakeSheet({ ad, want, preset, fee: rules, area, onClose, onDone }: { ad
           done={<Success title="Order opened ✅" sub={want === 'buy' ? `The seller now sends the ${nameOf(A)}. Follow it step by step.` : `Now send the ${nameOf(A)} and upload the receipt.`} onClose={() => onDone(orderId.current)} />} />
       ) : (
         <div className="flex flex-col gap-3 pb-4">
-          <Trader name={ad.makerName} user={ad.maker} verified={ad.verified} stats={ad.stats} side={ad.side} />
+          <Trader name={ad.makerName} user={ad.maker} verified={ad.verified} stats={ad.stats} side={ad.side} seen={ad.lastSeen ?? null} />
           <div className="rounded-3xl bg-fg/[0.04] p-4">
             <label className="text-xs text-slate-400">{want === 'buy' ? 'I want to buy' : 'I want to sell'}<div className="mt-1 flex items-center gap-2"><span className="text-2xl font-bold text-slate-400">{sym}</span><input autoFocus className="w-full bg-transparent text-3xl font-extrabold outline-none" inputMode="numeric" value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="0" /></div></label>
             <div className="mt-2 flex items-center justify-between text-xs text-slate-400"><span>Limit {tl(ad.min_try)} – {tl(max)}</span><button className="font-semibold text-mint-300" onClick={() => setAmt(String(max / 100))}>Max</button></div>
@@ -440,6 +444,7 @@ export default function LiveP2POrder() {
   return (
     <div className="pb-10">
       <Header back title={payer ? `Buy ${tl(o.amount_try)}` : `Sell ${tl(o.amount_try)}`} sub={`with @${other.username}${other.verified ? ' ✓' : ''}`} />
+      {!['done', 'cancelled'].includes(o.status) && <div className="-mt-3 mb-3 px-5"><Presence at={other.lastSeen ?? null} /></div>}
       <div className="flex flex-col gap-3 px-5">
         <div className={`rounded-3xl p-4 ${o.status === 'done' ? 'bg-gradient-to-br from-emerald-500/30 to-teal-700/20' : o.status === 'cancelled' ? 'bg-fg/[0.05]' : 'bg-gradient-to-br from-violet-500/20 to-indigo-700/15'}`}>
           <div className="flex items-center justify-between"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS[o.status][1]}`}>{STATUS[o.status][0]}</span>{o.status === 'waiting' && <span className="text-xs text-slate-300"><Clock3 size={12} className="inline" /> <Countdown to={o.pay_by} /></span>}</div>

@@ -2892,5 +2892,16 @@
 "Too many wrong codes. Locked for 15 minutes.": "رموز خاطئة كثيرة. تم القفل لمدة 15 دقيقة.",
 "Wrong code ({} tries left)": "رمز خاطئ (تبقّى {} محاولات)",
 "6-digit code": "رمز من 6 أرقام",
-"How": "كيف"
+"How": "كيف",
+"Online": "متصل",
+"Online now": "متصل الآن",
+"Active {} min ago": "نشط قبل {} دقيقة",
+"Active 1 hour ago": "نشط قبل ساعة",
+"Active {} hours ago": "نشط قبل {} ساعات",
+"Active yesterday": "نشط أمس",
+"Active {} days ago": "نشط قبل {} أيام",
+"Not active recently": "غير نشط مؤخراً",
+"{}% completed": "{}% مكتملة",
+"new trader": "متداول جديد",
+"Bus tickets & airport shuttle": "تذاكر الحافلات ونقل المطار"
 }

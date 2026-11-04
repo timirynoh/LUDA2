@@ -2880,5 +2880,16 @@
 "Too many wrong codes. Locked for 15 minutes.": "Çok fazla yanlış kod. 15 dakika kilitlendi.",
 "Wrong code ({} tries left)": "Yanlış kod ({} hak kaldı)",
 "6-digit code": "6 haneli kod",
-"How": "Nasıl"
+"How": "Nasıl",
+"Online": "Çevrimiçi",
+"Online now": "Şu an çevrimiçi",
+"Active {} min ago": "{} dk önce aktifti",
+"Active 1 hour ago": "1 saat önce aktifti",
+"Active {} hours ago": "{} saat önce aktifti",
+"Active yesterday": "Dün aktifti",
+"Active {} days ago": "{} gün önce aktifti",
+"Not active recently": "Son zamanlarda aktif değil",
+"{}% completed": "%{} tamamlandı",
+"new trader": "yeni kişi",
+"Bus tickets & airport shuttle": "Otobüs biletleri ve havalimanı servisi"
 }

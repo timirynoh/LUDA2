@@ -2862,5 +2862,16 @@
 "Too many wrong codes. Locked for 15 minutes.": "Trop de codes erronés. Bloqué pendant 15 minutes.",
 "Wrong code ({} tries left)": "Code erroné ({} essais restants)",
 "6-digit code": "Code à 6 chiffres",
-"How": "Comment"
+"How": "Comment",
+"Online": "En ligne",
+"Online now": "En ligne maintenant",
+"Active {} min ago": "Actif il y a {} min",
+"Active 1 hour ago": "Actif il y a 1 heure",
+"Active {} hours ago": "Actif il y a {} heures",
+"Active yesterday": "Actif hier",
+"Active {} days ago": "Actif il y a {} jours",
+"Not active recently": "Pas actif récemment",
+"{}% completed": "{} % terminés",
+"new trader": "nouveau trader",
+"Bus tickets & airport shuttle": "Billets de bus et navette aéroport"
 }
