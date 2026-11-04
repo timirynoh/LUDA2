@@ -9,6 +9,7 @@ import { hashPin } from '../lib/crypto'
 import { LANGS } from '../lib/data'
 import { checkText } from '../lib/moderation'
 import { useStore } from '../lib/store'
+import { knownAccounts, switchAccount } from '../lib/accounts'
 import { LIVE, api, checkAvailable, googleSignIn, liveConfig, liveRecover, liveSetPassword, liveSignIn, liveSignUp, takeOAuthReturn, type Me } from '../lib/live'
 
 const device = () => {
@@ -171,16 +172,10 @@ export function useOAuthReturn() {
   const { set } = useStore()
   useEffect(() => {
     if (!takeOAuthReturn()) return
-    api<Me>('GET', 'me').then((m) => set((p) => {
-      const same = p.account?.username === m.profile.username
-      if (!same) localStorage.removeItem('luda.bio')
-      return {
-        ...p, signedIn: true, account: { email: m.profile.email, username: m.profile.username, passHash: '', salt: '', stay: true },
-        name: same && p.name ? p.name : m.profile.fullName.split(' ')[0],
-        ...(same ? {} : { onboarded: false, pinHash: '', salt: '', tickets: [], txs: [], inbox: [] }),
-        logins: [loginEntry('Google sign-in'), ...p.logins].slice(0, 20),
-      }
-    })).catch(() => {})
+    api<Me>('GET', 'me').then((m) => set((p) => ({
+      ...switchAccount(p, m.profile, true), signedIn: true,
+      logins: [loginEntry('Google sign-in'), ...(p.account?.username === m.profile.username ? p.logins : [])].slice(0, 20),
+    }))).catch(() => {})
   }, [set])
 }
 
@@ -223,6 +218,11 @@ export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () 
         if (r.needsConfirm) { setConfirm(true); setBusy(false); return }
       } catch (e) { setErr(e instanceof Error ? e.message : 'Could not create your account'); setBusy(false); return }
     }
+    if (LIVE) {
+      // A new account on a phone that already has one gets its own fresh set-up (its own PIN, nothing of the other account).
+      set((p) => ({ ...switchAccount(p, { username: f.username, email: f.email.trim().toLowerCase(), fullName: f.name.trim() }, stay), signedIn: true, logins: [loginEntry('Account created')] }))
+      return
+    }
     const account = await makeAccount(f.email, f.username, f.password, stay)
     set((p) => ({ ...p, account, signedIn: true, name: f.name.trim().split(' ')[0], logins: [loginEntry('Account created'), ...p.logins].slice(0, 20) }))
   }
@@ -260,6 +260,7 @@ export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () 
 
 export function SignIn({ onBack, onSignUp }: { onBack: () => void; onSignUp: () => void }) {
   const { s, set } = useStore()
+  const known = LIVE ? knownAccounts() : []
   const [id, setId] = useState(s.account?.username ?? '')
   const [pw, setPw] = useState('')
   const [show, setShow] = useState(false)
@@ -269,7 +270,7 @@ export function SignIn({ onBack, onSignUp }: { onBack: () => void; onSignUp: () 
   const [forgot, setForgot] = useState(false)
   const [twoStep, setTwoStep] = useState(false)
   const [code, setCode] = useState('')
-  const locked = tries >= 5
+  const locked = !LIVE && tries >= 5 // live: the server limits attempts per account and per network
   const finish = () => set((p) => ({ ...p, signedIn: true, account: p.account ? { ...p.account, stay } : p.account, logins: [loginEntry('Password sign-in'), ...p.logins].slice(0, 20), inbox: [{ id: String(Date.now()), ts: Date.now(), emoji: '🔐', title: 'New sign-in to your account. Not you? Freeze your wallet in Security Center', read: false, to: '/security' }, ...p.inbox] }))
   const [busy, setBusy] = useState(false)
   const submit = async () => {
@@ -279,15 +280,14 @@ export function SignIn({ onBack, onSignUp }: { onBack: () => void; onSignUp: () 
       try {
         await liveSignIn(id, pw)
         const m = await api<Me>('GET', 'me')
-        const same = s.account?.username === m.profile.username
-        set((p) => ({
-          ...p, account: { email: m.profile.email, username: m.profile.username, passHash: '', salt: '', stay },
-          name: same && p.name ? p.name : m.profile.fullName.split(' ')[0],
-          // A different person on this phone starts fresh (new PIN step, no leftover data shown).
-          ...(same ? {} : (localStorage.removeItem('luda.bio'), { onboarded: false, pinHash: '', salt: '', tickets: [], txs: [], inbox: [] })),
-        }))
+        // Each account on this phone keeps its own set-up: switching saves one and restores the other.
+        set((p) => switchAccount(p, m.profile, stay))
         finish()
-      } catch (e) { setTries(tries + 1); setErr(e instanceof Error ? e.message : 'Sign-in failed') } finally { setBusy(false) }
+      } catch (e) {
+        setTries(tries + 1)
+        const m = e instanceof Error ? e.message : 'Sign-in failed'
+        setErr(/wrong/i.test(m) && known.length > 1 ? `${m}. Check the account: you're signing in as ${id.includes('@') ? id : '@' + id.replace(/^@/, '')}.` : m)
+      } finally { setBusy(false) }
       return
     }
     const r = await checkLogin(s.account, id, pw)
@@ -298,6 +298,16 @@ export function SignIn({ onBack, onSignUp }: { onBack: () => void; onSignUp: () 
     <AuthShell title="Welcome back" sub="Sign in with your email or username." onBack={onBack}>
       <div className="flex flex-col gap-3">
         <GoogleButton />
+        {known.length > 1 && <div className="flex flex-col gap-2">
+          <p className="text-xs text-slate-400">Accounts on this phone · tap the one you're signing in to</p>
+          <div className="flex flex-wrap gap-2">{known.map((a) => { const on = id.replace(/^@/, '').toLowerCase() === a.username; return (
+            <button key={a.username} onClick={() => { setId(a.username); setPw(''); setErr('') }} className={`flex items-center gap-2 rounded-2xl px-3 py-2 text-start text-sm ${on ? 'bg-mint-400/20 ring-1 ring-mint-400/50' : 'glass'}`}>
+              <span className="grid size-8 place-items-center rounded-xl bg-gradient-to-br from-mint-400/40 to-emerald-700/50 text-xs font-bold">{a.name.slice(0, 1).toUpperCase()}</span>
+              <span className="leading-tight"><b className="block text-xs">{a.name.split(' ')[0]}</b><span className="text-[11px] text-slate-400">@{a.username}</span></span>
+            </button>) })}
+            <button onClick={() => { setId(''); setPw(''); setErr('') }} className="glass rounded-2xl px-3 py-2 text-xs text-slate-300">+ Another account</button>
+          </div>
+        </div>}
         <Field icon={<AtSign size={18} />}><input className="input ps-11" placeholder="Email or username" autoComplete="username" value={id} onChange={(e) => { setId(e.target.value); setErr('') }} /></Field>
         <Field icon={<Lock size={18} />}>
           <input className="input ps-11 pe-12" type={show ? 'text' : 'password'} placeholder="Password" autoComplete="current-password" value={pw} onChange={(e) => { setPw(e.target.value); setErr('') }} onKeyDown={(e) => e.key === 'Enter' && submit()} />

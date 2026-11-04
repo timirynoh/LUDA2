@@ -20,13 +20,13 @@ export default function LiveFlash() {
   const { s } = useStore()
   const { refresh } = useLive()
   const [tab, setTab] = useState<'board' | 'mine' | 'helping'>('board')
-  const [here, setHere] = useState(true)
+  const [here, setHere] = useState(false) // all cities by default (your city first), so nobody misses a job
   const { data, reload } = useApi<Board>(`flash${here ? `?city=${s.city}` : ''}`)
   const [post, setPost] = useState(false)
   const [view, setView] = useState<Job | null>(null)
   const done = () => { reload(); void refresh() }
   const toPay = (data?.mine ?? []).filter((j) => j.status === 'taken').length
-  const board = (data?.open ?? []).filter((j) => !j.mine)
+  const board = (data?.open ?? []).filter((j) => !j.mine).sort((a, b) => Number(b.city === s.city) - Number(a.city === s.city))
 
   return (
     <div className="pb-8">

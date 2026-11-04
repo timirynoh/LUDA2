@@ -3,6 +3,9 @@ import { useMemo, useState } from 'react'
 import { Empty, Tabs, useApi } from '../components/LiveKit'
 import { PostCard, PostForm, PostSheet, RulesCard } from '../components/LiveBoardKit'
 import { Header } from '../components/ui'
+import { Link } from 'react-router-dom'
+import { useStore } from '../lib/store'
+import { CITIES } from '../lib/data'
 import { BOARD, type BoardFeed, type BoardKind, type BoardPost } from '../lib/board'
 
 const SUB: Record<BoardKind, string> = {
@@ -17,6 +20,10 @@ export default function LiveBoard({ kind }: { kind: BoardKind }) {
   const [filter, setFilter] = useState('')
   const [open, setOpen] = useState<BoardPost | null>(null)
   const [posting, setPosting] = useState(false)
+  const { s } = useStore()
+  // Quick paid jobs (Flash help) live on their own board; show them here too so nobody looking for work misses them.
+  const flash = useApi<{ open: { id: string; title: string; reward_minor: number; city: string; poster_name?: string; mine: boolean }[] }>(kind === 'job' ? 'flash' : null).data
+  const quick = (flash?.open ?? []).filter((j) => !j.mine).sort((a, b) => Number(b.city === s.city) - Number(a.city === s.city))
   const filterKey = kind === 'housing' ? 'type' : kind === 'job' ? 'jobType' : kind === 'event' || kind === 'news' || kind === 'place' ? 'category' : ''
   const options = B.fields.find((f) => f.key === filterKey)?.options ?? []
   const list = useMemo(() => {
@@ -35,6 +42,20 @@ export default function LiveBoard({ kind }: { kind: BoardKind }) {
         {tab === 'all' && options.length > 0 && (
           <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1">
             {['', ...options].map((o) => <button key={o || 'all'} onClick={() => setFilter(o)} className={`chip shrink-0 py-2 ${filter === o ? 'bg-mint-400/20 text-mint-200 ring-1 ring-mint-400/40' : 'bg-fg/[0.06] text-slate-300'}`}>{o || 'All'}</button>)}
+          </div>
+        )}
+        {kind === 'job' && tab === 'all' && quick.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between"><p className="label">⚡ Quick paid jobs (Flash)</p><Link to="/flash" className="text-xs text-mint-300">See all</Link></div>
+            <div className="-mx-5 flex gap-3 overflow-x-auto px-5 pb-1">
+              {quick.slice(0, 8).map((j) => (
+                <Link key={j.id} to="/flash" className="card flex w-56 shrink-0 flex-col gap-1.5">
+                  <span className="chip self-start bg-gold-400/20 py-0.5 text-[11px] font-bold text-gold-200">₺{(j.reward_minor / 100).toLocaleString('en-US')} · paid via Luda</span>
+                  <p className="line-clamp-2 text-sm font-bold">{j.title}</p>
+                  <p className="text-[11px] text-slate-500">@{j.poster_name}{j.city ? ` · ${CITIES.find((c) => c.id === j.city)?.name ?? ''}` : ''}</p>
+                </Link>
+              ))}
+            </div>
           </div>
         )}
         {err && <p className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-300">{err}</p>}

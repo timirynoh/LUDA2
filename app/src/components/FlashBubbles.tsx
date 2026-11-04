@@ -7,12 +7,12 @@ import { FlashBubble, useFlashFeed } from '../screens/Flash'
 import { LIVE, getSession } from '../lib/live'
 import { useApi } from './LiveKit'
 
-interface LiveJob { id: string; title: string; reward_minor: number; poster_name?: string; mine: boolean }
-/** Live: real open Flash jobs in the user's city (reward already held by Luda). */
+interface LiveJob { id: string; title: string; reward_minor: number; city?: string; poster_name?: string; mine: boolean }
+/** Live: real open Flash jobs from every city, the user's city first (reward already held by Luda). */
 function useLiveJobs() {
   const { s } = useStore()
-  const { data } = useApi<{ open: LiveJob[] }>(LIVE && getSession() ? `flash?city=${s.city}` : null)
-  return (data?.open ?? []).filter((j) => !j.mine)
+  const { data } = useApi<{ open: LiveJob[] }>(LIVE && getSession() ? 'flash' : null)
+  return (data?.open ?? []).filter((j) => !j.mine).sort((a, b) => Number(b.city === s.city) - Number(a.city === s.city))
 }
 
 /** Story-style bubble row of live help requests nearby. */
