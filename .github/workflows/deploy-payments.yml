@@ -56,3 +56,15 @@ jobs:
           done
       - name: Print your webhook address
         run: echo "Webhook URL for Paystack and Flutterwave → https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/pay-webhook"
+      - name: Load the Nearby directory (real OpenStreetMap places, saved on the server)
+        # Fills places_cache for every city + category so the first student never waits. Never fails the deploy.
+        run: |
+          for city in lefkosa girne magusa guzelyurt lefke iskele; do
+            for cat in food african grocery pharmacy health money beauty worship; do
+              n=$(curl -s -m 60 "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/api/places?city=$city&cat=$cat" | python3 -c 'import sys,json
+          try: print(len(json.load(sys.stdin).get("places",[])))
+          except Exception: print("error")')
+              echo "$city / $cat: $n places"
+              sleep 4
+            done
+          done

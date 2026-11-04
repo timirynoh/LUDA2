@@ -2903,5 +2903,6 @@
 "You can send {} · {} bought with Instant is for spending in Luda only": "{} gönderebilirsin · Instant ile alınan {} yalnızca Luda'da harcanabilir",
 "{} spend-only": "{} sadece harcamalık",
 "You can buy up to ₺5,000 of lira with Instant per 24 hours. Try again later, or use P2P.": "24 saatte Instant ile en fazla 5.000 ₺ lira alabilirsin. Sonra tekrar dene veya P2P kullan.",
-"Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "Instant ile alınan lira yalnızca Luda'da harcanabilir (faturalar, biletler, Market, Flash). En fazla {} gönderebilirsin."
+"Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "Instant ile alınan lira yalnızca Luda'da harcanabilir (faturalar, biletler, Market, Flash). En fazla {} gönderebilirsin.",
+"Couldn't load places right now. Please try again.": "Şu anda yerler yüklenemedi. Lütfen tekrar deneyin."
 }

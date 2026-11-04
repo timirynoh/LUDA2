@@ -2915,5 +2915,6 @@
 "You can send {} · {} bought with Instant is for spending in Luda only": "يمكنك إرسال {} · {} المشتراة عبر Instant للإنفاق داخل Luda فقط",
 "{} spend-only": "{} للإنفاق فقط",
 "You can buy up to ₺5,000 of lira with Instant per 24 hours. Try again later, or use P2P.": "يمكنك شراء حتى 5,000 ₺ عبر Instant كل 24 ساعة. حاول لاحقاً أو استخدم P2P.",
-"Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "الليرة المشتراة عبر Instant تُنفق داخل Luda فقط (الفواتير والتذاكر وMarket وFlash). يمكنك إرسال حتى {}."
+"Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "الليرة المشتراة عبر Instant تُنفق داخل Luda فقط (الفواتير والتذاكر وMarket وFlash). يمكنك إرسال حتى {}.",
+"Couldn't load places right now. Please try again.": "تعذّر تحميل الأماكن الآن. يُرجى المحاولة مرة أخرى."
 }

@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Header } from '../components/ui'
 import { CITIES } from '../lib/data'
-import { CATEGORIES, findPlaces, samplePlaces, type Place } from '../lib/places'
+import { LIVE } from '../lib/live'
+import { CATEGORIES, findPlaces, samplePlaces, serverPlaces, type Place } from '../lib/places'
 import { useStore } from '../lib/store'
 
 const wa = (phone: string) => {
@@ -26,11 +27,12 @@ export default function Nearby() {
   useEffect(() => {
     let alive = true
     setState('loading')
-    findPlaces(cat, city.lat, city.lon)
+    ;(LIVE ? serverPlaces(city.id, cat) : findPlaces(cat, city.lat, city.lon))
       .then((p) => { if (alive) { setPlaces(p); setState('ok') } })
-      .catch(() => { if (alive) { setPlaces(samplePlaces(cat, city.lat, city.lon)); setState('offline') } })
+      // LIVE never shows made-up places: just a Retry. The demo keeps its clearly marked samples.
+      .catch(() => { if (alive) { setPlaces(LIVE ? [] : samplePlaces(cat, city.lat, city.lon)); setState('offline') } })
     return () => { alive = false }
-  }, [cat, city.lat, city.lon, nonce])
+  }, [cat, city.id, city.lat, city.lon, nonce])
 
   const contact = () => {
     const n = s.contacted + 1
@@ -63,18 +65,18 @@ export default function Nearby() {
         {state === 'loading' && <div className="flex flex-col items-center gap-3 py-16 text-slate-400"><Loader2 className="animate-spin text-mint-300" size={32} />{t('near.loading')}</div>}
         {state === 'offline' && (
           <div className="flex items-center gap-3 rounded-2xl bg-gold-400/10 p-3 text-xs text-gold-200">
-            Live directory unreachable — showing sample listings.
+            {LIVE ? "Couldn't load places right now. Please try again." : 'Live directory unreachable — showing sample listings.'}
             <button onClick={() => setNonce(nonce + 1)} className="chip ms-auto bg-gold-400/20"><RefreshCw size={12} /> Retry</button>
           </div>
         )}
-        {state !== 'loading' && !list.length && <p className="py-12 text-center text-sm text-slate-400">{t('near.none')}</p>}
+        {state === 'ok' && !list.length && <p className="py-12 text-center text-sm text-slate-400">{t('near.none')}</p>}
         {state !== 'loading' && list.slice(0, 40).map((p, i) => (
           <motion.div key={p.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 10) * 0.03 }} className="card">
             <div className="flex items-start gap-3">
               <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-ink-600 to-ink-800 text-xl">{CATEGORIES.find((c) => c.id === cat)?.emoji}</div>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold">{p.name} {p.sample && <span className="chip bg-fg/5 text-[10px] text-slate-400">sample</span>}</p>
-                <p className="truncate text-xs capitalize text-slate-400">{p.cuisine || p.kind} · {p.km.toFixed(1)} km</p>
+                <p className="truncate text-xs capitalize text-slate-400">{p.cuisine || p.religion || p.kind} · <span className="normal-case">{p.km.toFixed(1)} km</span></p>
                 {p.hours && <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-500"><Clock size={11} /> {p.hours}</p>}
               </div>
             </div>

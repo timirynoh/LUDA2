@@ -2,6 +2,7 @@
 // Rules: the server owns every balance and price; money moves only through the SQL
 // functions (atomic, idempotent); deposits are confirmed with the provider before
 // crediting; spending needs the user's PIN; withdrawing and sending need KYC.
+import { OVERPASS_MIRRORS, PLACE_CATS, PLACE_CITIES, overpassQuery, parseOverpass, type PlaceOut } from './places.ts'
 import { hashPin, randomHex, recover, refresh, setPassword, signIn, signUp, userFromToken, type AuthEnv } from './auth.ts'
 import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion } from './webauthn.ts'
 import { MoneyError, type CaseRow, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
@@ -1878,6 +1879,32 @@ const routes: Record<string, Route> = {
 
   /* ---------------- Home banners ---------------- */
   'GET banners': async ({ d }) => ({ banners: await d.db.fn('luda_banners_live', {}) }),
+
+  /* Nearby directory: real OpenStreetMap places saved on the server per city + category (v1.16.0). Public
+     (it's open map data), limited per network. A copy older than a week is refreshed; if Overpass is down the
+     saved copy is still served. Only the fixed cities and categories can be asked for, never a free query. */
+  'GET places': async ({ req, d, url }) => {
+    const city = String(url.searchParams.get('city') ?? ''), cat = String(url.searchParams.get('cat') ?? '')
+    if (!PLACE_CITIES[city] || !PLACE_CATS[cat]) throw new Fail('Unknown city or category', 400)
+    await limit(d, `places:${clientIp(req)}`, 120, 600)
+    const saved = await d.db.fn<{ places: PlaceOut[]; fetchedAt: string; ageHours: number } | null>('luda_places_get', { p_city: city, p_cat: cat })
+    if (saved && saved.ageHours < 24 * 7) return { places: saved.places, fetchedAt: saved.fetchedAt }
+    // One refresh at a time per city + category (others get the saved copy, or wait for the next try).
+    if (await d.db.hit(`placesfetch:${city}:${cat}`, 1, saved ? 300 : 20)) {
+      for (const mirror of OVERPASS_MIRRORS) {
+        try {
+          const r = await (d.fetch ?? fetch)(mirror, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'Luda/1.0 (city directory)' },
+            body: new URLSearchParams({ data: overpassQuery(city, cat) }).toString(), signal: AbortSignal.timeout(25000) })
+          if (!r.ok) continue
+          const places = parseOverpass(city, await r.json())
+          await d.db.fn('luda_places_put', { p_city: city, p_cat: cat, p_places: { items: places } })
+          return { places, fetchedAt: new Date().toISOString() }
+        } catch { /* next mirror */ }
+      }
+    }
+    if (saved) return { places: saved.places, fetchedAt: saved.fetchedAt }
+    throw new Fail('The directory is loading. Please try again in a minute.', 503)
+  },
   'GET admin-banners': async ({ req, env, d }) => { await staff(req, env, d, 'banners', 'view'); return { banners: await d.db.fn('luda_banners_all', {}) } },
   'POST admin-banner-save': async ({ req, env, d, body }) => {
     const a = await staff(req, env, d, 'banners', 'edit')

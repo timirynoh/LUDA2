@@ -2904,5 +2904,6 @@
 "You can send {} · {} bought with Instant is for spending in Luda only": "Unaweza kutuma {} · {} iliyonunuliwa kwa Instant ni ya kutumia ndani ya Luda tu",
 "{} spend-only": "{} ya matumizi tu",
 "You can buy up to ₺5,000 of lira with Instant per 24 hours. Try again later, or use P2P.": "Unaweza kununua hadi ₺5,000 kwa Instant kila saa 24. Jaribu tena baadaye, au tumia P2P.",
-"Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "Lira iliyonunuliwa kwa Instant inaweza kutumika ndani ya Luda tu (bili, tiketi, Market, Flash). Unaweza kutuma hadi {}."
+"Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "Lira iliyonunuliwa kwa Instant inaweza kutumika ndani ya Luda tu (bili, tiketi, Market, Flash). Unaweza kutuma hadi {}.",
+"Couldn't load places right now. Please try again.": "Imeshindikana kupakia maeneo kwa sasa. Tafadhali jaribu tena."
 }

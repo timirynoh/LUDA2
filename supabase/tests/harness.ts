@@ -103,6 +103,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     ids: new Map<string, Record<string, string>>([['12345678901', { first_name: 'ADA', middle_name: 'CHIOMA', last_name: 'OKAFOR', date_of_birth: '2001-04-15' }],
       ['10987654321', { first_name: 'BOLA', last_name: 'ADEYEMI', date_of_birth: '15-Apr-2000' }]]),
     calls: [] as string[],
+    overpassDown: false,
     didit: new Map<string, Record<string, unknown>>(), // session id -> decision JSON
     files: new Map<string, number>(), // storage path -> size
     diditN: 0,
@@ -195,6 +196,16 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       if (url.pathname === '/v3/session/' && init?.method === 'POST') { const id = 'ds_' + ++world.diditN; world.calls.push('didit-start:' + body.vendor_data); return ok({ session_id: id, url: `https://verify.didit.me/session/${id}` }, 201) }
       const m = url.pathname.match(/^\/v3\/session\/([^/]+)\/decision\/$/)
       if (m) return ok(world.didit.get(m[1]) ?? { status: 'Not Started', id_verifications: null })
+    }
+    // OpenStreetMap Overpass (Nearby directory): first mirror down when world.overpassDown, else real-looking data
+    if (/overpass/.test(url.host)) {
+      world.calls.push('overpass:' + url.host)
+      if (world.overpassDown) return ok({ error: 'busy' }, 429)
+      return ok({ elements: [
+        { type: 'node', id: 1, lat: 35.19, lon: 33.38, tags: { name: 'Gönyeli Eczanesi', amenity: 'pharmacy', phone: '+90 392 223 0000', opening_hours: 'Mo-Sa 08:30-19:00' } },
+        { type: 'way', id: 2, center: { lat: 35.2, lon: 33.36 }, tags: { name: 'Near East Pharmacy', amenity: 'pharmacy', website: 'neu.edu.tr' } },
+        { type: 'node', id: 3, lat: 35.18, lon: 33.37, tags: { amenity: 'pharmacy' } },
+      ] })
     }
     // Dojah
     if (url.host === 'api.dojah.io') {
