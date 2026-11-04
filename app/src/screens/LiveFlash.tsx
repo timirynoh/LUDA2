@@ -8,11 +8,12 @@ import { LiveKyc, ReviewAndPin, errMsg } from '../components/LiveMoney'
 import { CasesHub } from '../components/LiveSupport'
 import { Header, Sheet, Success } from '../components/ui'
 import { CITIES } from '../lib/data'
+import { JOB_EMOJI_PICK, jobEmoji } from '../lib/jobEmoji'
 import { api } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 import { useStore } from '../lib/store'
 
-interface Job { id: string; title: string; details: string; city: string; reward_minor: number; status: 'open' | 'taken' | 'done' | 'cancelled'; created_at: string; taken_at: string | null; poster_name?: string; helper_name?: string; mine: boolean }
+interface Job { emoji?: string; id: string; title: string; details: string; city: string; reward_minor: number; status: 'open' | 'taken' | 'done' | 'cancelled'; created_at: string; taken_at: string | null; poster_name?: string; helper_name?: string; mine: boolean }
 interface Board { open: Job[]; mine: Job[]; helping: Job[]; feePct: number }
 const cityName = (id: string) => CITIES.find((c) => c.id === id)?.name ?? ''
 const REWARDS = [50, 100, 200, 500]
@@ -45,7 +46,7 @@ export default function LiveFlash() {
                   <p className="label">{k === 'near' ? `📍 In ${cityName(s.city) || 'your city'}` : '🚗 Other cities · can you get there?'}</p>
                   {(list as Job[]).map((j) => (
                     <button key={j.id} className="card flex items-center gap-3 text-start" onClick={() => setView(j)}>
-                      <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-gold-300 to-amber-500 text-ink-950"><Zap size={22} /></span>
+                      <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-gold-300 to-amber-500 text-2xl text-ink-950">{j.emoji || <Zap size={22} />}</span>
                       <div className="min-w-0 flex-1"><p className="truncate font-semibold">{j.title}</p><p className="truncate text-xs text-slate-400">@{j.poster_name}{j.city ? ` · ${cityName(j.city)}` : ''} · {ago(j.created_at)}</p>
                         {k === 'far' && <span className="chip mt-1 bg-sky-400/15 py-0.5 text-[10px] text-sky-200">Not in your city</span>}</div>
                       <div className="flex flex-col items-end gap-1"><p className="text-lg font-extrabold text-mint-300">{lira(j.reward_minor)}</p>{me?.profile.kyc !== 'verified' && <Lock size={13} className="text-slate-500" />}</div>
@@ -69,18 +70,22 @@ function PostSheet({ onClose, onDone }: { onClose: () => void; onDone: () => voi
   const [details, setDetails] = useState('')
   const [reward, setReward] = useState('100')
   const [review, setReview] = useState(false)
+  const [picked, setPicked] = useState('')
+  const emoji = picked || jobEmoji(`${title} ${details}`)
   const r = toMinor(reward), bal = me?.balances.TRY ?? 0
   return (
     <Sheet open onClose={onClose} title="Ask for help">
       {review ? (
         <ReviewAndPin holdLabel={`Hold to post · ${lira(r)}`} onClose={() => setReview(false)}
-          rows={[['Job', title], ['Reward (held now)', <b key="r">{lira(r)}</b>], ['Where', cityName(s.city)]]}
+          rows={[['Job', `${emoji} ${title}`], ['Reward (held now)', <b key="r">{lira(r)}</b>], ['Where', cityName(s.city)]]}
           warning="The reward leaves your Lira wallet now and is held by Luda. You pay the helper by tapping Job done. Cancel before anyone takes it to get it back."
-          run={async (auth) => { await api('POST', 'flash-post', { title, details, city: s.city, rewardMinor: r, ...auth }); onDone() }}
+          run={async (auth) => { await api('POST', 'flash-post', { title, details, city: s.city, rewardMinor: r, emoji, ...auth }); onDone() }}
           done={<Success title="Posted ⚡" sub="Students nearby can now take your job." onClose={onClose} />} />
       ) : (
         <div className="flex flex-col gap-3 pb-4">
-          <input className="input" placeholder="What do you need? (e.g. Help carry a fridge)" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={70} />
+          <div className="flex items-center gap-2"><span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-gold-300 to-amber-500 text-2xl">{emoji}</span>
+            <input className="input flex-1" placeholder="What do you need? (e.g. Need a plumber)" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={70} /></div>
+          <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">{JOB_EMOJI_PICK.map((e) => <button key={e} onClick={() => setPicked(e === picked ? '' : e)} className={`grid size-10 shrink-0 place-items-center rounded-xl text-xl ${emoji === e ? 'bg-mint-400/25 ring-1 ring-mint-400/50' : 'bg-fg/[0.05]'}`}>{e}</button>)}</div>
           <textarea className="input min-h-24" placeholder="Where, when, anything the helper should know" value={details} onChange={(e) => setDetails(e.target.value)} maxLength={400} />
           <p className="label">Reward</p>
           <div className="flex flex-wrap gap-2">{REWARDS.map((v) => <button key={v} onClick={() => setReward(String(v))} className={`chip py-2 ${reward === String(v) ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}>₺{v}</button>)}</div>

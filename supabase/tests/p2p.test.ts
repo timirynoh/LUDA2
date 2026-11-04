@@ -41,7 +41,7 @@ test('bank accounts: verified only, Turkish IBAN, always in the verified name', 
 })
 
 test('buy lira: Naira held → seller sends lira + receipt → buyer releases; fee 0.5%; nearby ads first', async () => {
-  assert.match((await call('POST', 'p2p-ad-save', { side: 'sell', price: 60, minTry: 100_00, maxTry: 1_000_00, methods: ['bank'] }, T.kemal)).j.error, /within 10%/, 'price far from the rate is blocked')
+  assert.match((await call('POST', 'p2p-ad-save', { side: 'sell', price: 70, minTry: 100_00, maxTry: 1_000_00, methods: ['bank'] }, T.kemal)).j.error, /typo/, 'only an obviously wrong price is blocked')
   assert.match((await call('POST', 'p2p-ad-save', { side: 'sell', price: 40.5, minTry: 100_00, maxTry: 9_000_00, methods: ['bank'] }, T.kemal)).j.error, /Limits/)
   assert.equal((await call('POST', 'p2p-ad-save', { side: 'sell', price: 40.5, minTry: 100_00, maxTry: 1_000_00, methods: ['bank'] }, T.new)).status, 403, 'needs ID')
   const ad = (await call('POST', 'p2p-ad-save', { side: 'sell', price: 40.5, minTry: 100_00, maxTry: 2_000_00, methods: ['bank', 'cash'], city: 'lefkosa', area: 'Hamitköy', terms: 'Ziraat or Garanti, fast' }, T.kemal)).j.ad
@@ -49,9 +49,10 @@ test('buy lira: Naira held → seller sends lira + receipt → buyer releases; f
   assert.match((await call('POST', 'p2p-ad-save', { side: 'sell', price: 40, minTry: 100_00, maxTry: 500_00, methods: ['bank'] }, T.kemal)).j.error, /1 ad/)
   await call('POST', 'p2p-ad-save', { side: 'sell', price: 40.2, minTry: 100_00, maxTry: 2_000_00, methods: ['bank'], city: 'girne' }, T.boss)
   const list = (await call('GET', 'p2p?want=buy&city=lefkosa&area=hamitköy', undefined, T.ada)).j
-  assert.equal(list.ads[0].maker, 'kemal', 'same area first even if a bit pricier'); assert.equal(list.ads[0].verified, true); assert.equal(list.ads[0].nearby, 3)
+  assert.equal(list.ads[0].maker, 'boss', 'cheapest first (Bybit-style)'); assert.equal(list.ads[1].maker, 'kemal'); assert.equal(list.ads[1].verified, true); assert.equal(list.ads[1].nearby, 3)
   assert.equal(list.ads[0].receive_method, undefined)
-  assert.equal((await call('GET', 'p2p?want=buy', undefined, T.ada)).j.ads[0].maker, 'boss', 'no area given → best price first')
+  const near = (await call('GET', 'p2p?want=buy&city=lefkosa&area=hamitköy&near=1', undefined, T.ada)).j.ads
+  assert.deepEqual(near.map((a: any) => a.maker), ['kemal'], '"near me" shows only nearby traders')
   // order
   const pm = (await call('GET', 'pay-methods', undefined, T.ada)).j.methods[0]
   const before = await NGN('ada')
@@ -107,6 +108,8 @@ test('appeal: Naira stays held; Luda team decides from Held money', async () => 
   const o = (await call('POST', 'p2p-order', { adId: ad.id, amountTry: 100_00, method: 'bank', payMethodId: pm.id, pin: '4826' }, T.ada)).j.order
   await call('POST', 'p2p-sent', { id: o.id, files: [RECEIPT] }, T.kemal)
   assert.match((await call('POST', 'p2p-appeal', { id: o.id }, T.kemal)).j.error, /what went wrong/)
+  assert.match((await call('POST', 'p2p-appeal', { id: o.id, reason: 'Buyer not answering' }, T.kemal)).j.error, /15 minutes/, 'appeal only after the waiting time')
+  await q(`update p2p_orders set sent_at = now() - interval '20 minutes' where id = $1`, [o.id])
   assert.equal((await call('POST', 'p2p-appeal', { id: o.id, reason: 'I sent it 2 hours ago, buyer not answering' }, T.kemal)).status, 200)
   const held = (await call('GET', 'admin-escrows', undefined, T.boss)).j.escrows.find((e: any) => e.item?.type === 'p2p' && e.item.id === o.id)
   assert.ok(held, 'shows in Held money'); assert.equal(held.item.status, 'appeal')
@@ -116,4 +119,62 @@ test('appeal: Naira stays held; Luda team decides from Held money', async () => 
   assert.equal(await NGN('kemal'), kemalBefore + 4_050_00 - 20_25)
   const msgs = (await call('GET', `p2p-order?id=${o.id}`, undefined, T.ada)).j.order.messages
   assert.match(msgs.at(-1).body, /Luda team decision/)
+})
+
+test('dollars too; disputes in stages: negotiation → Luda review (claim, message, decide); auto-appeal after 1 hour', async () => {
+  assert.match((await call('POST', 'pay-method-add', { bank: 'Garanti BBVA', iban: 'GB12', currency: 'USD' }, T.ada)).j.error, /IBAN/)
+  const usd = (await call('POST', 'pay-method-add', { bank: 'Garanti BBVA', iban: 'TR120006200000000006295999', currency: 'USD' }, T.ada)).j.method
+  assert.equal(usd.currency, 'USD')
+  const mine = (await call('GET', 'p2p?want=buy', undefined, T.kemal)).j.mine[0]
+  await call('POST', 'p2p-ad-save', { id: mine.id, side: 'sell', price: 40.5, minTry: 100_00, maxTry: 100_00, methods: ['bank'], status: 'removed' }, T.kemal)
+  // FX_TRY_RATES has USD 0.025 per TRY and 40 NGN per TRY → ₦1,600 per $1 market
+  assert.match((await call('POST', 'p2p-ad-save', { side: 'sell', asset: 'USD', price: 40, minTry: 100_00, maxTry: 1_000_00, methods: ['bank'] }, T.kemal)).j.error, /\$1/, 'dollar price checked against the dollar rate')
+  const ad = (await call('POST', 'p2p-ad-save', { side: 'sell', asset: 'USD', price: 1650, minTry: 50_00, maxTry: 500_00, methods: ['bank'], city: 'girne' }, T.kemal)).j.ad
+  assert.equal(ad.asset, 'USD')
+  const list = (await call('GET', 'p2p?want=buy&asset=USD', undefined, T.ada)).j
+  assert.equal(list.ads.length, 1); assert.equal(list.asset, 'USD'); assert.equal(Math.round(list.market), 1600)
+  assert.equal((await call('GET', 'p2p?want=buy', undefined, T.ada)).j.ads.some((a: any) => a.asset === 'USD'), false, 'lira list has no dollar ads')
+  const tryAcct = (await call('GET', 'pay-methods', undefined, T.ada)).j.methods.find((m: any) => m.currency === 'TRY')
+  assert.match((await call('POST', 'p2p-order', { adId: ad.id, amountTry: 100_00, method: 'bank', payMethodId: tryAcct.id, pin: '4826' }, T.ada)).j.error, /USD bank account/, 'dollars go to a dollar account')
+  const o = (await call('POST', 'p2p-order', { adId: ad.id, amountTry: 100_00, method: 'bank', payMethodId: usd.id, pin: '4826' }, T.ada)).j.order
+  assert.equal(o.asset, 'USD'); assert.equal(o.amount_ngn, 165_000_00, '$100 × ₦1,650')
+  await call('POST', 'p2p-sent', { id: o.id, files: [RECEIPT] }, T.kemal)
+  await q(`update p2p_orders set sent_at = now() - interval '20 minutes' where id = $1`, [o.id])
+  assert.equal((await call('POST', 'p2p-appeal', { id: o.id, reason: 'The dollars are not in my account' }, T.ada)).status, 200)
+  let v = (await call('GET', `p2p-order?id=${o.id}`, undefined, T.ada)).j.order
+  assert.equal(v.appeal_stage, 'negotiation'); assert.equal(v.iAppealed, true); assert.equal(v.appealBy, 'payer')
+  // the appellant can withdraw while negotiating
+  assert.equal((await call('POST', 'p2p-appeal-cancel', { id: o.id }, T.kemal)).status, 409, 'only who appealed')
+  assert.equal((await call('POST', 'p2p-appeal-cancel', { id: o.id }, T.ada)).status, 200)
+  assert.equal((await call('GET', `p2p-order?id=${o.id}`, undefined, T.ada)).j.order.status, 'sent')
+  // auto-appeal after 1 hour without release → straight to Luda review
+  await q(`update p2p_orders set sent_at = now() - interval '61 minutes' where id = $1`, [o.id]); await q(`delete from rate_hits`)
+  await call('GET', 'p2p-orders', undefined, T.ada)
+  v = (await call('GET', `p2p-order?id=${o.id}`, undefined, T.ada)).j.order
+  assert.equal(v.status, 'appeal'); assert.equal(v.appeal_stage, 'review'); assert.equal(v.appealBy, 'auto')
+  // staff: dispute role 'edit' can claim + message; deciding needs 'full'
+  await call('POST', 'admin-staff-set', { email: 'new@x.com', roles: { disputes: 'edit' }, pin: '4826' }, T.boss)
+  assert.equal((await call('GET', 'admin-p2p', undefined, T.new)).j.orders[0].id, o.id, 'appeals queue')
+  assert.equal((await call('POST', 'admin-p2p-claim', { id: o.id }, T.new)).status, 200)
+  assert.equal((await call('POST', 'admin-p2p-msg', { id: o.id, body: 'Please both upload your bank statements' }, T.new)).status, 200)
+  assert.equal((await call('POST', 'admin-p2p-decide', { id: o.id, to: 'payer', note: 'x', pin: '4826' }, T.new)).status, 403, 'deciding needs full')
+  const msgs = (await call('GET', `p2p-order?id=${o.id}`, undefined, T.kemal)).j.order.messages
+  const staffMsg = msgs.find((m: any) => m.kind === 'staff'); assert.match(staffMsg.by, /Luda team · new/); assert.equal(staffMsg.mine, false)
+  assert.equal((await call('GET', `p2p-order?id=${o.id}`, undefined, T.kemal)).j.order.assigned_to, 'new')
+  const adaBefore = await NGN('ada')
+  assert.equal((await call('POST', 'admin-p2p-decide', { id: o.id, to: 'payer', note: 'No transfer in the statement', pin: '4826' }, T.boss)).status, 200)
+  assert.equal(await NGN('ada'), adaBefore + 165_000_00, 'refunded in full')
+  v = (await call('GET', `p2p-order?id=${o.id}`, undefined, T.ada)).j.order
+  assert.equal(v.status, 'cancelled'); assert.equal(v.appeal_stage, 'decided')
+})
+
+test('money is never created or lost: wallets + held escrow + Luda fees = everything put in', async () => {
+  const seeded = Number((await q(`select coalesce(sum(amount_minor),0) s from ledger where kind = 'adjustment' and currency = 'NGN'`))[0].s)
+  const wallets = Number((await q(`select coalesce(sum(balance_minor),0) s from wallets where currency = 'NGN'`))[0].s)
+  const held = Number((await q(`select coalesce(sum(amount_minor),0) s from escrows where status = 'held' and currency = 'NGN'`))[0].s)
+  const fees = Number((await q(`select coalesce(sum(fee_minor),0) s from escrows where status = 'released' and currency = 'NGN'`))[0].s)
+  assert.equal(wallets + held + fees, seeded)
+  const mismatched = await q(`select w.user_id from wallets w left join (select user_id, currency, sum(amount_minor) s from ledger group by 1,2) l using (user_id, currency) where w.balance_minor <> coalesce(l.s, 0)`)
+  assert.equal(mismatched.length, 0, 'every wallet equals its ledger')
+  assert.equal((await q(`select count(*) n from wallets where balance_minor < 0`))[0].n, 0)
 })

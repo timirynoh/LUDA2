@@ -412,13 +412,40 @@ type Route = (ctx: { req: Request; env: Env; d: Deps; body: Body; url: URL }) =>
 
 
 
+
+export const KYC_TRIES_PER_DAY = 2
+/** ID check attempts left today (Didit starts count; the counter resets each day). */
+const kycTriesLeft = (p: Profile) => Math.max(0, KYC_TRIES_PER_DAY - (p.kyc_tries_day === new Date().toISOString().slice(0, 10) ? p.kyc_tries : 0))
+
+
+/* Flash job emojis: same list as the app (lib/jobEmoji.ts). */
+const JOB_EMOJI: [RegExp, string][] = [
+  [/plumb|leak|pipe|sink|tap|toilet|water|shower|drain|boiler/i, '🚰'], [/fridge|freezer|refrigerat/i, '🧊'], [/wash(ing)? ?machine|laundry|iron/i, '🧺'],
+  [/electric|socket|wiring|light ?bulb|lamp|fuse|power/i, '💡'], [/air ?con|\bac\b|heater|klima/i, '❄️'], [/mov(e|ing)|carry|lift|furniture|sofa|bed\b|box(es)?/i, '📦'],
+  [/clean|tidy|mop|wash dishes/i, '🧹'], [/paint/i, '🎨'], [/carpent|wood|shelf|assemble|ikea|door|lock/i, '🔨'], [/car\b|mechanic|tyre|tire|drive|ride|lift to/i, '🚗'],
+  [/airport|ercan|flight/i, '✈️'], [/deliver|parcel|package|pick ?up|courier|drop ?off/i, '🛵'], [/shop|groceries|market|buy me/i, '🛒'], [/cook|food|meal|jollof/i, '🍲'],
+  [/hair|braid|barber|nails|makeup/i, '💇🏾'], [/laptop|computer|pc\b|software|website|code/i, '💻'], [/phone|screen|iphone|android/i, '📱'], [/wifi|internet|router|modem/i, '📶'],
+  [/tutor|lesson|homework|assignment|math|exam|study|teach/i, '📚'], [/translat|turkish|interpret/i, '🗣️'], [/photo|video|camera/i, '📷'], [/print|scan|document|form/i, '🖨️'],
+  [/pet|dog|cat/i, '🐾'], [/garden|plant|grass/i, '🌿'], [/baby|child|kid/i, '🧸'], [/queue|line|stand in/i, '⏳'],
+]
+const JOB_EMOJI_PICK = ['⚡', '🚰', '🧊', '🧺', '💡', '❄️', '📦', '🧹', '🎨', '🔨', '🚗', '✈️', '🛵', '🛒', '🍲', '💇🏾', '💻', '📱', '📶', '📚', '🗣️', '📷', '🖨️', '🐾', '🌿', '🧸', '⏳']
+export const jobEmoji = (text: string) => JOB_EMOJI.find(([r]) => r.test(text))?.[1] ?? '⚡'
+
 /* ------------------------- P2P exchange (Naira in Luda ⇄ lira outside) ------------------------- */
-export const P2P_RULES = { maxAds: 1, maxTry: 5_000_00, minTry: 50_00, windowMin: 30, priceBand: 0.1 }
+export const P2P_RULES = { maxAds: 1, maxTry: 5_000_00, minTry: 50_00, windowMin: 30, priceBand: 0.5, appealWaitMin: 15, assets: ['TRY', 'USD', 'EUR', 'GBP'] }
+const P2P_SYMBOL: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }
+const p2pAsset = (v: unknown) => (P2P_RULES.assets.includes(String(v)) ? String(v) : 'TRY')
+/** Today's market price in Naira for 1 unit of the asset (null if unknown). Only used as a sanity guard: people set their own rate. */
+async function marketNgnPer(asset: string, env: Env, d: Deps) {
+  try { const ngn = await ngnPerTry(env, d.fetch); if (asset === 'TRY') return ngn; const per = await perTry(asset, env, d.fetch); return per > 0 ? ngn / per : null } catch { return null }
+}
+const IBAN_ANY = /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/
 const IBAN = /^TR\d{24}$/
 const p2pErr = (e: unknown): never => {
   if (e instanceof MoneyError) {
     if (e.message === 'too_many_ads') throw new Fail(`You can have ${P2P_RULES.maxAds} ad at a time. Edit or remove your current ad.`)
     if (e.message === 'too_many_methods') throw new Fail('You can save up to 5 bank accounts')
+    if (e.message === 'appeal_too_early') throw new Fail(`You can appeal ${P2P_RULES.appealWaitMin} minutes after the money is marked as sent. Give the other person time to check their bank.`)
     if (e.message === 'p2p_limits') throw new Fail('The amount is outside this ad\'s limits')
     if (e.message === 'p2p_method') throw new Fail('This ad doesn\'t accept that payment method')
     if (e.message === 'not_available') throw new Fail('This order or ad is no longer available', 409)
@@ -578,7 +605,7 @@ const routes: Record<string, Route> = {
     const staffOf = await permsOf(p, env, d)
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
     return {
-      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null },
+      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null },
       // Every top-up attempt with its status (pending / paid / failed / mismatch), so the app can show all of them.
       deposits: deposits.map((x) => ({ reference: x.reference, provider: x.provider, status: x.status, chargeMinor: Number(x.amount_minor), currency: x.currency, feeMinor: Number(x.fee_minor ?? 0), creditMinor: Number(x.credit_minor ?? 0), creditCurrency: x.credit_currency ?? 'NGN', createdAt: x.created_at, paidAt: x.paid_at ?? null })),
       balances, history, tickets, withdrawals: withdrawals.map((w) => ({ ...w, account_number: '••••' + w.account_number.slice(-4), recipient_code: undefined })),
@@ -591,6 +618,14 @@ const routes: Record<string, Route> = {
     if (p.pin_hash) await verifyPin(p, body.oldPin, d)
     const salt = randomHex(16)
     await d.db.updateProfile(p.user_id, { pin_salt: salt, pin_hash: await hashPin(body.pin, salt), pin_fails: 0, pin_locked_until: null })
+    return { ok: true }
+  },
+
+  // Live lock screen and "re-enter your PIN on a new phone": the PIN is checked here only (5 wrong = locked 15 min);
+  // the phone never stores the PIN or a hash of it.
+  'POST pin-check': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await verifyPin(p, body.pin, d)
     return { ok: true }
   },
 
@@ -765,17 +800,20 @@ const routes: Record<string, Route> = {
     const p = await me(req, env, d)
     if (p.kyc_status === 'verified') return { status: 'verified' }
     if (!diditEnabled(env)) throw new Fail('ID checks are not switched on yet', 503)
-    await limit(d, `kyc-start:${p.user_id}`, 5, 86400, 'Too many ID check attempts today. Try again tomorrow or contact support.')
+    // 2 attempts a day (owner's rule). After that: try again tomorrow, or send the ID to the Luda team.
+    const left = kycTriesLeft(p)
+    if (left <= 0) throw new Fail(`You've used today's ${KYC_TRIES_PER_DAY} ID checks. Try again tomorrow, or send your ID to the Luda team from Help.`, 429)
     const s = await diditStart(p.user_id, `${env.APP_URL.replace(/\/$/, '')}/kyc/return`, env, d.fetch).catch((e) => { throw new Fail(e instanceof Error ? e.message : 'Could not start the ID check', 502) })
-    await d.db.updateProfile(p.user_id, { kyc_session_id: s.sessionId, ...(p.kyc_status === 'failed' ? { kyc_status: 'none' } : {}) } as Partial<Profile>)
-    return { url: s.url }
+    const today = new Date().toISOString().slice(0, 10)
+    await d.db.updateProfile(p.user_id, { kyc_session_id: s.sessionId, kyc_started_at: new Date().toISOString(), kyc_tries: (p.kyc_tries_day === today ? p.kyc_tries : 0) + 1, kyc_tries_day: today, ...(p.kyc_status === 'failed' || p.kyc_status === 'pending' ? { kyc_status: 'none' } : {}) } as Partial<Profile>)
+    return { url: s.url, triesLeft: left - 1 }
   },
 
   'GET kyc-status': async ({ req, env, d }) => {
     const p = await me(req, env, d)
     const r = await kycSync(p, env, d).catch(() => ({ status: p.kyc_status, message: 'Could not reach the ID checker. Try again in a minute.' }))
     const fresh = await d.db.profile(p.user_id)
-    return { ...r, name: fresh?.kyc_name ?? null }
+    return { ...r, name: fresh?.kyc_name ?? null, triesLeft: fresh ? kycTriesLeft(fresh) : 0, startedAt: fresh?.kyc_started_at ?? null }
   },
 
   'POST kyc': async ({ req, env, d, body }) => {
@@ -788,7 +826,7 @@ const routes: Record<string, Route> = {
     if (!dob) throw new Fail('Enter your date of birth')
     const today = (d.now?.() ?? new Date()).toISOString().slice(0, 10)
     const tries = p.kyc_tries_day === today ? p.kyc_tries : 0
-    if (tries >= 3) throw new Fail('Too many attempts today. Try again tomorrow or contact support.', 429)
+    if (tries >= KYC_TRIES_PER_DAY) throw new Fail(`You've used today's ${KYC_TRIES_PER_DAY} ID checks. Try again tomorrow, or send your ID to the Luda team from Help.`, 429)
     await d.db.updateProfile(p.user_id, { kyc_tries: tries + 1, kyc_tries_day: today })
     const id = await lookupId(type, number, env, d.fetch)
     if (!id) throw new Fail(`We couldn't find that ${type.toUpperCase()}. Check the number.`)
@@ -1170,7 +1208,11 @@ const routes: Record<string, Route> = {
     await verifyAuth(p, body, env, d)
     await limit(d, `flash:${p.user_id}`, 5, 86400, 'You can post up to 5 Flash jobs a day')
     const fee = Math.round(reward * featureFees(env).flashPct)
-    return { job: await d.db.fn('luda_flash_post', { p_poster: p.user_id, p_title: title, p_details: details, p_city: city, p_reward: reward, p_fee: fee }).catch(featureErr) }
+    const job = await d.db.fn<Record<string, unknown>>('luda_flash_post', { p_poster: p.user_id, p_title: title, p_details: details, p_city: city, p_reward: reward, p_fee: fee }).catch(featureErr)
+    // The emoji the poster picked (from Luda's list only), else the best match for the title.
+    const emoji = JOB_EMOJI_PICK.includes(String(body.emoji)) ? String(body.emoji) : jobEmoji(`${title} ${details}`)
+    await d.db.fn('luda_flash_emoji', { p_job: job.id, p_emoji: emoji })
+    return { job: { ...job, emoji } }
   },
 
   'POST flash-take': async ({ req, env, d, body }) => {
@@ -1311,11 +1353,12 @@ const routes: Record<string, Route> = {
     const p = await me(req, env, d)
     if (p.kyc_status !== 'verified' || !p.kyc_name) throw new Fail('Verify your ID first: the account must be in your verified name', 403)
     const iban = String(body.iban ?? '').replace(/\s+/g, '').toUpperCase()
-    if (!IBAN.test(iban)) throw new Fail('Enter a Turkish IBAN: TR followed by 24 digits')
+    const currency = p2pAsset(body.currency)
+    if (currency === 'TRY' ? !IBAN.test(iban) : !IBAN_ANY.test(iban)) throw new Fail(currency === 'TRY' ? 'Enter a Turkish IBAN: TR followed by 24 digits' : 'Enter a valid IBAN (letters, then numbers, no spaces)')
     const bank = clean(body.bank, 60, 'the bank name', 2)
     await limit(d, `paym:${p.user_id}`, 10, 86400, 'Too many changes today. Try again tomorrow.')
-    // The holder is always the verified legal name, so lira can only be sent to the trader's own account.
-    return { method: await d.db.fn('luda_pay_method_add', { p_user: p.user_id, p_bank: bank, p_iban: iban, p_holder: p.kyc_name }).catch(p2pErr) }
+    // The holder is always the verified legal name, so money can only be sent to the trader's own account.
+    return { method: await d.db.fn('luda_pay_method_add2', { p_user: p.user_id, p_bank: bank, p_iban: iban, p_holder: p.kyc_name, p_currency: currency }).catch(p2pErr) }
   },
   'POST pay-method-remove': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
@@ -1329,21 +1372,27 @@ const routes: Record<string, Route> = {
     const p = await me(req, env, d)
     if (await d.db.hit('p2pexpire', 1, 60).catch(() => false)) await d.db.fn('luda_p2p_expire', {}).catch(() => {})
     const want = url.searchParams.get('want') === 'sell' ? 'sell' : 'buy'
+    const asset = p2pAsset(url.searchParams.get('asset'))
     const city = cleanText(url.searchParams.get('city'), 30), area = cleanText(url.searchParams.get('area'), 40).toLowerCase()
-    const ads = await d.db.fn<Record<string, any>[]>('luda_p2p_ads', { p_side: want === 'buy' ? 'sell' : 'buy', p_viewer: p.user_id })
+    let ads = await d.db.fn<Record<string, any>[]>('luda_p2p_ads2', { p_side: want === 'buy' ? 'sell' : 'buy', p_asset: asset, p_viewer: p.user_id })
     const near = (a: Record<string, any>) => (area && String(a.area).toLowerCase() === area ? 2 : 0) + (city && a.city === city ? 1 : 0)
-    ads.sort((a, b) => near(b) - near(a) || (want === 'buy' ? a.price - b.price : b.price - a.price))
-    const mid = await ngnPerTry(env, d.fetch).catch(() => null)
+    if (url.searchParams.get('near') === '1') ads = ads.filter((a) => near(a) > 0)
+    // Bybit-style: best price first (cheapest when you buy, highest when you sell); nearby breaks ties.
+    ads.sort((a, b) => (want === 'buy' ? a.price - b.price : b.price - a.price) || near(b) - near(a))
+    const mid = await marketNgnPer(asset, env, d)
     const mine = await d.db.fn<Record<string, any>[]>('luda_p2p_my_ads', { p_user: p.user_id })
-    return { ads: ads.map((a) => ({ ...a, nearby: near(a) })), mine, market: mid, rules: { ...P2P_RULES, feePct: featureFees(env).p2pPct }, canTrade: !p2pBlock(p), why: p2pBlock(p) }
+    return { ads: ads.map((a) => ({ ...a, nearby: near(a) })), mine, asset, market: mid, rules: { ...P2P_RULES, feePct: featureFees(env).p2pPct }, canTrade: !p2pBlock(p), why: p2pBlock(p) }
   },
   'POST p2p-ad-save': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
     const block = p2pBlock(p); if (block) throw new Fail(block, 403)
     const side = body.side === 'buy' ? 'buy' : 'sell'
+    const asset = p2pAsset(body.asset), sym = P2P_SYMBOL[asset]
     const price = Number(body.price)
-    const mid = await ngnPerTry(env, d.fetch)
-    if (!(price > 0) || Math.abs(price - mid) / mid > P2P_RULES.priceBand) throw new Fail(`Set a price within ${P2P_RULES.priceBand * 100}% of today's rate (₦${mid.toFixed(2)} per ₺1)`)
+    // People set their own rate. Only obvious mistakes (more than 50% away from the market) are blocked.
+    const mid = await marketNgnPer(asset, env, d)
+    if (!(price > 0) || !(price < 1_000_000)) throw new Fail('Enter your price in Naira')
+    if (mid && Math.abs(price - mid) / mid > P2P_RULES.priceBand) throw new Fail(`That price looks like a typo: today's market is about ₦${mid.toFixed(2)} per ${sym}1`)
     const minTry = int(body.minTry), maxTry = int(body.maxTry)
     if (!(minTry >= P2P_RULES.minTry) || !(maxTry >= minTry) || maxTry > P2P_RULES.maxTry || minTry % 100 || maxTry % 100) throw new Fail(`Limits must be whole lira between ₺${P2P_RULES.minTry / 100} and ₺${(P2P_RULES.maxTry / 100).toLocaleString('en-US')}`)
     const methods = (Array.isArray(body.methods) ? body.methods : []).filter((m: unknown) => m === 'bank' || m === 'cash')
@@ -1352,14 +1401,15 @@ const routes: Record<string, Route> = {
     if (side === 'buy' && methods.includes('bank')) {
       receive = uuid(body.receiveMethod)
       const mine = await d.db.fn<{ id: string }[]>('luda_pay_methods', { p_user: p.user_id })
-      if (!mine.some((m) => m.id === receive)) throw new Fail('Choose the TL bank account where you receive the lira')
+      const m = (mine as { id: string; currency?: string }[]).find((x) => x.id === receive)
+      if (!m || (m.currency ?? 'TRY') !== asset) throw new Fail(`Choose your ${asset} bank account where you receive the money`)
     }
     const area = body.area ? clean(body.area, 40, 'your area') : '', terms = body.terms ? clean(body.terms, 300, 'your terms') : ''
     if (methods.includes('cash') && !area) throw new Fail('For cash, add the area where you meet (e.g. Hamitköy)')
     await limit(d, `p2pad:${p.user_id}`, 20, 86400, 'Too many ad changes today')
     const status = body.status === 'paused' ? 'paused' : body.status === 'removed' ? 'removed' : 'active'
     const ad = await d.db.fn('luda_p2p_ad_save', { p_user: p.user_id, p_id: body.id ? uuid(body.id) : null, p_max_ads: P2P_RULES.maxAds,
-      p: { side, price: Math.round(price * 10000) / 10000, min_try: minTry, max_try: maxTry, methods, receive_method: receive ?? '', city: cleanText(body.city, 30), area, terms, status } }).catch(p2pErr)
+      p: { side, asset, price: Math.round(price * 10000) / 10000, min_try: minTry, max_try: maxTry, methods, receive_method: receive ?? '', city: cleanText(body.city, 30), area, terms, status } }).catch(p2pErr)
     await d.db.log(String((ad as { id: string }).id), 'p2p_ad', { user: p.username, side, price, status })
     return { ad }
   },
@@ -1373,14 +1423,14 @@ const routes: Record<string, Route> = {
     if (!(amountTry > 0) || amountTry % 100) throw new Fail('Enter a whole lira amount')
     let tryTo: Record<string, unknown> = {}
     // Which side the taker is on comes from the ad on the server, never from the app.
-    const ad = await d.db.fn<{ side: string } | null>('luda_p2p_ad_get', { p_id: uuid(body.adId) })
+    const ad = await d.db.fn<{ side: string; asset: string } | null>('luda_p2p_ad_get', { p_id: uuid(body.adId) })
     if (!ad) throw new Fail('This ad is no longer available', 409)
     const side = ad.side
     if (side === 'sell') { // taker pays Naira and receives the lira
       if (method === 'bank') {
         const m = (await d.db.fn<Record<string, string>[]>('luda_pay_methods', { p_user: p.user_id })).find((x) => x.id === String(body.payMethodId ?? ''))
-        if (!m) throw new Fail('Choose your TL bank account to receive the lira')
-        tryTo = { kind: 'bank', bank: m.bank, iban: m.iban, holder: m.holder }
+        if (!m || (m.currency ?? 'TRY') !== (ad as { asset?: string }).asset) throw new Fail(`Choose your ${(ad as { asset?: string }).asset ?? 'TRY'} bank account to receive the money`)
+        tryTo = { kind: 'bank', bank: m.bank, iban: m.iban, holder: m.holder, currency: m.currency }
       } else tryTo = { kind: 'cash', area: cleanText(body.area, 40) }
       await verifyAuth(p, body, env, d) // Naira leaves the wallet into escrow: PIN / fingerprint
     } else if (method === 'cash') tryTo = { kind: 'cash', area: cleanText(body.area, 40) }
@@ -1422,8 +1472,7 @@ const routes: Record<string, Route> = {
   'POST p2p-appeal': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
     const reason = clean(body.reason, 300, 'what went wrong', 5)
-    await d.db.fn('luda_p2p_appeal', { p_order: uuid(body.id), p_user: p.user_id }).catch(p2pErr)
-    await d.db.fn('luda_p2p_msg', { p_order: uuid(body.id), p_user: p.user_id, p_body: `Appeal: ${reason}`, p_files: [] })
+    await d.db.fn('luda_p2p_appeal2', { p_order: uuid(body.id), p_user: p.user_id, p_reason: reason, p_wait_min: P2P_RULES.appealWaitMin }).catch(p2pErr)
     await d.db.log(String(body.id), 'p2p_appeal', { user: p.username, reason })
     return { ok: true }
   },
@@ -1436,11 +1485,43 @@ const routes: Record<string, Route> = {
     await d.db.fn('luda_p2p_msg', { p_order: uuid(body.id), p_user: p.user_id, p_body: text, p_files: files }).catch(p2pErr)
     return { ok: true }
   },
+  'POST p2p-appeal-cancel': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await d.db.fn('luda_p2p_appeal_cancel', { p_order: uuid(body.id), p_user: p.user_id }).catch(p2pErr)
+    return { ok: true }
+  },
+  // Luda team: take a dispute, message both sides, decide.
+  'POST admin-p2p-claim': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'disputes', 'edit')
+    await d.db.fn('luda_p2p_claim', { p_order: uuid(body.id), p_staff: a.username }).catch(p2pErr)
+    await d.db.log(String(body.id), 'admin_p2p_claim', { by: a.username })
+    return { ok: true }
+  },
+  'POST admin-p2p-msg': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'disputes', 'edit')
+    const text = clean(body.body, 800, 'a message')
+    await d.db.fn('luda_p2p_staff_msg', { p_order: uuid(body.id), p_staff: `Luda team · ${a.username}`, p_body: text }).catch(p2pErr)
+    return { ok: true }
+  },
+  'POST admin-p2p-decide': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'disputes', 'full')
+    await verifyAuth(a, body, env, d)
+    const to = body.to === 'sender' ? 'sender' : body.to === 'payer' ? 'payer' : ''
+    const note = cleanText(body.note, 300)
+    if (!to || !note) throw new Fail('Choose who gets the Naira and write the reason (both people see it)')
+    const r = await d.db.fn<{ ok: boolean }>('luda_p2p_finish', { p_order: uuid(body.id), p_to: to, p_note: `Luda team decision: ${note}` })
+    if (!r.ok) throw new Fail('This order was already closed', 409)
+    await d.db.fn('luda_p2p_staff_msg', { p_order: uuid(body.id), p_staff: `Luda team · ${a.username}`, p_body: `Decision: ${to === 'sender' ? 'Naira released to the sender' : 'Naira refunded to the payer'}. ${note}` })
+    await d.db.log(String(body.id), 'admin_p2p_decide', { by: a.username, to, note })
+    return { ok: true }
+  },
   'GET admin-p2p': async ({ req, env, d, url }) => {
     await staff(req, env, d, 'disputes', 'view')
     const id = url.searchParams.get('id')
     if (id) { const o = await d.db.fn<Record<string, any> | null>('luda_p2p_order', { p_order: uuid(id), p_user: null }); if (!o) throw new Fail('Not found', 404); return { order: await p2pSigned(env, d, o) } }
-    return { orders: await d.db.fn('luda_p2p_admin', { p_status: url.searchParams.get('status') || null }) }
+    if (await d.db.hit('p2pexpire', 1, 60).catch(() => false)) await d.db.fn('luda_p2p_expire', {}).catch(() => {})
+    const st = url.searchParams.get('status')
+    return { orders: await d.db.fn('luda_p2p_admin', { p_status: st === 'all' ? null : st || 'appeal' }) }
   },
 
   /* ---------------- community posts ---------------- */

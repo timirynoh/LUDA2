@@ -1,4 +1,5 @@
 import { setScreenLanguage } from './autoTranslate'
+import { LIVE } from './live'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { BADGES, LANGS, LEVELS, type Lang } from './data'
 import type { Listing } from './housing'
@@ -160,6 +161,8 @@ function load(): State {
     s.security = { ...initialState.security, ...s.security }
     if (s.verified && s.kyc.status === 'none') s.kyc = { status: 'verified' } // older demo profiles
     if (s.account && !s.account.stay) s.signedIn = false
+    // Live: never keep a copy (or hash) of the payment PIN on the phone. Older versions stored one for the lock screen.
+    if (LIVE && s.pinHash && s.pinHash !== 'server') { s.pinHash = 'server'; s.salt = '' }
     if (!['en', 'tr', 'fr', 'sw', 'ar'].includes(s.lang)) s.lang = 'en' // Nigerian languages removed: English for everyone from Nigeria
     // daily streak bookkeeping
     const t = today()

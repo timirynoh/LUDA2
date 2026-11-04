@@ -79,7 +79,10 @@ function DiditKyc({ ninAvailable, onUseNin }: { ninAvailable: boolean; onUseNin:
     setBusy(true); setErr('')
     try { const r = await api<{ url?: string; status?: string }>('POST', 'kyc-start'); if (r.url) window.location.assign(r.url) } catch (e) { setErr(errMsg(e)); setBusy(false) }
   }
-  if (me?.profile.kyc === 'pending') return (
+  const left = me?.profile.kycTriesLeft ?? 2
+  const startedAt = me?.profile.kycStartedAt ? Date.parse(me.profile.kycStartedAt) : 0
+  const stuck = me?.profile.kyc === 'pending' && Date.now() - startedAt > 2 * 60_000
+  if (me?.profile.kyc === 'pending' && !stuck) return (
     <div className="flex items-center gap-3 rounded-2xl border border-sky-400/40 bg-sky-400/10 p-3 text-sky-200"><Loader2 className="animate-spin" />
       <div><p className="text-sm font-bold">ID check in progress</p><p className="text-xs text-slate-400">Usually a few minutes. We'll unlock withdrawals and sending as soon as it's approved.</p></div></div>
   )
@@ -93,9 +96,12 @@ function DiditKyc({ ninAvailable, onUseNin }: { ninAvailable: boolean; onUseNin:
         <li>✍️ The name on your document must match <b>{me?.profile.fullName}</b></li>
       </ul>
       {me?.profile.kyc === 'failed' && <p className="rounded-xl bg-rose-500/10 p-3 text-xs text-rose-300">Your last check wasn't approved. Use a valid, unexpired document and good light, then try again.</p>}
+      {stuck && <p className="rounded-xl bg-gold-400/10 p-3 text-xs text-gold-100">Your last check didn't finish. If it is approved later, you'll see it here. Otherwise try again or contact the Luda team.</p>}
+      {left <= 0 && <p className="rounded-xl bg-gold-400/10 p-3 text-xs text-gold-100">You've used today's 2 ID checks. Try again tomorrow, or send your ID to the Luda team below.</p>}
       {appeal && <NewCaseSheet category="kyc" subject="I can't complete the ID check" onClose={() => setAppeal(false)} />}
       {err && <p className="text-sm text-rose-300">{err}</p>}
-      <button className="btn-primary py-4" disabled={busy} onClick={start}>{busy ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />} Verify my identity</button>
+      <button className="btn-primary py-4" disabled={busy || left <= 0} onClick={start}>{busy ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />} Verify my identity</button>
+      <p className="-mt-1 text-center text-[11px] text-slate-500">{left > 0 ? `${left} of 2 tries left today` : 'No tries left today'}</p>
       <p className="flex items-start gap-1.5 text-[11px] text-slate-500"><Lock size={12} className="mt-0.5 shrink-0" /> Done on Didit's secure page. Luda keeps only your verified name, date of birth, country and the last 4 characters of your document number.</p>
       <button className="text-xs text-mint-300 underline" onClick={() => setAppeal(true)}>Can't verify? Send your ID to the Luda team</button>
       {ninAvailable && <button className="text-xs text-slate-400 underline" onClick={onUseNin}>Nigerian? Verify with NIN or BVN instead</button>}

@@ -423,6 +423,17 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   // Offer the fingerprint straight away when it's set up on this phone.
   useEffect(() => { if (bioOn()) void unlockWithBio() }, []) // eslint-disable-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   const tryPin = async (pin: string) => {
+    if (LIVE) {
+      // Live: the PIN is checked by the server only (it locks after 5 wrong tries); the phone keeps no copy of it.
+      try { await api('POST', 'pin-check', { pin }); set((p) => ({ ...p, logins: [loginEntry('PIN unlock'), ...p.logins].slice(0, 20) })); return onUnlock() }
+      catch (e) {
+        const m = e instanceof Error ? e.message : 'Try again'
+        if (!/wrong pin|too many/i.test(m)) return setErr(m) // offline / server busy: not a wrong PIN
+        const n = fails + 1; setFails(n)
+        if (n >= 5) { set((p) => ({ ...p, signedIn: false })); return }
+        return setErr(m)
+      }
+    }
     if ((await hashPin(pin, s.salt)) === s.pinHash) { set((p) => ({ ...p, logins: [loginEntry('PIN unlock'), ...p.logins].slice(0, 20) })); return onUnlock() }
     const n = fails + 1
     setFails(n)

@@ -13,12 +13,17 @@ export default function Onboarding() {
   const next = () => setStep((x) => x + 1)
 
   const [pinErr, setPinErr] = useState('')
-  const [hasServerPin, setHasServerPin] = useState(false)
-  useEffect(() => { if (LIVE) api<Me>('GET', 'me').then((m) => setHasServerPin(m.profile.hasPin)).catch(() => {}) }, [])
+  const [hasServerPin, setHasServerPin] = useState<boolean | null>(LIVE ? null : false)
+  useEffect(() => { if (LIVE) api<Me>('GET', 'me').then((m) => setHasServerPin(m.profile.hasPin)).catch(() => setHasServerPin(false)) }, [])
   const finish = async (pin: string) => {
     if (LIVE) {
       // The real PIN lives on the server (it approves every payment). On a new phone, re-enter the existing one.
-      try { await api('POST', 'pin', hasServerPin ? { pin, oldPin: pin } : { pin }) } catch (e) { setPinErr(e instanceof Error ? e.message : 'Try again'); return }
+      if (hasServerPin === null) { setPinErr('One moment, loading your account…'); return }
+      try { await api('POST', hasServerPin ? 'pin-check' : 'pin', { pin }) } catch (e) { setPinErr(e instanceof Error ? e.message : 'Try again'); return }
+      // No PIN (or hash of it) is kept on the phone in live mode.
+      set((p) => ({ ...p, name: p.name || 'Friend', salt: '', pinHash: 'server', onboarded: true, createdAt: Date.now() }))
+      reward(50, { badge: 'welcome', title: `Welcome to Luda, ${s.name || 'Friend'}!` })
+      return
     }
     const salt = randomSecret(8)
     const pinHash = await hashPin(pin, salt)

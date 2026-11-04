@@ -190,11 +190,11 @@ function ChangePin({ onClose }: { onClose: () => void }) {
   const [err, setErr] = useState('')
   const done = async (pin: string) => {
     setErr('')
-    if (step === 'old') { if (await checkPin(pin)) { setOld(pin); return setStep('new') } return setErr('Wrong PIN') }
+    if (step === 'old') { if (LIVE || (await checkPin(pin))) { setOld(pin); return setStep('new') } return setErr('Wrong PIN') } // live: the server checks the old PIN
     if (step === 'new') { if (/^(\d)\1{3}$|^1234$|^0000$/.test(pin)) return setErr('Too easy to guess. Pick another'); setFirst(pin); return setStep('confirm') }
     if (pin !== first) { setStep('new'); return setErr("PINs didn't match") }
-    if (LIVE) { try { await api('POST', 'pin', { pin, oldPin: old }) } catch (e) { setStep('new'); return setErr(e instanceof Error ? e.message : 'Try again') } }
-    const salt = randomSecret(8), pinHash = await hashPin(pin, salt)
+    if (LIVE) { try { await api('POST', 'pin', { pin, oldPin: old }) } catch (e) { const m = e instanceof Error ? e.message : 'Try again'; setStep(/wrong pin|too many/i.test(m) ? 'old' : 'new'); return setErr(m) } }
+    const salt = LIVE ? '' : randomSecret(8), pinHash = LIVE ? 'server' : await hashPin(pin, salt)
     set((p) => ({ ...p, salt, pinHash })); notify('🔑', 'Your PIN was changed'); toast({ title: 'PIN changed', emoji: '🔑' }); onClose()
   }
   return (

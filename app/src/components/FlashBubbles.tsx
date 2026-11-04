@@ -7,7 +7,7 @@ import { FlashBubble, useFlashFeed } from '../screens/Flash'
 import { LIVE, getSession } from '../lib/live'
 import { useApi } from './LiveKit'
 
-interface LiveJob { id: string; title: string; reward_minor: number; city?: string; poster_name?: string; mine: boolean }
+interface LiveJob { emoji?: string; id: string; title: string; reward_minor: number; city?: string; poster_name?: string; mine: boolean }
 /** Live: real open Flash jobs from every city, the user's city first (reward already held by Luda). */
 function useLiveJobs() {
   const { s } = useStore()
@@ -36,7 +36,7 @@ function LiveFlashBubbles() {
         {jobs.slice(0, 10).map((j, i) => (
           <motion.div key={j.id} initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05, type: 'spring' }}>
             <Link to="/flash" className="flex w-[72px] shrink-0 flex-col items-center gap-1 text-center">
-              <span className="grid size-[72px] place-items-center rounded-full bg-gradient-to-br from-yellow-300 to-orange-500 text-sm font-extrabold text-ink-950 ring-2 ring-gold-300/60 ring-offset-2 ring-offset-ink-950">₺{Math.round(j.reward_minor / 100)}</span>
+              <span className="grid size-[72px] place-items-center rounded-full bg-gradient-to-br from-yellow-300 to-orange-500 text-sm font-extrabold text-ink-950 ring-2 ring-gold-300/60 ring-offset-2 ring-offset-ink-950"><span className="flex flex-col items-center leading-none"><span className="text-xl">{j.emoji ?? '⚡'}</span>₺{Math.round(j.reward_minor / 100)}</span></span>
               <span className="line-clamp-1 w-full text-[11px] text-slate-300">{j.title}</span>
             </Link>
           </motion.div>

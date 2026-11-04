@@ -28,7 +28,7 @@ export function switchAccount(p: State, who: { username: string; email: string; 
   try {
     // Park the previous person's data (and their fingerprint key) so it is there when they come back.
     if (p.account?.username) {
-      localStorage.setItem(SNAP(p.account.username), JSON.stringify({ ...p, signedIn: false }))
+      localStorage.setItem(SNAP(p.account.username), JSON.stringify({ ...p, signedIn: false, pinHash: p.pinHash ? 'server' : '', salt: '' }))
       const bio = localStorage.getItem(BIO)
       if (bio) localStorage.setItem(`${BIO}.${p.account.username}`, bio)
     }
@@ -39,7 +39,7 @@ export function switchAccount(p: State, who: { username: string; email: string; 
     if (saved) {
       const back = JSON.parse(saved) as State
       // Phone-wide preferences stay as they are now.
-      return { ...p, ...back, lang: p.lang, theme: p.theme, account, name: back.name || first }
+      return { ...p, ...back, pinHash: back.pinHash ? 'server' : '', salt: '', lang: p.lang, theme: p.theme, account, name: back.name || first }
     }
   } catch { /* storage full or blocked: fall through to a fresh start */ }
   // Someone new on this phone: their own set-up (PIN step, city…), nothing of the previous person's shown.

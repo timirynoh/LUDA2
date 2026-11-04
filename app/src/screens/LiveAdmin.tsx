@@ -1,7 +1,7 @@
 // Owner's admin page (live mode). Only accounts the server marks as admin can load any of this.
 import {
   AlertTriangle, ArrowDownToLine, ArrowUpFromLine, BadgeCheck, Banknote, Check, ChevronRight, Copy, ExternalLink, Gavel, Home as HomeIcon,
-  Inbox, LifeBuoy, Megaphone, Newspaper, UserCog, Receipt, RefreshCw, Search, ShieldCheck, Snowflake, Ticket, Undo2, Users, Wallet, type LucideIcon,
+  Inbox, LifeBuoy, Megaphone, Scale, Newspaper, UserCog, Receipt, RefreshCw, Search, ShieldCheck, Snowflake, Ticket, Undo2, Users, Wallet, type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { BILL_ICON, BILL_TINT } from '../components/LiveBillCard'
@@ -12,8 +12,8 @@ import { KIND_LABEL, api, money, staffCan, type Cur, type StaffArea } from '../l
 import { BannersTab, ContentTab, TeamTab } from '../components/AdminCommunity'
 import { useLive } from '../lib/liveStore'
 
-type Tab = 'overview' | 'bills' | 'cases' | 'disputes' | 'users' | 'topups' | 'withdrawals' | 'content' | 'banners' | 'team'
-const TAB_AREA: Record<Tab, StaffArea> = { overview: 'overview', bills: 'bills', cases: 'cases', disputes: 'disputes', users: 'users', topups: 'money', withdrawals: 'money', content: 'content', banners: 'banners', team: 'team' }
+type Tab = 'overview' | 'bills' | 'cases' | 'disputes' | 'p2p' | 'users' | 'topups' | 'withdrawals' | 'content' | 'banners' | 'team'
+const TAB_AREA: Record<Tab, StaffArea> = { overview: 'overview', bills: 'bills', cases: 'cases', disputes: 'disputes', p2p: 'disputes', users: 'users', topups: 'money', withdrawals: 'money', content: 'content', banners: 'banners', team: 'team' }
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–')
 const waited = (iso: string) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d` }
 const short = (ref: string) => '…' + ref.slice(-8)
@@ -59,7 +59,7 @@ export default function LiveAdmin() {
   const allow = (t: Tab) => staffCan(st, TAB_AREA[t])
   const tabs = ([
     { v: 'overview', l: 'Home', i: HomeIcon }, { v: 'bills', l: 'Bills', i: Receipt, n: o?.billsPending }, { v: 'cases', l: 'Cases', i: Inbox, n: o?.openCases },
-    { v: 'disputes', l: 'Held money', i: Gavel }, { v: 'users', l: 'Users', i: Users }, { v: 'topups', l: 'Top-ups', i: ArrowDownToLine }, { v: 'withdrawals', l: 'Payouts', i: ArrowUpFromLine },
+    { v: 'p2p', l: 'P2P disputes', i: Scale }, { v: 'disputes', l: 'Held money', i: Gavel }, { v: 'users', l: 'Users', i: Users }, { v: 'topups', l: 'Top-ups', i: ArrowDownToLine }, { v: 'withdrawals', l: 'Payouts', i: ArrowUpFromLine },
     { v: 'content', l: 'Content', i: Newspaper }, { v: 'banners', l: 'Banners', i: Megaphone }, { v: 'team', l: 'Team', i: UserCog },
   ] as { v: Tab; l: string; i: LucideIcon; n?: number }[]).filter((t) => allow(t.v))
   const go = (t: Tab) => { setTab(t); void load() }
@@ -77,6 +77,7 @@ export default function LiveAdmin() {
         {st && !st.owner && <p className="mb-3 rounded-2xl bg-sky-400/10 p-3 text-xs text-sky-200">You're signed in as Luda staff. You only see the areas the owner gave you{Object.entries(st.perms).filter(([a]) => a !== 'overview').map(([a, l]) => ` · ${a}: ${l === 'view' ? 'view only' : l === 'edit' ? 'can act' : 'full'}`).join('')}.</p>}
         {tab === 'overview' && <Overview o={o} go={(t) => allow(t) && go(t)} />}
         {tab === 'content' && <ContentTab staff={st} />}
+        {tab === 'p2p' && <P2PDisputes canDecide={staffCan(st, 'disputes', 'full')} me={me?.profile.username ?? ''} />}
         {tab === 'banners' && <BannersTab staff={st} />}
         {tab === 'team' && <TeamTab />}
         {tab === 'bills' && <BillsTab onChange={load} />}
@@ -303,17 +304,78 @@ function DecideSheet({ e, onClose, onDone }: { e: any; onClose: () => void; onDo
   )
 }
 
-/** P2P appeal evidence: where the lira had to go, receipts and the order chat. */
+/** P2P disputes (Bybit-style): appeals queue, take a case, message both sides, decide. Everything is on the server. */
+function P2PDisputes({ canDecide, me }: { canDecide: boolean; me: string }) {
+  const [status, setStatus] = useState('appeal')
+  const { data, err, load } = useLoad<{ orders: any[] }>(`admin-p2p?status=${status}`)
+  const [open, setOpen] = useState<string | null>(null)
+  const stageL: Record<string, string> = { negotiation: '1 · Talking it out', review: '2 · Needs Luda', decided: '3 · Decided' }
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="rounded-2xl bg-fg/[0.04] p-3 text-xs text-slate-400">Appeals start with 30 minutes for the two people to sort it out, then come to you. Orders not released within 1 hour come here automatically. Take a case so others know you're on it.</p>
+      <div className="flex gap-2">{[['appeal', 'Appeals'], ['sent', 'Waiting release'], ['all', 'All']].map(([v, l]) => <button key={v} onClick={() => setStatus(v)} className={`chip py-2 ${status === v ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}>{l}</button>)}</div>
+      {err && <p className="text-sm text-rose-300">{err}</p>}
+      {data && data.orders.length === 0 && <p className="rounded-3xl border border-dashed border-fg/10 py-10 text-center text-sm text-slate-400">Nothing here. 🎉</p>}
+      {data?.orders.map((o) => (
+        <button key={o.id} onClick={() => setOpen(o.id)} className="glass flex items-center gap-3 rounded-3xl p-4 text-start">
+          <span className="text-2xl">⚖️</span>
+          <div className="min-w-0 flex-1"><p className="truncate font-bold">{o.asset ?? 'TRY'} {(o.amount_try / 100).toLocaleString('en-US')} for {money(o.amount_ngn, 'NGN')}</p>
+            <p className="truncate text-xs text-slate-400">@{o.payer?.username} pays ₦ · @{o.sender?.username} sends · {o.appeal_stage ? stageL[o.appeal_stage] : o.status}{o.assigned_to ? ` · 👤 ${o.assigned_to}` : ''}</p></div>
+          <ChevronRight size={18} className="text-slate-500" />
+        </button>
+      ))}
+      {open && <P2PCaseSheet id={open} canDecide={canDecide} me={me} onClose={() => { setOpen(null); void load() }} />}
+    </div>
+  )
+}
+
+function P2PCaseSheet({ id, canDecide, me, onClose }: { id: string; canDecide: boolean; me: string; onClose: () => void }) {
+  const { data, load } = useLoad<{ order: any }>(`admin-p2p?id=${id}`)
+  const [msg, setMsg] = useState('')
+  const [to, setTo] = useState<'sender' | 'payer' | null>(null)
+  const [note, setNote] = useState('')
+  const [err, setErr] = useState('')
+  const o = data?.order
+  const act = async (route: string, body: Record<string, unknown>) => { setErr(''); try { await api('POST', route, { id, ...body }); setMsg(''); void load() } catch (e) { setErr(errMsg(e)) } }
+  return (
+    <Sheet open onClose={onClose} title="P2P dispute">
+      {!o ? <p className="pb-4 text-sm text-slate-500">Loading…</p> : to ? (
+        <ReviewAndPin holdLabel="Hold to decide" onClose={() => setTo(null)}
+          rows={[[to === 'sender' ? 'Release Naira to sender' : 'Refund the payer', `@${to === 'sender' ? o.sender?.username : o.payer?.username}`], ['Amount', money(to === 'sender' ? o.amount_ngn - o.fee_ngn : o.amount_ngn, 'NGN')], ['Reason (both see it)', note]]}
+          run={async (auth) => { await api('POST', 'admin-p2p-decide', { id, to, note, ...auth }) }}
+          done={<Success title="Decided ✅" sub="Money moved, both people see your reason, and it's in the audit log." onClose={onClose} />} />
+      ) : (
+        <div className="flex flex-col gap-3 pb-4">
+          <P2PEvidence id={id} />
+          <p className="text-xs text-slate-400">Stage: <b className="text-slate-200">{o.appeal_stage ?? o.status}</b>{o.assigned_to ? ` · handled by ${o.assigned_to}` : ' · nobody has taken it yet'}{o.appeal_reason ? ` · reason: ${o.appeal_reason}` : ''}</p>
+          {o.assigned_to !== me && !['done', 'cancelled'].includes(o.status) && <button className="btn-ghost py-3 text-sm" onClick={() => void act('admin-p2p-claim', {})}>👤 Take this case</button>}
+          {!['done', 'cancelled'].includes(o.status) && <div className="flex gap-2"><input className="input flex-1 text-sm" maxLength={800} placeholder="Message both people (e.g. please upload your bank statement)" value={msg} onChange={(e) => setMsg(e.target.value)} />
+            <button className="btn-primary px-4 text-sm" disabled={!msg.trim()} onClick={() => void act('admin-p2p-msg', { body: msg })}>Send</button></div>}
+          {err && <p className="text-sm text-rose-300">{err}</p>}
+          {canDecide && !['done', 'cancelled'].includes(o.status) && <>
+            <input className="input text-sm" maxLength={300} placeholder="Decision reason (both people see it)" value={note} onChange={(e) => setNote(e.target.value)} />
+            <div className="grid grid-cols-2 gap-2">
+              <button className="btn-primary py-3 text-sm" disabled={!note.trim()} onClick={() => setTo('sender')}><BadgeCheck size={15} /> Money was sent: release</button>
+              <button className="btn-ghost py-3 text-sm" disabled={!note.trim()} onClick={() => setTo('payer')}><Undo2 size={15} /> Not sent: refund</button>
+            </div></>}
+          {!canDecide && <p className="text-[11px] text-slate-500">Your role can take cases and message. Decisions need 'full' on Held money (ask the owner).</p>}
+        </div>
+      )}
+    </Sheet>
+  )
+}
+
+/** P2P appeal evidence: where the money had to go, receipts and the order chat. */
 function P2PEvidence({ id }: { id: string }) {
   const { data } = useLoad<{ order: any }>(`admin-p2p?id=${id}`)
   const o = data?.order
   if (!o) return <p className="text-xs text-slate-500">Loading the order…</p>
   return (
     <div className="flex flex-col gap-2 rounded-2xl bg-fg/[0.04] p-3 text-xs">
-      <p><b>₺{(o.amount_try / 100).toLocaleString('en-US')}</b> for <b>{money(o.amount_ngn, 'NGN')}</b> at ₦{Number(o.price).toFixed(2)} · {o.method === 'cash' ? `cash${o.try_to?.area ? ` in ${o.try_to.area}` : ''}` : `to ${o.try_to?.bank} ${o.try_to?.iban} (${o.try_to?.holder})`}</p>
+      <p><b>{o.asset ?? 'TRY'} {(o.amount_try / 100).toLocaleString('en-US')}</b> for <b>{money(o.amount_ngn, 'NGN')}</b> at ₦{Number(o.price).toFixed(2)} · {o.method === 'cash' ? `cash${o.try_to?.area ? ` in ${o.try_to.area}` : ''}` : `to ${o.try_to?.bank} ${o.try_to?.iban} (${o.try_to?.holder})`}</p>
       <p className="text-slate-400">Status: {o.status}{o.sent_at ? ` · marked sent ${when(o.sent_at)}` : ''}</p>
       {o.receiptUrls?.filter(Boolean).length > 0 && <div className="flex gap-2">{o.receiptUrls.filter(Boolean).map((u: string, i: number) => <a key={i} href={u} target="_blank" rel="noreferrer"><img src={u} alt="Receipt" className="size-16 rounded-xl object-cover ring-1 ring-fg/10" /></a>)}</div>}
-      <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">{(o.messages ?? []).map((m: any) => <p key={m.id} className="selectable"><b className="text-slate-300">{m.by ? `@${m.by}` : 'Luda'}:</b> {m.body}{m.files?.filter(Boolean).map((u: string, i: number) => <a key={i} href={u} target="_blank" rel="noreferrer" className="ms-1 text-mint-300 underline">photo</a>)}</p>)}</div>
+      <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">{(o.messages ?? []).map((m: any) => <p key={m.id} className="selectable"><b className={m.kind === 'staff' ? 'text-violet-300' : 'text-slate-300'}>{m.kind === 'staff' ? m.by : m.by ? `@${m.by}` : 'Luda'}:</b> {m.body}{m.files?.filter(Boolean).map((u: string, i: number) => <a key={i} href={u} target="_blank" rel="noreferrer" className="ms-1 text-mint-300 underline">photo</a>)}</p>)}</div>
     </div>
   )
 }

@@ -146,6 +146,11 @@ test('Flash help: reward held when posted, helper paid when done, cancel/drop wo
   assert.equal((await call('POST', 'flash-done', { id: j.id, pin: '4826' }, T.ada)).status, 200)
   assert.equal(await TRY('boss'), b0 + 190_00, 'helper gets ₺200 − 5%')
   const j2 = (await call('POST', 'flash-post', { title: 'Pick up a parcel', rewardMinor: 50_00, pin: '4826' }, T.ada)).j.job
+  assert.equal(j.emoji, '🧊', 'fridge → 🧊'); assert.equal(j2.emoji, '🛵', 'parcel → 🛵')
+  const j3 = (await call('POST', 'flash-post', { title: 'Need a plumber for a leaking sink', rewardMinor: 50_00, pin: '4826', emoji: '<script>' }, T.ada)).j.job
+  assert.equal(j3.emoji, '🚰', 'unknown emoji ignored, matched from the title')
+  assert.equal((await call('GET', 'flash', undefined, T.kwame)).j.open.find((x: any) => x.id === j3.id).emoji, '🚰', 'stored on the server')
+  await call('POST', 'flash-cancel', { id: j3.id, pin: '4826' }, T.ada)
   const a1 = await TRY('ada')
   assert.equal((await call('POST', 'flash-cancel', { id: j2.id }, T.ada)).status, 200)
   assert.equal(await TRY('ada'), a1 + 50_00)
