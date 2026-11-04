@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronLeft, Delete, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { LIVE } from '../lib/live'
@@ -55,7 +56,9 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
     window.addEventListener('focusout', settle)
     return () => { vv?.removeEventListener('resize', settle); el?.removeEventListener('focusin', focus); window.removeEventListener('focusout', settle); unlockPage() }
   }, [open])
-  return (
+  // Always drawn on top of the whole screen (portal to <body>). A sheet opened from inside another sheet used to be
+  // trapped in the outer sheet's box (stuck at the top, cut off, couldn't scroll) — owner's report on 'Problem?'.
+  return createPortal((
     <AnimatePresence>
       {open && (
         <motion.div className="fixed inset-0 z-50 flex items-end justify-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -77,7 +80,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
         </motion.div>
       )}
     </AnimatePresence>
-  )
+  ), document.body)
 }
 
 /** 4-digit PIN pad. Calls onDone with the entered PIN. */
