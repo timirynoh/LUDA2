@@ -14,9 +14,9 @@ export const PLACE_CITIES: Record<string, { lat: number; lon: number; radius: nu
 /** Overpass selectors per category (several selectors = union). Keep the ids in sync with app lib/places.ts. */
 export const PLACE_CATS: Record<string, string[]> = {
   food: ['nwr["amenity"~"^(restaurant|fast_food|cafe)$"]'],
-  african: ['nwr["cuisine"~"african|nigerian|ghanaian|ethiopian|eritrean|somali|senegalese|cameroonian|congolese|kenyan",i]',
-    'nwr["name"~"afri|naija|jollof|suya|mama put|lagos|abuja|accra|nairobi",i]["amenity"~"^(restaurant|fast_food|cafe)$"]',
-    'nwr["name"~"afri|naija|lagos|abuja|accra|nairobi",i]["shop"]'],
+  african: ['nwr["amenity"~"^(restaurant|fast_food|cafe)$"]["cuisine"~"african|nigerian|ghanaian|ethiopian|eritrean|somali|senegalese|cameroonian|congolese|kenyan",i]',
+    'nwr["amenity"~"^(restaurant|fast_food|cafe)$"]["name"~"afri|naija|jollof|suya|mama put|lagos|abuja|accra|nairobi",i]',
+    'nwr["shop"]["name"~"afri|naija|lagos|abuja|accra|nairobi",i]'],
   grocery: ['nwr["shop"~"^(supermarket|convenience|greengrocer|butcher|bakery|grocery)$"]'],
   pharmacy: ['nwr["amenity"="pharmacy"]', 'nwr["healthcare"="pharmacy"]'],
   health: ['nwr["amenity"~"^(hospital|clinic|doctors|dentist)$"]', 'nwr["healthcare"~"^(hospital|clinic|doctor|dentist)$"]'],
@@ -47,7 +47,7 @@ const safeUrl = (v: unknown) => { const s = clean(v, 300); if (!s) return undefi
 
 export function overpassQuery(city: string, cat: string) {
   const c = PLACE_CITIES[city], sel = PLACE_CATS[cat]
-  return `[out:json][timeout:25];(${sel.map((s) => `${s}(around:${c.radius},${c.lat},${c.lon});`).join('')});out center 150;`
+  return `[out:json][timeout:60];(${sel.map((s) => `${s}(around:${c.radius},${c.lat},${c.lon});`).join('')});out center 150;`
 }
 
 // deno-lint-ignore no-explicit-any
