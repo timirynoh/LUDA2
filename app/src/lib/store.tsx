@@ -164,9 +164,9 @@ function load(): State {
     // Live: never keep a copy (or hash) of the payment PIN on the phone. Older versions stored one for the lock screen.
     if (LIVE && s.pinHash && s.pinHash !== 'server') { s.pinHash = 'server'; s.salt = '' }
     if (!['en', 'tr', 'fr', 'sw', 'ar'].includes(s.lang)) s.lang = 'en' // Nigerian languages removed: English for everyone from Nigeria
-    // daily streak bookkeeping
+    // daily streak bookkeeping (demo only; live streaks are kept by the server)
     const t = today()
-    if (s.lastDay !== t) {
+    if (!LIVE && s.lastDay !== t) {
       const diff = (Date.parse(t) - Date.parse(s.lastDay)) / 86_400_000
       s.streak = diff === 1 ? s.streak + 1 : 1
       s.lastDay = t
@@ -236,6 +236,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const reward = useCallback<Ctx['reward']>((xp, opts = {}) => {
+    // Live: XP, badges and quests are worked out by the server from what really happened. The phone never adds them;
+    // it just asks the server for the new numbers.
+    if (LIVE) { if (opts.title) toast({ title: opts.title, emoji: '⚡' }); window.dispatchEvent(new Event('luda:rewards')); return }
     let bonus = 0
     let unlocked: string | undefined
     setS((prev) => {

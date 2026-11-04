@@ -56,8 +56,14 @@ export async function api<T = any>(method: 'GET' | 'POST', route: string, body?:
   }
 }
 
+// Invite links look like https://…/?ref=LUDA-USERNAME. Remember the code until the account exists.
+try { const r = new URLSearchParams(location.search).get('ref'); if (r && /^LUDA-[A-Za-z0-9_.]{3,30}$/i.test(r)) localStorage.setItem('luda.ref', r.toUpperCase()) } catch { /* private mode */ }
+export const pendingRef = () => { try { return localStorage.getItem('luda.ref') ?? '' } catch { return '' } }
+export const clearRef = () => { try { localStorage.removeItem('luda.ref') } catch { /* ignore */ } }
+
 export async function liveSignUp(f: { email: string; username: string; fullName: string; password: string; country?: string }) {
-  const r = await raw<{ session: any; needsConfirm: boolean }>('POST', 'signup', f, false)
+  const r = await raw<{ session: any; needsConfirm: boolean }>('POST', 'signup', { ...f, ref: pendingRef() || undefined }, false)
+  clearRef()
   if (r.session) saveSession(r.session)
   return r
 }

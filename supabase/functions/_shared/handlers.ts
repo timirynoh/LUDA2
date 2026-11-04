@@ -26,6 +26,7 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv {
   PAYSTACK_CUSTOMER_PAYS_FEE?: string; FLW_CUSTOMER_PAYS_FEE?: string
   PAYOUT_PROVIDERS?: string // order to try for withdrawals, default "paystack,flutterwave"
   SERVICE_KEY?: string // for private file storage (support-case photos)
+  REWARDS_MONTHLY_CAP?: string // ₺ of cash rewards per month for everyone (default 5,000); after that prizes become points
   ADMIN_EMAILS?: string // comma-separated Luda account emails that can open the owner's admin page
 }
 export interface Deps { db: Db; fetch?: Fetch; now?: () => Date }
@@ -64,6 +65,7 @@ const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,}$/i
 const USERNAME = /^[a-z0-9_.]{3,20}$/
 const newRef = (p: string) => `${p}_${randomHex(12)}`
 const authEnv = (env: Env): AuthEnv => ({ SUPABASE_URL: env.SUPABASE_URL, AUTH_KEY: env.AUTH_KEY })
+const num = (v: string | undefined, dflt: number) => (v === undefined || v === '' || !Number.isFinite(Number(v)) ? dflt : Number(v))
 const int = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) ? v : NaN)
 const isCur = (c: unknown): c is Cur => CURRENCIES.includes(c as Cur)
 const providers = (env: Env): Provider[] => [env.PAYSTACK_SECRET_KEY && 'paystack', env.FLW_SECRET_KEY && 'flutterwave'].filter(Boolean) as Provider[]
@@ -431,6 +433,49 @@ const JOB_EMOJI: [RegExp, string][] = [
 const JOB_EMOJI_PICK = ['⚡', '🚰', '🧊', '🧺', '💡', '❄️', '📦', '🧹', '🎨', '🔨', '🚗', '✈️', '🛵', '🛒', '🍲', '💇🏾', '💻', '📱', '📶', '📚', '🗣️', '📷', '🖨️', '🐾', '🌿', '🧸', '⏳']
 export const jobEmoji = (text: string) => JOB_EMOJI.find(([r]) => r.test(text))?.[1] ?? '⚡'
 
+
+/* ------------------------- rewards (all on the server) ------------------------- */
+// Same prizes the app's wheel shows. The server draws the prize; the phone only animates it.
+export const SPIN = [
+  { label: '10 XP', xp: 10, weight: 24 }, { label: '50 pts', points: 50, weight: 18 }, { label: '25 XP', xp: 25, weight: 18 }, { label: '₺5', cash: 5_00, weight: 10 },
+  { label: '100 pts', points: 100, weight: 12 }, { label: '50 XP', xp: 50, weight: 10 }, { label: '₺20', cash: 20_00, weight: 3 }, { label: '200 pts', points: 200, weight: 5 },
+] as { label: string; xp?: number; points?: number; cash?: number; weight: number }[]
+const QUEST_XP: Record<string, number> = { phone: 50, verify: 150, deposit: 50, bill: 80, fx: 40, p2p: 200, chat: 30, flash: 40, ticket: 50 }
+const REDEEM = [{ id: 'r5', pts: 500, cash: 5_00, label: '₺5 wallet credit' }, { id: 'r20', pts: 1500, cash: 20_00, label: '₺20 wallet credit' }, { id: 'r40', pts: 3000, cash: 40_00, label: '₺40 wallet credit' }]
+const CHALLENGES = [
+  { id: 'c-bills', goal: 3, key: 'billsMonth', prize: { points: 300, xp: 100 }, prizeLabel: '300 pts' },
+  { id: 'c-save', goal: 1_000_00, key: 'potSavedMonth', prize: { cash: 20_00, xp: 100 }, prizeLabel: '₺20 bonus' },
+  { id: 'c-p2p', goal: 2, key: 'p2pMonth', prize: { points: 200, xp: 100 }, prizeLabel: '200 pts' },
+]
+export const REFERRAL_RULES = { reward: 50_00, welcome: 50_00, perMonthCap: 20, applyDays: 14, tiers: [{ id: 'bronze', min: 10, cash: 250_00 }, { id: 'silver', min: 25, cash: 750_00 }, { id: 'gold', min: 50, cash: 2_000_00 }] }
+const rewardsCap = (env: Env) => Math.round(num(env.REWARDS_MONTHLY_CAP, 5_000) * 100)
+const cyprusDay = (d = new Date()) => new Date(d.getTime() + 3 * 3600e3).toISOString().slice(0, 10)
+type Activity = Record<string, any>
+function questsDone(a: Activity) {
+  return Object.keys(QUEST_XP).filter((q) => ({ phone: a.phone, verify: a.verified, deposit: a.deposits > 0, bill: a.bills > 0, fx: a.converts > 0, p2p: a.p2p > 0, chat: a.groupsJoined > 0, flash: a.flashPosted > 0, ticket: a.tickets > 0 } as Record<string, boolean>)[q])
+}
+function badgesOf(a: Activity) {
+  const b: [string, boolean][] = [['welcome', true], ['first_deposit', a.deposits > 0], ['bill_slayer', a.bills >= 3], ['fx_wizard', a.converts >= 3], ['safe_trader', a.p2p > 0],
+    ['verified', a.verified], ['streak7', a.streak >= 7], ['founder', a.groupsOwned > 0], ['social', a.groupsJoined >= 3], ['flash_asker', a.flashPosted > 0], ['handy_hero', a.flashHelped > 0],
+    ['saver_pot', a.pots > 0], ['trader', a.sold > 0], ['recruiter', a.referralsVerified > 0], ['ambassador', a.referralsVerified >= 10], ['lucky', a.spinCashWins > 0],
+    ['challenger', a.challengesDone > 0], ['trusted_poster', a.posts >= 3], ['generous', a.sent > 0], ['traveller', a.tickets > 0]]
+  return b.filter(([, ok]) => ok).map(([id]) => id)
+}
+/** XP is worked out from what really happened on the server (plus prizes), so nobody can type it in. */
+const xpOf = (a: Activity) => Number(a.eventXp) + questsDone(a).reduce((t, q) => t + QUEST_XP[q], 0)
+  + 10 * Math.max(0, a.bills - 1) + 5 * Math.max(0, a.tickets - 1) + 20 * Math.max(0, a.p2p - 1) + 15 * a.flashHelped + 10 * a.sold + 5 * a.posts + 25 * badgesOf(a).length
+/** Pays referral bonuses that became due (friend verified + first top-up), and ambassador bonuses. Safe to call often. */
+async function settleReferrals(p: Profile, env: Env, d: Deps) {
+  const due = await d.db.fn<{ inviter: string; invitee: string; name: string }[]>('luda_referrals_due', { p_user: p.user_id })
+  for (const r of due) {
+    const capped = (await d.db.fn<number>('luda_referrals_month', { p_user: r.inviter })) >= REFERRAL_RULES.perMonthCap
+    await d.db.fn('luda_reward', { p_user: r.inviter, p_kind: 'referral', p_ref: r.invitee, p_xp: 100, p_points: capped ? 500 : 0, p_cash: capped ? 0 : REFERRAL_RULES.reward, p_note: `Your friend @${r.name} joined and verified`, p_cap: rewardsCap(env) })
+    await d.db.fn('luda_reward', { p_user: r.invitee, p_kind: 'referral_welcome', p_ref: r.inviter, p_xp: 50, p_points: 0, p_cash: REFERRAL_RULES.welcome, p_note: 'Welcome bonus for joining with a friend\'s code', p_cap: rewardsCap(env) })
+    const a = await d.db.fn<Activity>('luda_activity', { p_user: r.inviter })
+    for (const t of REFERRAL_RULES.tiers) if (a.referralsVerified >= t.min) await d.db.fn('luda_reward', { p_user: r.inviter, p_kind: 'ambassador', p_ref: t.id, p_xp: 300, p_points: 0, p_cash: t.cash, p_note: `Ambassador ${t.id}: ${t.min} friends verified`, p_cap: rewardsCap(env) })
+  }
+}
+
 /* ------------------------- P2P exchange (Naira in Luda ⇄ lira outside) ------------------------- */
 export const P2P_RULES = { maxAds: 1, maxTry: 5_000_00, minTry: 50_00, windowMin: 30, priceBand: 0.5, appealWaitMin: 15, assets: ['TRY', 'USD', 'EUR', 'GBP'] }
 const P2P_SYMBOL: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }
@@ -545,6 +590,9 @@ const routes: Record<string, Route> = {
     const r = await signUp(email, body.password, { username, full_name: fullName, country: body.country ?? null }, authEnv(env), d.fetch).catch((e) => { throw new Fail(e instanceof Error ? e.message : 'Sign-up failed') })
     // Reserve the username now (if two people race for it, the loser gets a suffix on first sign-in).
     if (r.userId) await d.db.createProfile({ user_id: r.userId, username, full_name: fullName, email, country: body.country ? String(body.country).slice(0, 2) : undefined }).catch(() => {})
+    // Joined with a friend's code (LUDA-USERNAME): remember who invited them; the bonus is paid by the server later.
+    const ref = String(body.ref ?? '').trim().replace(/^LUDA-/i, '').toLowerCase()
+    if (r.userId && ref && USERNAME.test(ref) && ref !== username) await d.db.fn('luda_set_inviter', { p_user: r.userId, p_inviter: ref, p_days: REFERRAL_RULES.applyDays }).catch(() => {})
     return { session: r.session, needsConfirm: !r.session }
   },
 
@@ -1523,6 +1571,82 @@ const routes: Record<string, Route> = {
     const st = url.searchParams.get('status')
     return { orders: await d.db.fn('luda_p2p_admin', { p_status: st === 'all' ? null : st || 'appeal' }) }
   },
+
+  /* ---------------- rewards: XP, points, spin, challenges, referrals ---------------- */
+  'GET rewards': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    if (await d.db.hit(`refsettle:${p.user_id}`, 1, 60).catch(() => false)) await settleReferrals(p, env, d).catch(() => {})
+    const a = await d.db.fn<Activity>('luda_activity', { p_user: p.user_id })
+    const month = cyprusDay().slice(0, 7), claimed = new Set<string>(a.claimed ?? [])
+    return {
+      xp: xpOf(a), points: Number(a.points), streak: Number(a.streak), checkedInToday: a.lastCheckin === cyprusDay(), spunToday: claimed.has(`spin:${cyprusDay()}`),
+      badges: badgesOf(a), quests: questsDone(a), questXp: QUEST_XP, cashEarned: Number(a.cashEarned), recent: a.recent,
+      challenges: CHALLENGES.map((c) => ({ id: c.id, goal: c.goal, progress: Number(a[c.key] ?? 0), prize: c.prizeLabel, claimed: claimed.has(`challenge:${c.id}:${month}`) })),
+      spin: SPIN.map((x) => ({ label: x.label, cash: !!x.cash })), redeem: REDEEM, verified: p.kyc_status === 'verified',
+      referral: { code: `LUDA-${p.username.toUpperCase()}`, reward: REFERRAL_RULES.reward, welcome: REFERRAL_RULES.welcome, perMonthCap: REFERRAL_RULES.perMonthCap, tiers: REFERRAL_RULES.tiers, verifiedFriends: Number(a.referralsVerified), invitedBy: p.invited_by ? true : false },
+    }
+  },
+  // Daily check-in + spin (once per Cyprus day). Cash prizes only for ID-verified accounts (one person = one account).
+  'POST spin': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    if (p.frozen) throw new Fail('Your account is on hold', 403)
+    const day = cyprusDay()
+    const c = await d.db.fn<{ already: boolean; streak: number }>('luda_checkin', { p_user: p.user_id, p_day: day })
+    if (!c.already) await d.db.fn('luda_reward', { p_user: p.user_id, p_kind: 'checkin', p_ref: day, p_xp: 5 + Math.min(c.streak, 30), p_points: 0, p_cash: 0, p_note: `Day ${c.streak} streak`, p_cap: rewardsCap(env) })
+    const pool = SPIN.map((x, i) => ({ ...x, i })).filter((x) => p.kyc_status === 'verified' || !x.cash)
+    const total = pool.reduce((t, x) => t + x.weight, 0)
+    let roll = crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 * total, prize = pool[0]
+    for (const x of pool) { if ((roll -= x.weight) < 0) { prize = x; break } }
+    const r = await d.db.fn<{ ok: boolean; already?: boolean; cash?: number; points?: number; swapped?: boolean }>('luda_reward', { p_user: p.user_id, p_kind: 'spin', p_ref: day, p_xp: prize.xp ?? 0, p_points: prize.points ?? 0, p_cash: prize.cash ?? 0, p_note: `Daily spin: ${prize.label}`, p_cap: rewardsCap(env) })
+    if (!r.ok) throw new Fail('You already spun today. Come back tomorrow!', 409)
+    return { index: prize.i, label: prize.label, xp: prize.xp ?? 0, points: r.points ?? 0, cash: r.cash ?? 0, swapped: !!r.swapped, streak: c.streak, verifiedOnlyCash: p.kyc_status !== 'verified' }
+  },
+  'POST challenge-claim': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const c = CHALLENGES.find((x) => x.id === body.id)
+    if (!c) throw new Fail('Unknown challenge', 404)
+    const a = await d.db.fn<Activity>('luda_activity', { p_user: p.user_id })
+    if (Number(a[c.key] ?? 0) < c.goal) throw new Fail('Not finished yet. Keep going!')
+    if (c.prize.cash && p.kyc_status !== 'verified') throw new Fail('Verify your ID to receive cash prizes', 403)
+    const r = await d.db.fn<{ ok: boolean; cash?: number; points?: number }>('luda_reward', { p_user: p.user_id, p_kind: 'challenge', p_ref: `${c.id}:${cyprusDay().slice(0, 7)}`, p_xp: c.prize.xp, p_points: c.prize.points ?? 0, p_cash: c.prize.cash ?? 0, p_note: `Challenge complete: ${c.prizeLabel}`, p_cap: rewardsCap(env) })
+    if (!r.ok) throw new Fail('Already claimed this month', 409)
+    return { ok: true, cash: r.cash ?? 0, points: r.points ?? 0 }
+  },
+  'POST rewards-redeem': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const o = REDEEM.find((x) => x.id === body.id)
+    if (!o) throw new Fail('Unknown reward', 404)
+    if (p.kyc_status !== 'verified') throw new Fail('Verify your ID to turn points into money', 403)
+    if (p.frozen) throw new Fail('Your account is on hold', 403)
+    await limit(d, `redeem:${p.user_id}`, 5, 86400, 'You can redeem 5 times a day')
+    const r = await d.db.fn<{ ok: boolean; points: number; cash: number }>('luda_redeem', { p_user: p.user_id, p_pts: o.pts, p_cash: o.cash, p_ref: `${o.id}:${Date.now()}`, p_cap: rewardsCap(env) }).catch((e) => {
+      if (e instanceof MoneyError && e.message === 'not_enough_points') throw new Fail('Not enough points yet')
+      if (e instanceof MoneyError && e.message === 'rewards_budget') throw new Fail('This month\'s rewards are all given out. Try again next month.', 409)
+      return moneyMsg(e)
+    })
+    await d.db.log(p.user_id, 'reward_redeem', { user: p.username, pts: o.pts, cash: o.cash })
+    return r
+  },
+  'GET referrals': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    if (await d.db.hit(`refsettle:${p.user_id}`, 1, 60).catch(() => false)) await settleReferrals(p, env, d).catch(() => {})
+    const inviter = p.invited_by ? (await d.db.profile(p.invited_by))?.username ?? null : null
+    return { code: `LUDA-${p.username.toUpperCase()}`, invitees: await d.db.fn('luda_invitees', { p_user: p.user_id }), invitedBy: inviter, rules: REFERRAL_RULES, canApply: !p.invited_by && !!p.created_at && Date.now() - Date.parse(p.created_at) < REFERRAL_RULES.applyDays * 86400e3 }
+  },
+  'POST referral-apply': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await limit(d, `refapply:${p.user_id}`, 5, 86400, 'Too many tries today')
+    const code = String(body.code ?? '').trim().replace(/^LUDA-/i, '').replace(/^@/, '').toLowerCase()
+    if (!USERNAME.test(code)) throw new Fail('That code doesn\'t look right (e.g. LUDA-ADA)')
+    await d.db.fn('luda_set_inviter', { p_user: p.user_id, p_inviter: code, p_days: REFERRAL_RULES.applyDays }).catch((e) => {
+      if (e instanceof MoneyError && e.message === 'already_invited') throw new Fail('You already used a friend\'s code', 409)
+      if (e instanceof MoneyError && e.message === 'invite_too_late') throw new Fail(`Codes can only be used in your first ${REFERRAL_RULES.applyDays} days`, 409)
+      if (e instanceof MoneyError && e.message === 'not_found') throw new Fail('No Luda user with that code', 404)
+      return moneyMsg(e)
+    })
+    return { ok: true }
+  },
+  'GET country-cup': async ({ req, env, d }) => { await me(req, env, d); return { cup: await d.db.fn('luda_country_cup', {}) } },
 
   /* ---------------- community posts ---------------- */
   'GET board': async ({ req, env, d, url }) => {

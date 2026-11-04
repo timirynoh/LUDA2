@@ -18,7 +18,7 @@ export interface Profile {
   kyc_tries: number; kyc_tries_day?: string | null; kyc_started_at?: string | null
   pin_hash?: string | null; pin_salt?: string | null; pin_fails: number; pin_locked_until?: string | null
   frozen: boolean; created_at?: string; bio_challenge?: string | null; bio_challenge_exp?: string | null
-  phone?: string | null; phone_verified_at?: string | null; money_hold_until?: string | null; frozen_by?: 'user' | 'admin' | null; is_admin?: boolean
+  phone?: string | null; phone_verified_at?: string | null; money_hold_until?: string | null; frozen_by?: 'user' | 'admin' | null; is_admin?: boolean; invited_by?: string | null; streak?: number; last_checkin?: string | null
 }
 
 export interface Passkey { id: string; user_id: string; public_key: string; alg: number; counter: number; device?: string | null; created_at?: string }
@@ -94,7 +94,7 @@ export interface Db {
   removePasskey(userId: string, id: string): Promise<void>
 }
 
-export const MONEY_ERRORS = ['insufficient_funds', 'account_frozen', 'not_available', 'pot_locked', 'too_many_pots', 'own_listing', 'not_found', 'own_post', 'name_taken', 'not_member', 'owner_cannot_leave', 'too_many_ads', 'too_many_methods', 'p2p_limits', 'p2p_method', 'appeal_too_early']
+export const MONEY_ERRORS = ['insufficient_funds', 'account_frozen', 'not_available', 'pot_locked', 'too_many_pots', 'own_listing', 'not_found', 'own_post', 'name_taken', 'not_member', 'owner_cannot_leave', 'too_many_ads', 'too_many_methods', 'p2p_limits', 'p2p_method', 'appeal_too_early', 'not_enough_points', 'rewards_budget', 'already_invited', 'invite_too_late']
 
 export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
   const base = `${url.replace(/\/$/, '')}/rest/v1`

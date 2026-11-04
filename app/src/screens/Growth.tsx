@@ -3,10 +3,12 @@ import { Check, ChevronRight, Copy, Gift, MapPin, Share2, Trophy, Users } from '
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Ring, DemoNote, Header, PinPad, Sheet, Success } from '../components/ui'
-import { CITIES } from '../lib/data'
+import { CITIES, COUNTRIES } from '../lib/data'
 import { fmt } from '../lib/fx'
 import { AMBASSADOR_TIERS, dealsFor, REF_STAGES, REFERRAL, WELCOME_STEPS, type Deal, type RefStage } from '../lib/growth'
 import { AREAS } from '../lib/housing'
+import { api, LIVE } from '../lib/live'
+import { useLive } from '../lib/liveStore'
 import { uid, useStore, type State } from '../lib/store'
 import { UNIVERSITIES } from '../lib/uni'
 
@@ -20,7 +22,9 @@ const paidCount = (s: State) => s.referrals.filter((r) => r.stage === 'paid').le
 
 const FRIENDS: [string, string][] = [['Blessing', '🇳🇬'], ['Kwame', '🇬🇭'], ['Nyasha', '🇿🇼'], ['Aïcha', '🇨🇲'], ['Baraka', '🇰🇪'], ['Chinedu', '🇳🇬']]
 
-export function Invite() {
+export function Invite() { return LIVE ? <LiveInvite /> : <DemoInvite /> }
+
+function DemoInvite() {
   const { s, set, toast, reward } = useStore()
   const code = refCode(s)
   const [enter, setEnter] = useState('')
@@ -83,14 +87,15 @@ export function Invite() {
 /** Demo: invited friends move through the funnel; paid out at the end. */
 export function useReferralProgress() {
   const { s, set, notify, reward } = useStore()
+  const live = LIVE
   // You were invited: get your bonus once you've done KYC + first top-up.
   useEffect(() => {
-    if (!s.invitedBy || s.invitePaid || s.kyc.status !== 'verified' || s.deposits < 1) return
+    if (live || !s.invitedBy || s.invitePaid || s.kyc.status !== 'verified' || s.deposits < 1) return
     set((p) => ({ ...p, invitePaid: true, balances: { ...p.balances, TRY: (p.balances.TRY ?? 0) + REFERRAL.reward }, txs: [{ id: uid(), type: 'reward', amount: REFERRAL.reward, currency: 'TRY', label: `Welcome bonus (invited by ${p.invitedBy})`, ts: Date.now() }, ...p.txs] }))
     notify('🎁', `₺${REFERRAL.reward} welcome bonus added. Thanks for joining with a friend's code!`, '/wallet')
-  }, [s.invitedBy, s.invitePaid, s.kyc.status, s.deposits, set, notify])
+  }, [live, s.invitedBy, s.invitePaid, s.kyc.status, s.deposits, set, notify])
   useEffect(() => {
-    if (!s.referrals.some((r) => r.stage !== 'paid')) return
+    if (live || !s.referrals.some((r) => r.stage !== 'paid')) return
     const t = setInterval(() => {
       const now = Date.now()
       for (const r of s.referrals) {
@@ -104,12 +109,14 @@ export function useReferralProgress() {
       }
     }, 1500)
     return () => clearInterval(t)
-  }, [s.referrals, set, notify, reward])
+  }, [live, s.referrals, set, notify, reward])
 }
 
 /* ------------------------------ Ambassadors ------------------------------ */
 
-export function Ambassadors() {
+export function Ambassadors() { return LIVE ? <LiveAmbassadors /> : <DemoAmbassadors /> }
+
+function DemoAmbassadors() {
   const { s, set, gate, reward } = useStore()
   const [uni, setUni] = useState(s.ambassador.uni || s.university || 'neu')
   const mine = paidCount(s)
@@ -155,6 +162,118 @@ export function Ambassadors() {
               <span className={`w-6 text-center font-bold ${i < 3 ? 'text-gold-300' : 'text-slate-500'}`}>{i + 1}</span><span className="text-lg">{r.flag}</span><span className="flex-1 text-sm font-semibold">{r.name}</span><span className="text-sm text-slate-400">{r.n}</span>
             </div>
           ))}
+        </section>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------ Live: invites + ambassadors from the server ------------------------------ */
+
+interface Invitee { username: string; name: string; country: string; joined: string; verified: boolean; toppedUp: boolean; paid: boolean }
+interface RefInfo { code: string; invitees: Invitee[]; invitedBy: string | null; canApply: boolean; rules: { reward: number; welcome: number; perMonthCap: number; applyDays: number; tiers: { id: string; min: number; cash: number }[] } }
+const TIER_LOOK: Record<string, { name: string; emoji: string }> = { bronze: { name: 'Bronze', emoji: '🥉' }, silver: { name: 'Silver', emoji: '🥈' }, gold: { name: 'Gold', emoji: '🥇' } }
+const tl = (minor: number) => `₺${(minor / 100).toLocaleString('en-US')}`
+
+function useReferrals() {
+  const [info, setInfo] = useState<RefInfo | null>(null)
+  const [err, setErr] = useState('')
+  const load = () => api<RefInfo>('GET', 'referrals').then(setInfo).catch((e) => setErr(e instanceof Error ? e.message : 'Could not load'))
+  useEffect(() => { void load() }, [])
+  return { info, err, load }
+}
+
+function LiveInvite() {
+  const { toast } = useStore()
+  const { refresh, refreshRewards } = useLive()
+  const { info, err, load } = useReferrals()
+  const [enter, setEnter] = useState('')
+  const [msg, setMsg] = useState('')
+  if (!info) return <div><Header back title="Invite & earn" /><p className="px-5 text-sm text-slate-500">{err || 'Loading…'}</p></div>
+  const r = info.rules
+  const link = `${location.origin}/?ref=${info.code}`
+  const share = `Join me on Luda, the app for Africans in North Cyprus. Sign up with my code ${info.code} and we both get ${tl(r.welcome)} after you verify and top up: ${link}`
+  const paid = info.invitees.filter((x) => x.paid).length
+  const apply = async () => {
+    setMsg('')
+    try { await api('POST', 'referral-apply', { code: enter }); setMsg(`Code applied. Your ${tl(r.welcome)} arrives after you verify your ID and top up.`); void load(); void refreshRewards() }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Try again') }
+  }
+  const step = (x: Invitee) => (x.paid ? 3 : x.verified && x.toppedUp ? 3 : x.verified ? 2 : 1)
+  return (
+    <div>
+      <Header back title="Invite & earn" sub={`${tl(r.reward)} for you, ${tl(r.welcome)} for your friend`} />
+      <div className="flex flex-col gap-3 px-5">
+        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-400 via-emerald-700 to-emerald-950 p-5 text-white">
+          <span className="absolute -right-4 -bottom-6 text-8xl opacity-20">🎁</span>
+          <p className="text-sm text-white/80">You've earned</p><p className="text-4xl font-extrabold">{tl(paid * r.reward)}</p>
+          <p className="mt-1 text-sm text-white/80">Friends verified: {paid} · On the way: {info.invitees.length - paid}</p>
+          <div className="mt-4 flex items-center gap-2 rounded-2xl bg-black/20 p-3"><span className="selectable flex-1 font-mono text-lg font-bold tracking-widest" translate="no">{info.code}</span>
+            <button className="chip bg-white/20 py-2 text-white" onClick={async () => { try { await navigator.clipboard.writeText(share); toast({ title: 'Invite copied', emoji: '📋' }) } catch { toast({ title: info.code, emoji: '🎁' }) } }}><Copy size={12} /> Copy</button></div>
+          <a href={`https://wa.me/?text=${encodeURIComponent(share)}`} target="_blank" rel="noreferrer" className="btn mt-3 w-full bg-white py-3 text-ink-950"><Share2 size={16} /> Invite on WhatsApp</a>
+        </div>
+        <div className="card text-sm">
+          <p className="mb-2 font-semibold">How it works</p>
+          <ol className="grid gap-1.5 text-slate-300">
+            <li>1. Your friend signs up with your link or code</li><li>2. They verify their ID and top up their wallet</li><li>3. Luda adds <b>{tl(r.reward)}</b> to your Lira wallet and <b>{tl(r.welcome)}</b> to theirs 🎉</li>
+          </ol>
+          <p className="mt-2 text-[11px] text-slate-500">Paid by Luda's server once per friend. Max {r.perMonthCap} paid invites a month (after that you get points). One ID = one account, so fake accounts never count.</p>
+        </div>
+        {info.canApply && (
+          <div className="card">
+            <p className="text-sm font-semibold">Got a friend's code?</p>
+            <p className="text-xs text-slate-500">You can add it in your first {r.applyDays} days.</p>
+            <div className="mt-2 flex gap-2"><input className="input py-2.5 font-mono uppercase" placeholder="LUDA-USERNAME" value={enter} onChange={(e) => setEnter(e.target.value.toUpperCase())} />
+              <button className="btn-primary shrink-0 px-4 py-2.5 text-sm" disabled={enter.length < 3 || enter === info.code} onClick={() => void apply()}>Apply</button></div>
+          </div>
+        )}
+        {msg && <p className="rounded-2xl bg-fg/[0.03] p-3 text-sm text-slate-300">{msg}</p>}
+        {info.invitedBy && <p className="rounded-2xl bg-fg/[0.03] p-3 text-xs text-slate-400">Invited by <b>@{info.invitedBy}</b> · your {tl(r.welcome)} arrives after you verify your ID and top up.</p>}
+        <section>
+          <p className="label mb-2">Your invites</p>
+          {info.invitees.length ? info.invitees.map((x) => {
+            const c = COUNTRIES.find((k) => k.code === x.country)
+            const n = step(x)
+            return (
+              <div key={x.username} className="card mb-2">
+                <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-ink-700 text-xl">{c?.flag ?? '🌍'}</span><p className="flex-1 font-semibold" translate="no">{x.name} <span className="text-xs font-normal text-slate-500">@{x.username}</span></p>
+                  <span className={`chip ${x.paid ? 'bg-mint-400/15 text-mint-300' : 'bg-fg/5 text-slate-300'}`}>{x.paid ? 'Paid' : x.verified ? 'Needs a top-up' : 'Needs ID check'}</span></div>
+                <div className="mt-2 flex gap-1">{[1, 2, 3].map((i) => <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= n ? 'bg-mint-400' : 'bg-fg/10'}`} />)}</div>
+              </div>
+            )
+          }) : <p className="card text-center text-sm text-slate-400">No invites yet. Share your code to start earning.</p>}
+        </section>
+        <button className="text-xs text-slate-500" onClick={() => { void load(); void refresh(); void refreshRewards() }}>Refresh</button>
+        <Link to="/ambassadors" className="card flex items-center gap-3"><Trophy className="text-gold-300" /><span className="flex-1 text-sm font-semibold">Bring your whole campus: become an ambassador</span><ChevronRight size={16} className="text-slate-500 rtl:rotate-180" /></Link>
+      </div>
+    </div>
+  )
+}
+
+function LiveAmbassadors() {
+  const { info, err } = useReferrals()
+  if (!info) return <div><Header back title="Campus ambassadors" /><p className="px-5 text-sm text-slate-500">{err || 'Loading…'}</p></div>
+  const mine = info.invitees.filter((x) => x.paid).length
+  const tiers = info.rules.tiers
+  const next = tiers.find((t) => mine < t.min)
+  const tier = [...tiers].reverse().find((t) => mine >= t.min)
+  return (
+    <div>
+      <Header back title="Campus ambassadors" sub="Grow Luda at your university, earn rewards" />
+      <div className="flex flex-col gap-3 px-5">
+        <div className="card flex items-center gap-4 bg-gradient-to-br from-indigo-500/20 to-transparent">
+          <Ring value={next ? mine / next.min : 1} size={72} stroke={6}><span className="text-2xl">{tier ? TIER_LOOK[tier.id]?.emoji : '🎓'}</span></Ring>
+          <div className="flex-1"><p className="font-bold">{tier ? `${TIER_LOOK[tier.id]?.name} ambassador` : 'Every invite counts'}</p>
+            <p className="text-sm text-slate-400">Verified friends: {mine}{next ? ` · ${next.min - mine} more for ${TIER_LOOK[next.id]?.name}` : ' · top tier!'}</p>
+            <Link to="/invite" className="mt-2 inline-flex text-sm text-mint-300">Invite friends ›</Link></div>
+        </div>
+        <section className="card">
+          <p className="label mb-2">Bonuses (paid once, on top of the {tl(info.rules.reward)} per friend)</p>
+          {tiers.map((t) => (
+            <div key={t.id} className={`flex items-center gap-3 py-2 ${mine >= t.min ? '' : 'opacity-60'}`}><span className="text-2xl">{TIER_LOOK[t.id]?.emoji}</span>
+              <div className="flex-1"><p className="text-sm font-semibold">{TIER_LOOK[t.id]?.name} · {t.min} verified friends</p><p className="text-xs text-slate-400">{tl(t.cash)} bonus to your wallet</p></div>{mine >= t.min && <Check className="text-mint-300" size={18} />}</div>
+          ))}
+          <p className="mt-2 text-[11px] text-slate-500">You join automatically: Luda's server counts your verified friends and pays each bonus once.</p>
         </section>
       </div>
     </div>

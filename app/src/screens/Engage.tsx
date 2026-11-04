@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bell, Bookmark, Heart, Pin, Plus, Share2, Trophy } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Header, Sheet } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { COUNTRIES } from '../lib/data'
@@ -8,6 +8,8 @@ import { fmt } from '../lib/fx'
 import { challengesFor, newsFeed, NOTIF_CATS, SPIN, type News, type NewsCat } from '../lib/growth'
 import { checkText } from '../lib/moderation'
 import { uid, useStore } from '../lib/store'
+import { LIVE, api } from '../lib/live'
+import { useLive } from '../lib/liveStore'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -15,8 +17,9 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 export function CheckinCard() {
   const { s } = useStore()
+  const { rewards } = useLive()
   const [open, setOpen] = useState(false)
-  const done = s.spin.last === today()
+  const done = LIVE ? !rewards || rewards.spunToday : s.spin.last === today()
   if (done && !open) return null
   return (
     <>
@@ -32,11 +35,28 @@ export function CheckinCard() {
 
 export function SpinSheet({ onClose }: { onClose: () => void }) {
   const { s, set, reward, addTx } = useStore()
+  const { refresh, refreshRewards } = useLive()
   const [rot, setRot] = useState(0)
   const [won, setWon] = useState<number | null>(null)
   const [spinning, setSpinning] = useState(false)
+  const [note, setNote] = useState('')
   const seg = 360 / SPIN.length
-  const spin = () => {
+  const spin = async () => {
+    if (LIVE) {
+      // Live: the server draws the prize (once a day) and pays it; the wheel only shows the result.
+      if (spinning) return
+      setSpinning(true); setNote('')
+      try {
+        const r = await api<{ index: number; cash: number; points: number; swapped: boolean; streak: number; verifiedOnlyCash: boolean }>('POST', 'spin')
+        setRot(360 * 6 + (360 - r.index * seg - seg / 2))
+        setTimeout(() => {
+          setWon(r.index); setSpinning(false)
+          setNote(r.cash ? `₺${r.cash / 100} added to your Lira wallet 🎉` : r.swapped ? 'This month\'s cash prizes are all given out, so you got points instead.' : r.verifiedOnlyCash ? 'Verify your ID to win cash prizes too.' : '')
+          void refresh(); void refreshRewards()
+        }, 3600)
+      } catch (e) { setSpinning(false); setNote(e instanceof Error ? e.message : 'Try again') }
+      return
+    }
     if (spinning || s.spin.last === today()) return
     const total = SPIN.reduce((a, p) => a + p.weight, 0)
     let r = Math.random() * total, idx = 0
@@ -73,9 +93,10 @@ export function SpinSheet({ onClose }: { onClose: () => void }) {
           </motion.svg>
         </div>
         <AnimatePresence>{won !== null && <motion.p initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-2xl font-extrabold">{SPIN[won].emoji} {SPIN[won].label}!</motion.p>}</AnimatePresence>
-        {won === null ? <button className="btn-gold w-full py-4 text-lg" disabled={spinning} onClick={spin}>{spinning ? 'Spinning…' : 'SPIN'}</button>
+        {note && <p className="text-center text-sm text-slate-300">{note}</p>}
+        {won === null ? <button className="btn-gold w-full py-4 text-lg" disabled={spinning} onClick={() => void spin()}>{spinning ? 'Spinning…' : 'SPIN'}</button>
           : <button className="btn-primary w-full py-4" onClick={onClose}>Come back tomorrow 👋</button>}
-        <p className="text-center text-xs text-slate-500">One spin a day · keep a 7-day streak to double your prize</p>
+        <p className="text-center text-xs text-slate-500">{LIVE ? 'One spin a day · cash prizes for ID-verified accounts · paid by Luda' : 'One spin a day · keep a 7-day streak to double your prize'}</p>
       </div>
     </Sheet>
   )
@@ -165,7 +186,9 @@ export function NewsPreview() {
 
 /* ------------------------------ Monthly challenges ------------------------------ */
 
-export function Challenges() {
+export function Challenges() { return LIVE ? <LiveChallenges /> : <DemoChallenges /> }
+
+function DemoChallenges() {
   const { s, set, reward, addTx } = useStore()
   const now = new Date()
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10)
@@ -211,6 +234,60 @@ export function Challenges() {
               <span className={`w-5 text-center font-bold ${i < 3 ? 'text-gold-300' : 'text-slate-500'}`}>{i + 1}</span><span className="text-xl">{r.flag}</span><span className="flex-1 text-sm font-semibold">{r.name}</span><span className="text-sm text-slate-400">{fmt(r.v, 'TRY')}</span>
             </div>
           ))}
+        </section>
+      </div>
+    </div>
+  )
+}
+
+/** Live: challenges, progress and prizes all come from the server (progress = what really happened this month). */
+const LIVE_CH: Record<string, { title: string; emoji: string; desc: string; unit: string }> = {
+  'c-bills': { title: 'Bill boss', emoji: '⚡', desc: 'Pay 3 bills with Luda this month', unit: 'bills' },
+  'c-save': { title: 'Save ₺1,000', emoji: '🐷', desc: 'Put ₺1,000 into savings pots this month', unit: '₺' },
+  'c-p2p': { title: 'Safe swapper', emoji: '🔒', desc: 'Complete 2 P2P trades this month', unit: 'trades' },
+}
+function LiveChallenges() {
+  const { s } = useStore()
+  const { rewards, refresh, refreshRewards } = useLive()
+  const [cup, setCup] = useState<{ country: string; saved: number; savers: number }[] | null>(null)
+  const [msg, setMsg] = useState('')
+  useEffect(() => { api<{ cup: { country: string; saved: number; savers: number }[] }>('GET', 'country-cup').then((r) => setCup(r.cup)).catch(() => setCup([])) }, [])
+  const now = new Date(), monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  const daysLeft = Math.max(1, Math.ceil((monthEnd.getTime() + 86_400_000 - now.getTime()) / 86_400_000))
+  const me = COUNTRIES.find((c) => c.code === s.country)
+  const claim = async (id: string) => {
+    setMsg('')
+    try { const r = await api<{ cash: number; points: number }>('POST', 'challenge-claim', { id }); setMsg(r.cash ? `₺${r.cash / 100} added to your Lira wallet 🎉` : `+${r.points} points 🎉`); void refresh(); void refreshRewards() }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Try again') }
+  }
+  return (
+    <div>
+      <Header back title="Monthly challenges" sub={`${daysLeft} days left this month`} />
+      <div className="flex flex-col gap-3 px-5">
+        {msg && <p className="rounded-2xl bg-mint-400/10 p-3 text-center text-sm text-mint-100">{msg}</p>}
+        {!rewards && <p className="text-sm text-slate-500">Loading…</p>}
+        {rewards?.challenges.map((c) => {
+          const meta = LIVE_CH[c.id] ?? { title: c.id, emoji: '🏆', desc: '', unit: '' }
+          const pct = Math.min(1, c.progress / c.goal)
+          return (
+            <div key={c.id} className="card">
+              <div className="flex items-center gap-3"><span className="text-3xl">{meta.emoji}</span>
+                <div className="flex-1"><p className="font-bold">{meta.title}</p><p className="text-xs text-slate-400">{meta.desc}</p></div></div>
+              <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-fg/10"><motion.div className="h-full rounded-full bg-gradient-to-r from-gold-300 to-mint-400" initial={{ width: 0 }} animate={{ width: `${pct * 100}%` }} /></div>
+              <div className="mt-2 flex items-center justify-between text-xs"><span className="text-slate-400">{meta.unit === '₺' ? `₺${(c.progress / 100).toLocaleString('en-US')} / ₺${(c.goal / 100).toLocaleString('en-US')}` : `${c.progress} / ${c.goal} ${meta.unit}`} · 🎁 {c.prize}</span>
+                {c.claimed ? <span className="chip bg-mint-400/15 text-mint-300">✓ Claimed</span> : pct >= 1 ? <button className="chip bg-gold-400 py-1.5 text-ink-950" onClick={() => void claim(c.id)}>Claim prize</button> : <span className="chip bg-fg/5 text-slate-300">In progress</span>}</div>
+            </div>
+          )
+        })}
+        <p className="text-[11px] text-slate-500">Progress is counted by Luda from what you really did this month. Cash prizes need a verified ID.</p>
+        <section className="card">
+          <p className="flex items-center gap-2 font-bold"><Trophy size={18} className="text-gold-300" /> Country savings cup</p>
+          <p className="mb-2 text-xs text-slate-400">Lira saved into pots this month, by country. Every lira you save counts for {me?.flag} {me?.name}.</p>
+          {!cup ? <p className="text-xs text-slate-500">Loading…</p> : cup.length === 0 ? <p className="text-xs text-slate-500">No savings yet this month. Be the first for your country!</p>
+            : cup.map((r, i) => { const c = COUNTRIES.find((x) => x.code === r.country); return (
+              <div key={r.country} className={`flex items-center gap-3 rounded-xl px-2 py-2 ${r.country === s.country ? 'bg-mint-400/10' : ''}`}>
+                <span className={`w-5 text-center font-bold ${i < 3 ? 'text-gold-300' : 'text-slate-500'}`}>{i + 1}</span><span className="text-xl">{c?.flag ?? '🌍'}</span><span className="flex-1 text-sm font-semibold">{c?.name ?? r.country}</span><span className="text-sm text-slate-400">₺{(r.saved / 100).toLocaleString('en-US')}</span>
+              </div>) })}
         </section>
       </div>
     </div>

@@ -151,7 +151,7 @@ export default function App() {
                 <Route path="/u/:name" element={<Person />} />
                 <Route path="/invite" element={<Invite />} />
                 <Route path="/ambassadors" element={<Ambassadors />} />
-                <Route path="/deals" element={<Deals />} />
+                <Route path="/deals" element={LIVE ? <Navigate to="/promos" replace /> : <Deals />} />
                 <Route path="/welcome" element={<Welcome />} />
                 <Route path="/news" element={LIVE ? <LiveBoard key="news" kind="news" /> : <NewsScreen />} />
                 <Route path="/challenges" element={<Challenges />} />
