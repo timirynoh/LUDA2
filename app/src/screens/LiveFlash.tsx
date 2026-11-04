@@ -1,5 +1,6 @@
 // Live: Flash help with escrow. The reward is held from the poster's wallet when the job is posted, so helpers
 // know the money is real; the helper is paid when the poster confirms (or automatically after 3 days).
+import { InfoTip } from '../components/LiveGuides'
 import { BadgeCheck, LifeBuoy, Lock, MapPin, Plus, Zap } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
@@ -32,7 +33,7 @@ export default function LiveFlash() {
 
   return (
     <div className="pb-8">
-      <Header back title="Flash help" sub="Quick paid help from students nearby" right={<button className="btn-primary px-4 py-2.5 text-sm" onClick={() => setPost(true)}><Plus size={16} /> Ask</button>} />
+      <Header back title="Flash help" sub="Quick paid help from students nearby" right={<div className="flex items-center gap-2"><InfoTip slug="tip-flash" /><button className="btn-primary px-4 py-2.5 text-sm" onClick={() => setPost(true)}><Plus size={16} /> Ask</button></div>} />
       <div className="flex flex-col gap-4 px-5">
         <Tabs value={tab} onChange={setTab} tabs={[{ value: 'board', label: 'Jobs' }, { value: 'mine', label: 'My requests', badge: toPay }, { value: 'helping', label: "I'm helping" }]} />
         {tab === 'board' && <>

@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeftRight, Grid2x2, Home as HomeIcon, MessageCircle, Wallet as WalletIcon } from 'lucide-react'
-import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, NavLink, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { Toasts } from './components/ui'
 import { UnlockSheet, useTierCelebration } from './components/Verify'
 import { useKycReview } from './components/Kyc'
@@ -49,6 +49,7 @@ import LiveAdmin from './screens/LiveAdmin'
 import LiveExchange from './screens/LiveExchange'
 import { GuidedTour } from './components/GuidedTour'
 import { PrivacyShield } from './components/PrivacyShield'
+import { GuidePage, TermsGate } from './components/LiveGuides'
 import { useTodoAlerts } from './components/LiveTodo'
 import { useUniReminders } from './components/LiveUni'
 import LiveBoard from './screens/LiveBoard'
@@ -149,6 +150,8 @@ export default function App() {
                 <Route path="/inbox" element={<Inbox />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/help" element={<Help />} />
+                <Route path="/terms" element={<GuidePage slug="terms" />} />
+                <Route path="/guide/:slug" element={<GuideRoute />} />
                 <Route path="/disputes" element={LIVE ? <Navigate to="/help" replace /> : <DisputeList />} />
                 <Route path="/send" element={LIVE ? <Navigate to="/wallet?a=send" replace /> : <SendScreen />} />
                 <Route path="/savings" element={LIVE ? <LiveSavings /> : <Savings />} />
@@ -176,6 +179,7 @@ export default function App() {
           </AnimatePresence>
           <GuidedTour />
           <PrivacyShield />
+          <TermsGate />
           {!inRoom && <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-app px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <div className="flex items-center justify-around rounded-[1.75rem] border border-fg/10 bg-ink-900/85 px-2 py-2 shadow-2xl shadow-black/50 backdrop-blur-2xl">
               {TABS.map(({ to, icon: Icon, key }) => (
@@ -195,4 +199,10 @@ export default function App() {
       )}
     </div>
   )
+}
+
+
+function GuideRoute() {
+  const { slug = '' } = useParams()
+  return <GuidePage key={slug} slug={slug} />
 }

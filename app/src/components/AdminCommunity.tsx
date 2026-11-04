@@ -155,8 +155,9 @@ export const AREA_INFO: Record<Exclude<StaffArea, 'team'>, { label: string; view
   bills: { label: 'Bills', view: 'See bills to pay', edit: 'Mark bills as paid (with receipt)', full: 'Also refund bills' },
   disputes: { label: 'Held money', view: 'See Market / Flash payments on hold', edit: 'See them', full: 'Decide disputes (pay or refund)' },
   cases: { label: 'Support cases', view: 'Read cases', edit: 'Reply to cases', full: 'Reply to cases' },
-  content: { label: 'Posts & groups', view: 'See reported posts', edit: 'Approve / remove posts, post as Official', full: 'Also remove whole groups' },
+  content: { label: 'Posts, guides & calendars', view: 'See reported posts and guides', edit: 'Approve / remove posts, post as Official, edit guides, tips and uni calendars', full: 'Also remove whole groups and change the Terms' },
   banners: { label: 'Banners', view: 'See banners', edit: 'Create and edit banners', full: 'Also delete banners' },
+  tickets: { label: 'Bus ticket check', view: '—', edit: 'Scan and check passengers\' tickets (drivers)', full: 'Scan and check tickets' },
 }
 interface StaffRow { email: string; roles: Partial<Record<StaffArea, StaffLevel>>; note: string | null; username: string | null; created_at: string }
 

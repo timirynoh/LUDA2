@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { InfoTip } from '../components/LiveGuides'
 import { Check, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -64,7 +65,7 @@ export default function Rewards() {
         </div>
 
         <section className="card">
-          <div className="mb-3 flex items-center justify-between"><p className="font-bold">🪙 {t('rewards.points')}</p><p className="text-xl font-extrabold text-gold-300">{s.points}</p></div>
+          <div className="mb-3 flex items-center justify-between"><p className="flex items-center gap-2 font-bold">🪙 {t('rewards.points')} <InfoTip slug="tip-points" /></p><p className="text-xl font-extrabold text-gold-300">{s.points}</p></div>
           <div className="flex flex-col gap-2">
             {LIVE ? (rewards?.redeem ?? []).map((r) => (
               <div key={r.id} className="flex items-center gap-3 rounded-2xl bg-fg/[0.03] p-3">

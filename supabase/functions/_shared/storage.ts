@@ -18,6 +18,18 @@ export async function putFile(env: StorageEnv, path: string, bytes: Uint8Array, 
   if (!r.ok) throw new Error(`Upload failed (${r.status})`)
 }
 
+/** Proof videos (P2P appeals) go straight from the phone to private storage through a one-time upload link. */
+export const VIDEO_TYPES: Record<string, string> = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov', 'video/3gpp': '3gp' }
+export const MAX_VIDEO_BYTES = 50_000_000
+export async function uploadUrl(env: StorageEnv, path: string, f: Fetch = fetch) {
+  const base = env.SUPABASE_URL.replace(/\/$/, '')
+  const r = await f(`${base}/storage/v1/object/upload/sign/${BUCKET}/${path}`, { method: 'POST', headers: { ...hdr(env), 'content-type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(15000) })
+  if (!r.ok) throw new Error(`Upload link failed (${r.status})`)
+  const j = (await r.json().catch(() => ({}))) as { url?: string }
+  if (!j.url) throw new Error('Upload link failed')
+  return j.url.startsWith('http') ? j.url : `${base}/storage/v1${j.url}`
+}
+
 /** A link that works for 10 minutes. */
 export async function signedUrl(env: StorageEnv, path: string, f: Fetch = fetch) {
   const base = env.SUPABASE_URL.replace(/\/$/, '')

@@ -10,13 +10,14 @@ import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, billFee, depositFee, f
 import { PayoutRefused, checkTransfer, createRecipient, flwBanks, flwCheckTransfer, flwResolve, flwSendTransfer, listBanks, matchFlwBank, payoutRefusalMessage, resolveAccount, sendTransfer, type PayoutProvider } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
 import { textProblem } from './moderation.ts'
-import { decodeFile, putFile, signedUrl } from './storage.ts'
+import { decodeFile, MAX_VIDEO_BYTES, putFile, signedUrl, uploadUrl, VIDEO_TYPES } from './storage.ts'
 import { checkCode, normPhone, sendCode, smsEnabled, type SmsEnv } from './sms.ts'
 import { checkWebhook, initCheckout, verifyPayment, webhookEvent, type Fetch, type Keys, type Provider } from './providers.ts'
 
 export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv {
   APP_URL: string
   ALLOWED_ORIGINS?: string
+  TICKET_QR_SECRET?: string
   SUPABASE_URL: string
   AUTH_KEY: string // key used to talk to Supabase Auth
   SELL_OPERATORS?: string
@@ -173,7 +174,7 @@ async function kycSync(p: Profile, env: Env, d: Deps): Promise<{ status: Profile
 
 const isAdmin = (p: Profile, env: Env) => !!p.is_admin || (env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean).includes(p.email.toLowerCase())
 /* Staff roles: the owner can do everything; staff are added by email with a level per area. */
-export const AREAS = ['overview', 'users', 'kyc', 'money', 'bills', 'disputes', 'cases', 'content', 'banners'] as const
+export const AREAS = ['overview', 'users', 'kyc', 'money', 'bills', 'disputes', 'cases', 'content', 'banners', 'tickets'] as const
 export type Area = (typeof AREAS)[number] | 'team'
 export type Level = 'view' | 'edit' | 'full'
 const RANK: Record<Level, number> = { view: 1, edit: 2, full: 3 }
@@ -454,6 +455,12 @@ const CHALLENGES = [
 ]
 export const REFERRAL_RULES = { reward: 50_00, welcome: 50_00, perMonthCap: 20, applyDays: 14, tiers: [{ id: 'bronze', min: 10, cash: 250_00 }, { id: 'silver', min: 25, cash: 750_00 }, { id: 'gold', min: 50, cash: 2_000_00 }] }
 const rewardsCap = (env: Env) => Math.round(num(env.REWARDS_MONTHLY_CAP, 5_000) * 100)
+/** 6-digit code for a ticket's QR in a 30-second window (HMAC with a server secret, so only the server can make or check it). */
+async function ticketOtp(env: Env, ticketId: string, win: number) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.TICKET_QR_SECRET || env.SERVICE_KEY || env.PAYSTACK_SECRET_KEY || 'luda-dev-ticket-key'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${ticketId}:${win}`)))
+  return String((((sig[0] << 24) | (sig[1] << 16) | (sig[2] << 8) | sig[3]) >>> 0) % 1_000_000).padStart(6, '0')
+}
 const cyprusDay = (d = new Date()) => new Date(d.getTime() + 3 * 3600e3).toISOString().slice(0, 10)
 type Activity = Record<string, any>
 function questsDone(a: Activity) {
@@ -597,6 +604,7 @@ const routes: Record<string, Route> = {
     if (r.userId) await d.db.createProfile({ user_id: r.userId, username, full_name: fullName, email, country: body.country ? String(body.country).slice(0, 2) : undefined }).catch(() => {})
     // Joined with a friend's code (LUDA-USERNAME): remember who invited them; the bonus is paid by the server later.
     const ref = String(body.ref ?? '').trim().replace(/^LUDA-/i, '').toLowerCase()
+    if (r.userId && Number(body.terms) > 0) await d.db.fn('luda_terms_accept', { p_user: r.userId, p_version: Number(body.terms) }).catch(() => {})
     if (r.userId && ref && USERNAME.test(ref) && ref !== username) await d.db.fn('luda_set_inviter', { p_user: r.userId, p_inviter: ref, p_days: REFERRAL_RULES.applyDays }).catch(() => {})
     return { session: r.session, needsConfirm: !r.session }
   },
@@ -658,7 +666,7 @@ const routes: Record<string, Route> = {
     const staffOf = await permsOf(p, env, d)
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
     return {
-      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null, university: p.university ?? null },
+      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null, university: p.university ?? null, termsVersion: Number(p.terms_version ?? 0), termsCurrent: Number((await d.db.fn<{ version?: number } | null>('luda_guide', { p_slug: 'terms' }).catch(() => null))?.version ?? 0) },
       // Every top-up attempt with its status (pending / paid / failed / mismatch), so the app can show all of them.
       deposits: deposits.map((x) => ({ reference: x.reference, provider: x.provider, status: x.status, chargeMinor: Number(x.amount_minor), currency: x.currency, feeMinor: Number(x.fee_minor ?? 0), creditMinor: Number(x.credit_minor ?? 0), creditCurrency: x.credit_currency ?? 'NGN', createdAt: x.created_at, paidAt: x.paid_at ?? null })),
       balances, history, tickets, withdrawals: withdrawals.map((w) => ({ ...w, account_number: '••••' + w.account_number.slice(-4), recipient_code: undefined })),
@@ -1432,6 +1440,8 @@ const routes: Record<string, Route> = {
     const asset = p2pAsset(url.searchParams.get('asset'))
     const city = cleanText(url.searchParams.get('city'), 30), area = cleanText(url.searchParams.get('area'), 40).toLowerCase()
     let ads = await d.db.fn<Record<string, any>[]>('luda_p2p_ads2', { p_side: want === 'buy' ? 'sell' : 'buy', p_asset: asset, p_viewer: p.user_id })
+    const hidden = new Set((await d.db.fn<{ hidden: string[] }>('luda_p2p_blocks', { p_user: p.user_id })).hidden)
+    ads = ads.filter((a) => !hidden.has(a.maker))
     const near = (a: Record<string, any>) => (area && String(a.area).toLowerCase() === area ? 2 : 0) + (city && a.city === city ? 1 : 0)
     if (url.searchParams.get('near') === '1') ads = ads.filter((a) => near(a) > 0)
     // Bybit-style: best price first (cheapest when you buy, highest when you sell); nearby breaks ties.
@@ -1492,6 +1502,7 @@ const routes: Record<string, Route> = {
       await verifyAuth(p, body, env, d) // Naira leaves the wallet into escrow: PIN / fingerprint
     } else if (method === 'cash') tryTo = { kind: 'cash', area: cleanText(body.area, 40) }
     await limit(d, `p2porder:${p.user_id}`, 10, 86400, 'You can open 10 P2P orders a day')
+    if (await d.db.fn<boolean>('luda_p2p_blocked_ad', { p_ad: uuid(body.adId), p_user: p.user_id })) throw new Fail('You can\'t trade with this person', 403)
     // The fee is priced in lira (0.5%, min ₺1, max ₺25) and collected from the held Naira at this trade's own rate.
     const asset = (ad as { asset?: string }).asset ?? 'TRY'
     const liraMinor = asset === 'TRY' ? amountTry : Math.round(amountTry / (await perTry(asset, env, d.fetch)))
@@ -1539,13 +1550,33 @@ const routes: Record<string, Route> = {
     await d.db.log(String(body.id), 'p2p_appeal', { user: p.username, reason })
     return { ok: true }
   },
+  'POST p2p-video-start': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const o = await d.db.fn<Record<string, any> | null>('luda_p2p_order', { p_order: uuid(body.id), p_user: p.user_id })
+    if (!o) throw new Fail('Not found', 404)
+    if (!['waiting', 'sent', 'appeal'].includes(o.status)) throw new Fail('This order is closed', 409)
+    const ext = VIDEO_TYPES[String(body.type ?? '')]
+    if (!ext) throw new Fail('Use a normal phone video (MP4, MOV or WebM)')
+    if (!(Number(body.size) > 0 && Number(body.size) <= MAX_VIDEO_BYTES)) throw new Fail('The video must be under 50 MB. Record only the important part, or send it in two parts.')
+    await limit(d, `p2pvideo:${p.user_id}`, 6, 86400, 'You can upload 6 videos a day')
+    const path = `${p.user_id}/p2p-${o.id}/${randomHex(8)}.${ext}`
+    return { path, uploadUrl: await uploadUrl({ SUPABASE_URL: env.SUPABASE_URL, SERVICE_KEY: env.SERVICE_KEY }, path, d.fetch).catch(() => { throw new Fail('Upload is not available right now, try again', 502) }) }
+  },
   'POST p2p-msg': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
     await limit(d, `p2pmsg:${p.user_id}`, 30, 600, 'Slow down a little')
     const text = body.body ? clean(body.body, 500, 'a message') : ''
     const files = await storeFiles(env, d, p.user_id, 'p2p', body.files)
+    // A proof video uploaded through p2p-video-start: only accepted from its own folder for this order.
+    if (body.video) {
+      const v = String(body.video)
+      if (!new RegExp(`^${p.user_id}/p2p-${uuid(body.id)}/[0-9a-f]{16}\\.(mp4|webm|mov|3gp)$`).test(v)) throw new Fail('That video upload is not valid')
+      files.push(v)
+    }
     if (!text && !files.length) throw new Fail('Write a message or attach a photo')
-    await d.db.fn('luda_p2p_msg', { p_order: uuid(body.id), p_user: p.user_id, p_body: text, p_files: files }).catch(p2pErr)
+    // In an appeal people can send evidence to the Luda team only (Bybit-style): the other person doesn't see it.
+    if (body.private) await d.db.fn('luda_p2p_msg_v', { p_order: uuid(body.id), p_user: p.user_id, p_body: text, p_files: files, p_vis: 'staff' }).catch(p2pErr)
+    else await d.db.fn('luda_p2p_msg', { p_order: uuid(body.id), p_user: p.user_id, p_body: text, p_files: files }).catch(p2pErr)
     return { ok: true }
   },
   'POST p2p-appeal-cancel': async ({ req, env, d, body }) => {
@@ -1845,6 +1876,8 @@ const routes: Record<string, Route> = {
       if (o.status === 'appeal' && o.askMe && o.askDue) items.push({ key: `p2p:${o.id}:ask:${o.askDue}`, emoji: '🛡️', title: 'The Luda team needs your reply', sub: Date.parse(o.askDue) > Date.now() ? `P2P with @${o.other} · reply before ${new Date(o.askDue).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Nicosia' })}` : `P2P with @${o.other} · the time is up, reply now`, to: `/p2p/${o.id}`, level: 'urgent' })
       if (o.status === 'appeal' && !(o.askMe && o.askDue)) items.push({ key: `p2p:${o.id}:appeal:${o.stage}`, emoji: '⚖️', title: `P2P dispute with @${o.other}`, sub: o.stage === 'negotiation' ? 'Try to sort it out in the order chat' : 'The Luda team is reviewing it', to, level: o.stage === 'negotiation' ? 'action' : 'info' })
     }
+    for (const o of t.p2p ?? []) if (o.remindedBy) items.push({ key: `p2p:${o.id}:remind:${o.remindedAt}`, emoji: '🔔', title: `@${o.remindedBy} is waiting for you`, sub: 'Open your P2P order', to: `/p2p/${o.id}`, level: 'urgent' })
+    for (const o of t.rate ?? []) items.push({ key: `p2p:${o.id}:rate`, emoji: '⭐', title: `Rate your trade with @${o.other}`, sub: 'Helps everyone trade safely', to: `/p2p/${o.id}`, level: 'info' })
     for (const l of t.bought ?? []) items.push({ key: `buy:${l.id}`, emoji: '📦', title: `Got "${l.title}"?`, sub: `Confirm you received it so @${l.seller} gets paid`, to: '/market', level: 'urgent' })
     for (const l of t.sold ?? []) items.push({ key: `sold:${l.id}`, emoji: '🛍️', title: `Hand over "${l.title}" to @${l.buyer}`, sub: `${amt(l.price, 'TRY')} is held until they confirm`, to: '/market', level: 'action' })
     for (const j of t.flashPosted ?? []) items.push({ key: `flash:${j.id}`, emoji: '⚡', title: `@${j.helper} is doing "${j.title}"`, sub: 'Tap Job done when it\'s finished', to: '/flash', level: 'action' })
@@ -1923,6 +1956,102 @@ const routes: Record<string, Route> = {
     const n = await d.db.fn<number>('luda_uni_copy_year', { p_uni: u, p_from: from, p_to: to, p_by: a.user_id })
     await d.db.log(u, 'admin_uni_copy', { by: a.username, from, to, n })
     return { copied: n }
+  },
+
+  /* ---------------- guides, terms and ⓘ tips: content lives on the server, editable in Luda HQ ---------------- */
+  'GET guide': async ({ d, url }) => {
+    const g = await d.db.fn<Record<string, unknown> | null>('luda_guide', { p_slug: String(url.searchParams.get('slug') ?? '').slice(0, 40) })
+    if (!g) throw new Fail('Not found', 404)
+    return { guide: { ...g, updated_by: undefined } }
+  },
+  'GET guides': async ({ d, url }) => {
+    const kind = url.searchParams.get('kind')
+    return { guides: (await d.db.fn<Record<string, unknown>[]>('luda_guides', { p_kind: kind && ['guide', 'terms', 'tip'].includes(kind) ? kind : null })).map((g) => ({ ...g, updated_by: undefined })) }
+  },
+  'POST terms-accept': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    return d.db.fn('luda_terms_accept', { p_user: p.user_id, p_version: int(body.version) }).catch(() => { throw new Fail('The terms were just updated. Please read them again.', 409) })
+  },
+  'GET admin-guides': async ({ req, env, d }) => { await staff(req, env, d, 'content', 'view'); return { guides: await d.db.fn('luda_guides', { p_kind: null }) } },
+  'POST admin-guide-save': async ({ req, env, d, body }) => {
+    const slug = String(body.slug ?? '').slice(0, 40)
+    // Changing the terms (and asking everyone to accept again) needs content:full; guides and tips need edit.
+    const a = await staff(req, env, d, 'content', slug === 'terms' ? 'full' : 'edit')
+    const steps = (Array.isArray(body.steps) ? body.steps : []).slice(0, 30).map((x: any) => ({ title: cleanText(x?.title, 120), body: cleanText(x?.body, 1500) })).filter((x: any) => x.title || x.body)
+    const g = await d.db.fn('luda_guide_save', { p_slug: slug, p_title: clean(body.title, 120, 'a title', 2), p_intro: cleanText(body.intro, 1500), p_steps: { items: steps }, p_by: a.username, p_bump: slug === 'terms' && !!body.bump }).catch((e) => {
+      if (e instanceof MoneyError && e.message === 'not_found') throw new Fail('Not found', 404)
+      throw e
+    })
+    await d.db.log(slug, 'admin_guide_saved', { by: a.username, bump: !!body.bump })
+    return { guide: g }
+  },
+
+  /* ---------------- P2P: reviews, remind, block ---------------- */
+  'POST p2p-review': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const text = body.body ? clean(body.body, 200, 'a review') : ''
+    await d.db.fn('luda_p2p_review', { p_order: uuid(body.id), p_user: p.user_id, p_good: body.good !== false, p_body: text }).catch((e) => {
+      if (e instanceof MoneyError && e.message === 'already_reviewed') throw new Fail('You already reviewed this trade', 409)
+      if (e instanceof MoneyError && e.message === 'not_available') throw new Fail('You can review a trade once it\'s completed', 409)
+      throw e
+    })
+    return { ok: true }
+  },
+  'GET p2p-reviews': async ({ req, env, d, url }) => {
+    await me(req, env, d)
+    const u = String(url.searchParams.get('u') ?? '').toLowerCase()
+    if (!USERNAME.test(u)) throw new Fail('Not found', 404)
+    return { reviews: await d.db.fn('luda_p2p_reviews', { p_username: u }) }
+  },
+  'POST p2p-remind': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await d.db.fn('luda_p2p_remind', { p_order: uuid(body.id), p_user: p.user_id }).catch((e) => {
+      if (e instanceof MoneyError && e.message === 'too_soon') throw new Fail('You can remind them again in a few minutes', 429)
+      throw new Fail('You can\'t remind on this order now', 409)
+    })
+    return { ok: true }
+  },
+  'GET p2p-blocks': async ({ req, env, d }) => { const p = await me(req, env, d); return d.db.fn('luda_p2p_blocks', { p_user: p.user_id }) },
+  'POST p2p-block': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await limit(d, `p2pblock:${p.user_id}`, 20, 86400, 'Too many changes today')
+    await d.db.fn('luda_p2p_block', { p_user: p.user_id, p_username: String(body.username ?? '').replace(/^@/, '').slice(0, 30), p_on: body.on !== false }).catch(() => { throw new Fail('No Luda user with that name', 404) })
+    return { ok: true }
+  },
+
+  /* ---------------- bus tickets: the QR changes every 30 s and is made and checked by the server ---------------- */
+  'GET ticket-qr': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    const t = await d.db.fn<Record<string, any> | null>('luda_ticket_lookup', { p_code: String(url.searchParams.get('code') ?? '').slice(0, 20), p_user: p.user_id })
+    if (!t) throw new Fail('Not found', 404)
+    const win = Math.floor(Date.now() / 30_000)
+    return { payload: `luda://ticket/${t.code}/${await ticketOtp(env, t.id, win)}`, ttl: 30 - (Math.floor(Date.now() / 1000) % 30), status: t.status }
+  },
+  'POST ticket-check': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'tickets', 'edit')
+    await limit(d, `tcheck:${a.user_id}`, 300, 3600, 'Too many checks, slow down')
+    const raw = String(body.payload ?? body.code ?? '').trim()
+    const m = /^luda:\/\/ticket\/([A-Z0-9-]{4,20})\/(\d{6})$/i.exec(raw)
+    const code = m ? m[1] : raw.replace(/[^A-Z0-9-]/gi, '').slice(0, 20)
+    const t = await d.db.fn<Record<string, any> | null>('luda_ticket_lookup', { p_code: code, p_user: null })
+    if (!t) return { ok: false, verdict: 'No ticket with this code' }
+    const i = t.item ?? {}, today = cyprusDay(), leg = i.date === today ? 'out' : i.returnDate === today ? 'return' : null
+    const info = { code: t.code, holder: t.holder, username: t.username, verified: t.verified, from: i.from, to: i.to, date: i.date, time: i.time, returnDate: i.returnDate ?? null, returnTime: i.returnTime ?? null, pax: i.pax ?? 1, checks: Number(t.checks), lastCheck: t.lastCheck }
+    let verdict = ''
+    if (t.status === 'refunded') verdict = 'Refunded: not valid'
+    else if (t.status === 'used') verdict = `Already used${t.lastCheck ? ' (checked before)' : ''}`
+    else if (!leg) verdict = `Wrong day: valid on ${i.date}${i.returnDate ? ` and ${i.returnDate}` : ''}`
+    else if (m) {
+      const win = Math.floor(Date.now() / 30_000)
+      const good = (await ticketOtp(env, t.id, win)) === m[2] || (await ticketOtp(env, t.id, win - 1)) === m[2]
+      if (!good) verdict = 'Old code: ask them to open the ticket in their Luda app (screenshots don\'t work)'
+    }
+    const ok = !verdict
+    const isReturn = !!i.returnDate
+    const used = ok && (!isReturn || Number(t.checks) >= 1)
+    await d.db.fn('luda_ticket_mark', { p_ticket: t.id, p_by: a.username, p_result: ok ? 'ok' : verdict.slice(0, 60), p_used: used })
+    await d.db.log(t.code, 'ticket_check', { by: a.username, ok, verdict, manual: !m })
+    return { ok, verdict: ok ? (m ? `Valid ${leg === 'return' ? 'return trip' : 'ticket'}` : 'Valid · typed code: check their name and ID') : verdict, ticket: info }
   },
 
   /* ---------------- team (owner only) ---------------- */

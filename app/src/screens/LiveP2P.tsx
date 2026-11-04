@@ -1,9 +1,10 @@
 // P2P exchange (live): Naira inside Luda ⇄ Turkish lira sent outside Luda (bank transfer or cash), Bybit-style.
 // The Naira side is always held in escrow by the server; the person paying Naira releases it once the lira arrives.
-import { BadgeCheck, Building2, Check, ChevronRight, Clock3, Copy, Landmark, MapPin, MessageCircle, Plus, SendHorizontal, ShieldCheck, Trash2, Wallet } from 'lucide-react'
+import { Ban, BadgeCheck, Bell, Building2, Check, ChevronRight, Clock3, Copy, Landmark, Lock, MapPin, MessageCircle, Plus, SendHorizontal, ShieldCheck, ThumbsDown, ThumbsUp, Trash2, Video, Wallet } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { BankBadge } from '../components/BankBadge'
+import { GuideLink, InfoTip } from '../components/LiveGuides'
 import { Empty, ago, useApi } from '../components/LiveKit'
 import { ReviewAndPin, errMsg } from '../components/LiveMoney'
 import { Attachments, type Upload } from '../components/LiveSupport'
@@ -24,7 +25,7 @@ const APPEAL_WAIT_MIN = 15 // the server enforces the same wait
 export interface Ad {
   id: string; side: 'sell' | 'buy'; asset?: Asset; price: number; min_try: number; max_try: number; available_try: number; methods: ('bank' | 'cash')[]
   city: string; area: string; terms: string; status: string; maker?: string; makerName?: string; verified?: boolean; mine?: boolean
-  stats?: { trades: number; rate: number | null; since: string }; nearby?: number
+  stats?: { trades: number; rate: number | null; since: string; good?: number; bad?: number; releaseMin?: number | null; sendMin?: number | null }; nearby?: number
 }
 interface Market { ads: Ad[]; mine: Ad[]; asset?: Asset; market: number | null; rules: { maxAds: number; maxTry: number; minTry: number; windowMin: number; priceBand: number; feePct: number; feeMinTry?: number; feeMaxTry?: number; assetPerTry?: number | null }; canTrade: boolean; why: string | null }
 interface PayMethod { id: string; bank: string; iban: string; holder: string; currency?: Asset }
@@ -34,7 +35,7 @@ export interface Order {
   price: number; amount_try: number; amount_ngn: number; fee_ngn: number; fee_try?: number | null; method: 'bank' | 'cash'; try_to: { kind?: string; bank?: string; iban?: string; holder?: string; area?: string }
   pay_by: string; sent_at: string | null; done_at: string | null; note: string | null; created_at: string
   payer: { username: string; name: string; verified: boolean }; sender: { username: string; name: string; verified: boolean }
-  receiptUrls?: (string | null)[]; messages?: { id: number; kind?: 'user' | 'system' | 'staff'; by: string | null; mine: boolean; body: string; files: (string | null)[]; at: string }[]
+  receiptUrls?: (string | null)[]; messages?: { id: number; kind?: 'user' | 'system' | 'staff'; by: string | null; mine: boolean; body: string; files: (string | null)[]; at: string; private?: boolean }[]; reviewed?: boolean
 }
 
 const naira = (minor: number) => money(minor, 'NGN')
@@ -53,11 +54,14 @@ function Copyable({ label, value, mono }: { label: string; value: string; mono?:
     </div>
   )
 }
-const Trader = ({ name, user, verified, stats }: { name?: string; user?: string; verified?: boolean; stats?: Ad['stats'] }) => (
+// side 'sell' = this trader sends the lira (show how fast they send); 'buy' = they pay Naira and release (show how fast they release).
+const Trader = ({ name, user, verified, stats, side }: { name?: string; user?: string; verified?: boolean; stats?: Ad['stats']; side?: 'sell' | 'buy' }) => (
   <div className="flex min-w-0 items-center gap-2.5">
     <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-violet-400/40 to-indigo-700/50 font-bold">{(name || user || '?').slice(0, 1).toUpperCase()}</span>
     <div className="min-w-0"><p className="flex items-center gap-1 truncate text-sm font-bold">{name?.split(' ')[0]} <span className="font-normal text-slate-400">@{user}</span>{verified && <BadgeCheck size={14} className="shrink-0 text-mint-300" />}</p>
-      {stats && <p className="text-[11px] text-slate-400">{stats.trades} trade{stats.trades === 1 ? '' : 's'}{stats.rate !== null ? ` · ${stats.rate}% completed` : ' · new trader'}</p>}</div>
+      {stats && <p className="text-[11px] text-slate-400">{stats.trades === 1 ? '1 trade' : `${stats.trades} trades`}{stats.rate !== null ? ` · ${stats.rate}% completed` : ' · new trader'}{(stats.good || stats.bad) ? ` · 👍 ${stats.good ?? 0} 👎 ${stats.bad ?? 0}` : ''}</p>}
+      {stats && side === 'sell' && stats.sendMin != null && <p className="text-[11px] text-slate-400">⏱ Usually sends in ~{Math.max(1, stats.sendMin)} min</p>}
+      {stats && side === 'buy' && stats.releaseMin != null && <p className="text-[11px] text-slate-400">⏱ Usually releases in ~{Math.max(1, stats.releaseMin)} min</p>}</div>
   </div>
 )
 
@@ -92,7 +96,7 @@ export function P2PMarket() {
         <label className="glass flex flex-1 items-center gap-2 rounded-2xl px-4 py-3"><span className="text-slate-400">{sym}</span><input className="w-full bg-transparent text-base font-bold outline-none" inputMode="numeric" placeholder={buying ? 'How much do you need?' : 'How much do you have?'} value={amt} onChange={(e) => setAmt(e.target.value)} /></label>
         <button onClick={() => setSheet('area')} className="glass flex max-w-[45%] shrink-0 items-center gap-1 rounded-2xl px-3 text-xs font-semibold"><MapPin size={14} className="shrink-0 text-mint-300" /><span className="truncate">{area || cityName(s.city) || 'My area'}</span></button>
       </div>
-      {data && <p className="-mt-2 text-[11px] text-slate-500">{data.market ? `Market ${sym}1 ≈ ₦${data.market.toFixed(2)} · ` : ''}Best price first · traders set their own rate · Luda fee {(data.rules.feePct * 100).toFixed(1)}% in lira (min ₺{((data.rules.feeMinTry ?? 0) / 100).toFixed(0)}, max ₺{((data.rules.feeMaxTry ?? 0) / 100).toFixed(0)}) from whoever receives the Naira</p>}
+      {data && <p className="-mt-2 flex items-start gap-2 text-[11px] text-slate-500"><InfoTip slug="tip-escrow" /><span className="flex-1">{data.market ? `Market ${sym}1 ≈ ₦${data.market.toFixed(2)} · ` : ''}Best price first · traders set their own rate · Luda fee {(data.rules.feePct * 100).toFixed(1)}% in lira (min ₺{((data.rules.feeMinTry ?? 0) / 100).toFixed(0)}, max ₺{((data.rules.feeMaxTry ?? 0) / 100).toFixed(0)}) from whoever receives the Naira</span></p>}
       {active.length > 0 && <button onClick={() => setSheet('orders')} className="flex items-center gap-3 rounded-2xl border border-gold-400/40 bg-gold-400/10 p-3 text-start"><Clock3 className="shrink-0 text-gold-300" /><span className="flex-1 text-sm"><b>{active.length} order{active.length === 1 ? '' : 's'} in progress</b><br /><span className="text-xs text-slate-400">Tap to continue</span></span><ChevronRight size={18} /></button>}
       {data && !data.canTrade && <div className="flex items-center gap-3 rounded-2xl border border-mint-400/20 bg-mint-400/[0.06] p-3"><ShieldCheck className="shrink-0 text-mint-300" /><p className="flex-1 text-xs text-slate-300">{data.why} You can still look around.</p><Link to="/wallet" className="text-xs font-bold text-mint-300">Verify</Link></div>}
       {err && <p className="text-sm text-rose-300">{err}</p>}
@@ -100,7 +104,7 @@ export function P2PMarket() {
       {data && ads.length === 0 && <Empty emoji="🤝" title={want_ ? 'No offer for that amount yet' : buying ? `No one is selling ${nameOf(asset)} yet` : `No one is buying ${nameOf(asset)} yet`} sub="Post your own ad and let people come to you." action={data.canTrade ? <button className="btn-primary mt-2 px-5 py-3" onClick={() => setSheet('ads')}><Plus size={16} /> Post an ad</button> : undefined} />}
       {ads.map((a) => (
         <div key={a.id} className="card flex flex-col gap-3">
-          <div className="flex items-start justify-between gap-2"><Trader name={a.makerName} user={a.maker} verified={a.verified} stats={a.stats} />
+          <div className="flex items-start justify-between gap-2"><Trader name={a.makerName} user={a.maker} verified={a.verified} stats={a.stats} side={a.side} />
             {!!a.nearby && <span className="chip shrink-0 bg-mint-400/15 py-0.5 text-[10px] text-mint-200"><MapPin size={10} /> {a.nearby >= 2 ? 'Your area' : 'Your city'}</span>}</div>
           <div className="flex items-end justify-between gap-3">
             <div><p className="text-[11px] text-slate-400">Price</p><p className="text-2xl font-extrabold">₦{Number(a.price).toFixed(2)}<span className="text-sm font-semibold text-slate-400"> / {sym}1</span></p>
@@ -194,7 +198,7 @@ function TakeSheet({ ad, want, preset, fee: rules, area, onClose, onDone }: { ad
           done={<Success title="Order opened ✅" sub={want === 'buy' ? `The seller now sends the ${nameOf(A)}. Follow it step by step.` : `Now send the ${nameOf(A)} and upload the receipt.`} onClose={() => onDone(orderId.current)} />} />
       ) : (
         <div className="flex flex-col gap-3 pb-4">
-          <Trader name={ad.makerName} user={ad.maker} verified={ad.verified} stats={ad.stats} />
+          <Trader name={ad.makerName} user={ad.maker} verified={ad.verified} stats={ad.stats} side={ad.side} />
           <div className="rounded-3xl bg-fg/[0.04] p-4">
             <label className="text-xs text-slate-400">{want === 'buy' ? 'I want to buy' : 'I want to sell'}<div className="mt-1 flex items-center gap-2"><span className="text-2xl font-bold text-slate-400">{sym}</span><input autoFocus className="w-full bg-transparent text-3xl font-extrabold outline-none" inputMode="numeric" value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="0" /></div></label>
             <div className="mt-2 flex items-center justify-between text-xs text-slate-400"><span>Limit {tl(ad.min_try)} – {tl(max)}</span><button className="font-semibold text-mint-300" onClick={() => setAmt(String(max / 100))}>Max</button></div>
@@ -222,9 +226,13 @@ function BankAccounts({ onClose }: { onClose: () => void }) {
   const { data, reload } = useApi<{ methods: PayMethod[]; holder: string | null }>('pay-methods')
   const [adding, setAdding] = useState(false)
   const remove = async (id: string) => { await api('POST', 'pay-method-remove', { id }).catch(() => {}); reload() }
+  const blocks = useApi<{ mine: string[] }>('p2p-blocks')
+  const unblock = async (u: string) => { await api('POST', 'p2p-block', { username: u, on: false }).catch(() => {}); blocks.reload() }
   return (
     <Sheet open onClose={onClose} title="My bank accounts">
       <div className="flex flex-col gap-3 pb-4">
+        {!!blocks.data?.mine.length && <div className="rounded-2xl bg-fg/[0.04] p-3"><p className="flex items-center gap-1.5 text-xs font-semibold text-slate-300"><Ban size={13} /> Blocked traders</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">{blocks.data.mine.map((u) => <button key={u} className="chip bg-fg/[0.06] py-1.5 text-xs" onClick={() => void unblock(u)}>@{u} · Unblock</button>)}</div></div>}
         <p className="text-sm text-slate-400">Where people send you lira, dollars, euros or pounds. Accounts must be in your verified name{data?.holder ? <> (<b>{data.holder}</b>)</> : ''}, so lira can't be sent to someone else.</p>
         {data?.methods.length === 0 && <Empty emoji="🏦" title="No bank account yet" sub="Add the TL account you receive lira in." />}
         {data?.methods.map((m) => (
@@ -349,6 +357,15 @@ function OrderList({ orders }: { orders: Order[] | null }) {
 }
 
 /** The Luda team asked for a reply with a deadline: who still has to answer, and how long is left (Bybit-style). */
+/** Message text; '[guide:p2p-proof]' from the Luda team becomes a button that opens that guide. */
+function MsgBody({ text, className = '' }: { text: string; className?: string }) {
+  const parts = text.split(/(\[guide:[a-z0-9-]{2,40}\])/g)
+  return <p className={`selectable whitespace-pre-wrap ${className}`}>{parts.map((x, i) => {
+    const g = /^\[guide:([a-z0-9-]+)\]$/.exec(x)
+    return g ? <GuideLink key={i} slug={g[1]} className="my-1 flex w-full items-center justify-center gap-1.5 rounded-xl bg-fg/10 px-3 py-2 text-xs font-semibold"><Video size={13} /> Open the guide</GuideLink> : x
+  })}</p>
+}
+
 function AskBanner({ o, payer, other }: { o: Order; payer: boolean; other: string }) {
   const meAsked = o.ask_who === 'both' || o.ask_who === (payer ? 'payer' : 'sender')
   const themAsked = o.ask_who === 'both' || o.ask_who === (payer ? 'sender' : 'payer')
@@ -384,6 +401,11 @@ export default function LiveP2POrder() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [chat, setChat] = useState('')
+  const [priv, setPriv] = useState(false) // appeal: 'Luda team only'
+  const [up, setUp] = useState<number | null>(null) // video upload progress 0-100
+  const [rev, setRev] = useState<{ good: boolean; body: string } | null>(null)
+  const [blockAsk, setBlockAsk] = useState(false)
+  const vidRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   useEffect(() => { listRef.current?.scrollTo({ top: listRef.current.scrollHeight }) }, [o?.messages?.length])
   if (!o) return <div><Header back title="P2P order" /><p className="px-6 pt-10 text-center text-sm text-slate-400">{err || 'Loading…'}</p></div>
@@ -395,7 +417,23 @@ export default function LiveP2POrder() {
     setBusy(true); setMsg('')
     try { await api('POST', route, { id: o.id, ...body }); setAct(null); setFiles([]); load(); void refresh() } catch (e) { setMsg(errMsg(e)) } finally { setBusy(false) }
   }
-  const sendChat = async () => { if (!chat.trim()) return; await doit('p2p-msg', { body: chat }); setChat('') }
+  const sendChat = async () => { if (!chat.trim()) return; await doit('p2p-msg', { body: chat, private: priv && o.status === 'appeal' }); setChat('') }
+  // Proof video: the server gives a one-time private upload link; the video goes straight to Luda's private storage.
+  const sendVideo = async (f: File) => {
+    setMsg('')
+    try {
+      const r = await api<{ path: string; uploadUrl: string }>('POST', 'p2p-video-start', { id: o.id, type: f.type || 'video/mp4', size: f.size })
+      setUp(0)
+      await new Promise<void>((ok, bad) => {
+        const x = new XMLHttpRequest(); x.open('PUT', r.uploadUrl); x.setRequestHeader('content-type', f.type || 'video/mp4')
+        x.upload.onprogress = (e) => e.lengthComputable && setUp(Math.round((e.loaded / e.total) * 100))
+        x.onload = () => (x.status < 300 ? ok() : bad(new Error('Upload failed, try again'))); x.onerror = () => bad(new Error('Upload failed, check your connection'))
+        x.send(f)
+      })
+      await doit('p2p-msg', { video: r.path, body: chat.trim() || undefined, private: priv && o.status === 'appeal' }); setChat('')
+    } catch (e) { setMsg(errMsg(e)) } finally { setUp(null); if (vidRef.current) vidRef.current.value = '' }
+  }
+  const theirTurn = (o.status === 'waiting' && payer) || (o.status === 'sent' && !payer) || o.status === 'appeal'
   const expired = Date.parse(o.pay_by) < Date.now()
   const steps = ['Order opened', 'Money sent', payer ? 'You release' : 'Naira released']
   const at = o.status === 'waiting' ? 0 : o.status === 'sent' || o.status === 'appeal' ? 1 : o.status === 'done' ? 3 : -1
@@ -431,7 +469,7 @@ export default function LiveP2POrder() {
           {expired && <button className="btn-ghost mt-3 w-full py-3 text-sm" disabled={busy} onClick={() => setAct('cancel')}>Time is up · cancel and get my Naira back</button>}
         </div>}
         {(o.status === 'sent' || o.status === 'appeal') && payer && <div className="flex flex-col gap-3">
-          <div className="rounded-3xl border border-sky-400/30 bg-sky-400/10 p-4 text-sm"><p className="font-bold">Check your bank app now</p><p className="mt-1 text-xs text-slate-300">Did {tl(o.amount_try)} arrive from <b>{other.name}</b>? Only release when you see it in your account, not just a screenshot.</p></div>
+          <div className="rounded-3xl border border-sky-400/30 bg-sky-400/10 p-4 text-sm"><p className="flex items-center gap-2 font-bold">Check your bank app now <InfoTip slug="tip-p2p-release" /></p><p className="mt-1 text-xs text-slate-300">Did {tl(o.amount_try)} arrive from <b>{other.name}</b>? Only release when you see it in your account, not just a screenshot.</p></div>
           {o.receiptUrls?.filter(Boolean).length ? <div className="flex gap-2">{o.receiptUrls.filter(Boolean).map((u, i) => <a key={i} href={u!} target="_blank" rel="noreferrer"><img src={u!} alt="Receipt" className="size-24 rounded-2xl object-cover ring-1 ring-fg/10" /></a>)}</div> : null}
           {o.status === 'sent' && o.sent_at && <p className="flex items-center justify-center gap-1 text-xs text-slate-400"><Clock3 size={12} /> Release or appeal within <Countdown to={new Date(Date.parse(o.sent_at) + 60 * 60_000).toISOString()} />, or the Luda team steps in.</p>}
           <button className="btn-primary py-4" onClick={() => setAct('release')}><Check size={17} /> I received it · release {naira(o.amount_ngn)}</button>
@@ -442,7 +480,8 @@ export default function LiveP2POrder() {
           {canAppeal ? <button className="btn-ghost mt-3 w-full py-3 text-sm" onClick={() => setAct('appeal')}>Appeal</button> : <p className="mt-2 text-xs text-slate-500">Appeal available in <Countdown to={new Date(appealAt).toISOString()} /></p>}
           <p className="mt-2 text-[11px] text-slate-500">Not released in <Countdown to={new Date(Date.parse(o.sent_at ?? o.created_at) + 60 * 60_000).toISOString()} />? It goes to the Luda team automatically.</p></div>}
         {(o.status === 'appeal' || o.appeal_stage) && <div className="rounded-3xl border border-rose-400/30 bg-rose-500/[0.07] p-4">
-          <p className="font-bold">⚖️ Dispute</p>
+          <div className="flex items-center justify-between gap-2"><p className="flex items-center gap-2 font-bold">⚖️ Dispute <InfoTip slug="tip-p2p-appeal" /></p>
+            <GuideLink slug="p2p-proof" className="chip bg-fg/10 py-1.5 text-xs text-slate-200"><Video size={13} /> How to record proof</GuideLink></div>
           <div className="mt-2 flex gap-1.5">{[['negotiation', '1 · Talk it out'], ['review', '2 · Luda review'], ['decided', '3 · Decision']].map(([k, l], i) => {
             const at = ['negotiation', 'review', 'decided'].indexOf(o.appeal_stage ?? 'negotiation')
             return <div key={k} className="flex flex-1 flex-col gap-1"><div className={`h-1.5 rounded-full ${i < at ? 'bg-rose-300' : i === at ? 'animate-pulse bg-rose-300/70' : 'bg-fg/10'}`} /><span className={`text-[10px] ${i <= at ? 'text-rose-100' : 'text-slate-500'}`}>{l}</span></div>
@@ -456,22 +495,44 @@ export default function LiveP2POrder() {
           {o.status === 'appeal' && !payer && <button className="btn-ghost mt-2 w-full py-2.5 text-xs" disabled={busy} onClick={() => setAct('cancel')}>I didn't send it · cancel and refund</button>}
         </div>}
         {(o.status === 'done' || o.status === 'cancelled') && o.note && <p className="rounded-2xl bg-fg/[0.04] p-3 text-xs text-slate-300">{o.note}</p>}
+        {theirTurn && <button className="btn-ghost py-2.5 text-sm" disabled={busy} onClick={() => void doit('p2p-remind')}><Bell size={15} /> Remind @{other.username}</button>}
+        {o.status === 'done' && !o.reviewed && (
+          <div className="rounded-3xl bg-fg/[0.04] p-4">
+            <p className="font-semibold">How was trading with @{other.username}?</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button className={`btn py-3 text-sm ${rev?.good === true ? 'bg-mint-400 text-ink-950' : 'bg-fg/[0.06]'}`} onClick={() => setRev({ good: true, body: rev?.body ?? '' })}><ThumbsUp size={16} /> Good</button>
+              <button className={`btn py-3 text-sm ${rev?.good === false ? 'bg-rose-500 text-white' : 'bg-fg/[0.06]'}`} onClick={() => setRev({ good: false, body: rev?.body ?? '' })}><ThumbsDown size={16} /> Bad</button>
+            </div>
+            {rev && <><input className="input mt-2 text-sm" maxLength={200} placeholder="A few words (optional)" value={rev.body} onChange={(e) => setRev({ ...rev, body: e.target.value })} />
+              <button className="btn-primary mt-2 w-full py-3 text-sm" disabled={busy} onClick={() => void doit('p2p-review', { good: rev.good, body: rev.body })}>Send review</button></>}
+            <p className="mt-2 text-[11px] text-slate-500">One review per trade. Others see 👍/👎 on this trader's ads.</p>
+          </div>
+        )}
         {msg && <p className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-200">{msg}</p>}
 
         {/* chat */}
         <p className="label mt-2 flex items-center gap-1"><MessageCircle size={13} /> Order chat</p>
         <div ref={listRef} className="flex max-h-80 flex-col gap-2 overflow-y-auto rounded-3xl bg-fg/[0.03] p-3">
           {(o.messages ?? []).map((m) => m.kind === 'staff'
-            ? <div key={m.id} className="self-center w-full rounded-2xl border border-violet-400/40 bg-violet-500/15 px-3 py-2 text-sm"><p className="flex items-center justify-between gap-2 text-[11px] font-bold text-violet-200"><span>🛡️ {m.by}</span><span className="font-normal text-slate-400">{new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></p><p className="selectable whitespace-pre-wrap text-slate-100">{m.body}</p></div>
+            ? <div key={m.id} className="self-center w-full rounded-2xl border border-violet-400/40 bg-violet-500/15 px-3 py-2 text-sm"><p className="flex items-center justify-between gap-2 text-[11px] font-bold text-violet-200"><span>🛡️ {m.by}</span><span className="font-normal text-slate-400">{new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></p><MsgBody text={m.body} className="text-slate-100" /></div>
             : m.by === null
             ? <p key={m.id} className="text-center text-[11px] text-slate-400">🛡️ {m.body}</p>
             : <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.mine ? 'self-end rounded-br-md bg-gradient-to-br from-emerald-500 to-teal-600 text-white' : 'self-start rounded-bl-md bg-fg/[0.07]'}`}>
-              {!m.mine && <p className="text-[11px] font-bold text-mint-300">@{m.by}</p>}<p className="selectable whitespace-pre-wrap">{m.body}</p>
-              {m.files?.filter(Boolean).map((u, i) => <a key={i} href={u!} target="_blank" rel="noreferrer"><img src={u!} alt="" className="mt-1 max-h-40 rounded-xl" /></a>)}
+              {m.private && <p className={`flex items-center gap-1 text-[10px] font-semibold ${m.mine ? 'text-white/80' : 'text-slate-400'}`}><Lock size={10} /> Only you and the Luda team</p>}
+              {!m.mine && <p className="text-[11px] font-bold text-mint-300">@{m.by}</p>}{m.body && <MsgBody text={m.body} />}
+              {m.files?.filter(Boolean).map((u, i) => /\.(mp4|webm|mov|3gp)(\?|$)/i.test(u!) ? <video key={i} src={u!} controls playsInline className="mt-1 max-h-60 w-full rounded-xl bg-black" /> : <a key={i} href={u!} target="_blank" rel="noreferrer"><img src={u!} alt="" className="mt-1 max-h-40 rounded-xl" /></a>)}
               <p className={`text-end text-[10px] ${m.mine ? 'text-white/70' : 'text-slate-500'}`}>{new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p></div>)}
         </div>
+        {o.status === 'appeal' && <div className="flex items-center gap-2 text-xs"><span className="text-slate-400">Who can see your next message?</span>
+          <div className="flex gap-1">{([[false, 'Everyone'], [true, 'Luda team only']] as const).map(([v, l]) => <button key={l} onClick={() => setPriv(v)} className={`chip py-1.5 ${priv === v ? 'bg-mint-400 text-ink-950' : 'bg-fg/[0.06] text-slate-300'}`}>{v && <Lock size={11} />} {l}</button>)}</div></div>}
+        {(o.status === 'sent' || o.status === 'appeal' || o.status === 'waiting') && <>
+          <input ref={vidRef} type="file" accept="video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void sendVideo(f) }} />
+          <button className="btn-ghost py-2.5 text-sm" disabled={up !== null || busy} onClick={() => vidRef.current?.click()}><Video size={15} /> {up !== null ? `Uploading video… ${up}%` : 'Add a proof video'}</button></>}
         {(o.status !== 'done' && o.status !== 'cancelled') && <div className="flex gap-2"><input className="input flex-1" maxLength={500} placeholder="Message" value={chat} onChange={(e) => setChat(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void sendChat()} /><button aria-label="Send" disabled={!chat.trim() || busy} onClick={() => void sendChat()} className="grid size-12 shrink-0 place-items-center rounded-2xl bg-mint-400 text-ink-950 disabled:opacity-40"><SendHorizontal size={18} /></button></div>}
         <p className="text-center text-[11px] text-slate-500">Never share your PIN or codes. Luda will never ask you to pay outside an order.</p>
+        {blockAsk ? <div className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-3 text-sm"><p>Block @{other.username}? You won't see their ads and they can't trade with you. This order still continues.</p>
+          <div className="mt-2 flex gap-2"><button className="btn bg-rose-500 px-4 py-2 text-sm text-white" disabled={busy} onClick={() => void api('POST', 'p2p-block', { username: other.username }).then(() => { setBlockAsk(false); setMsg(`@${other.username} is blocked. Unblock any time in P2P → Bank accounts.`) }).catch((e) => setMsg(errMsg(e)))}>Block</button><button className="btn-ghost px-4 py-2 text-sm" onClick={() => setBlockAsk(false)}>Cancel</button></div></div>
+          : <button className="mx-auto flex items-center gap-1 text-xs text-slate-500" onClick={() => setBlockAsk(true)}><Ban size={12} /> Block @{other.username}</button>}
       </div>
 
       {act === 'release' && <ReleaseSheet o={o} other={other} tl={tl} money_={money_} onClose={() => setAct(null)} onDone={() => { load(); void refresh() }} />}

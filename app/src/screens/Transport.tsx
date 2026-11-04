@@ -15,7 +15,7 @@ import { uid, useStore } from '../lib/store'
 import { departures, luhn, ticketCode, type Ticket } from '../lib/tickets'
 import { CardPicker } from '../components/Cards'
 import { LiveTicketPay } from '../components/LiveTicketPay'
-import { LIVE } from '../lib/live'
+import { api, LIVE } from '../lib/live'
 import { KibhasLive } from '../components/KibhasBooking'
 import { brandOf } from '../lib/cards'
 import { ERCAN, km, taxiFare } from '../lib/transport'
@@ -70,12 +70,27 @@ function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
   const [code, setCode] = useState('')
   const [left, setLeft] = useState(30)
   // Live QR: changes every 30s and only exists inside the holder's app, so screenshots can't be resold.
+  const [payload, setPayload] = useState('')
   useEffect(() => {
     let alive = true
+    // Live tickets: the server makes the 30-second code, so only the server (and the driver's check) can verify it.
+    if (LIVE && tk.payRef) {
+      let win = -1
+      const tick = async () => {
+        setLeft(30 - (Math.floor(Date.now() / 1000) % 30))
+        const w = Math.floor(Date.now() / 30_000)
+        if (w === win) return
+        win = w
+        const r = await api<{ payload: string }>('GET', `ticket-qr?code=${encodeURIComponent(tk.code)}`).catch(() => null)
+        if (alive && r) { setPayload(r.payload); setCode(r.payload.split('/').pop() ?? '') } else win = -1
+      }
+      void tick(); const id = setInterval(() => void tick(), 1000)
+      return () => { alive = false; clearInterval(id) }
+    }
     const tick = async () => { const c = await handshakeCode(tk.secret ?? tk.id, tk.id); if (alive) { setCode(c); setLeft(30 - (Math.floor(Date.now() / 1000) % 30)) } }
     tick(); const id = setInterval(tick, 1000)
     return () => { alive = false; clearInterval(id) }
-  }, [tk.id, tk.secret])
+  }, [tk.id, tk.secret, tk.payRef, tk.code])
   const departs = new Date(`${tk.date}T${tk.time}:00`).getTime()
   const tooLate = departs - Date.now() < SAVER.noRefundMinutes * 60_000
   const refundsLeft = SAVER.maxRefundsPerMonth - refundsThisMonth(s.tickets)
@@ -92,7 +107,7 @@ function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
         <p className="text-sm font-semibold">{tk.operator}</p>
         <p className="text-2xl font-extrabold">{tk.from} → {tk.to}</p>
         <p className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">👤 {tk.holder ?? s.name}{tk.pax > 1 ? ` + ${tk.pax - 1}` : ''} · personal ticket</p>
-        <QRCodeSVG value={`luda://ticket/${tk.code}/${code}`} size={180} />
+        {LIVE && tk.payRef && !payload ? <div className="grid size-[180px] place-items-center text-xs text-slate-500">Loading…</div> : <QRCodeSVG value={payload || `luda://ticket/${tk.code}/${code}`} size={180} />}
         <p className="font-mono text-2xl font-black tracking-[0.3em]">{tk.code}</p>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-violet-500 transition-all" style={{ width: `${(left / 30) * 100}%` }} /></div>
         <p className="text-[11px] text-slate-500">Live QR refreshes in {left}s · screenshots won't scan · driver may check your name</p>

@@ -1,4 +1,5 @@
 // Real-money building blocks (live mode): review → hold → PIN, KYC, top-up, withdraw, convert, send.
+import { InfoTip } from './LiveGuides'
 import { BadgeCheck, ExternalLink, Fingerprint, Loader2, Lock, Search, ShieldCheck } from 'lucide-react'
 import { bioApprove, bioSaved } from '../lib/bio'
 import { NewCaseSheet } from './LiveSupport'
@@ -89,7 +90,7 @@ function DiditKyc({ ninAvailable, onUseNin }: { ninAvailable: boolean; onUseNin:
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-start gap-3 rounded-2xl bg-mint-400/10 p-3"><ShieldCheck className="shrink-0 text-mint-300" />
-        <p className="text-sm">Verify once to <b>withdraw</b> and <b>send money</b>. Takes about 2 minutes, for every nationality.</p></div>
+        <p className="text-sm">Verify once to <b>withdraw</b> and <b>send money</b>. Takes about 2 minutes, for every nationality. <InfoTip slug="tip-kyc" /></p></div>
       <ul className="grid gap-1.5 text-sm text-slate-300">
         <li>📄 Photo of your <b>passport</b>, national ID or TRNC residence permit</li>
         <li>🤳 A quick live selfie (we check it's really you)</li>
@@ -285,7 +286,7 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
               ? <p className="flex items-center gap-2 rounded-xl bg-mint-400/10 p-3 text-sm text-mint-200"><BadgeCheck size={16} /> {name.accountName}</p>
               : <p className="rounded-xl bg-rose-500/10 p-3 text-sm text-rose-300">{name.accountName}: this isn't your account. You can only withdraw to an account in your verified name ({me?.profile.kycName}).</p>)}
             <input className="input text-xl font-bold" inputMode="numeric" placeholder="₦ amount" value={amt} onChange={(e) => setAmt(e.target.value.replace(/\D/g, ''))} />
-            <p className="text-xs text-slate-400">Available {money(bal, 'NGN')} · fee {feeText} · minimum {money(MIN_WITHDRAW, 'NGN')}</p>
+            <p className="flex items-start gap-2 text-xs text-slate-400"><span className="flex-1">Available {money(bal, 'NGN')} · fee {feeText} · minimum {money(MIN_WITHDRAW, 'NGN')}</span><InfoTip slug="tip-withdraw" /></p>
             {minor + (fee ?? 0) > bal && minor > 0 && <p className="text-sm text-rose-300">Not enough in your Naira wallet (amount + fee).</p>}
           </>}
           {err && <p className="text-sm text-rose-300">{err}</p>}

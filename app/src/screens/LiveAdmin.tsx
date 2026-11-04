@@ -1,6 +1,6 @@
 // Owner's admin page (live mode). Only accounts the server marks as admin can load any of this.
 import {
-  AlertTriangle, ArrowDownToLine, ArrowUpFromLine, BadgeCheck, Banknote, Check, ChevronRight, Copy, ExternalLink, Gavel, GraduationCap, Home as HomeIcon,
+  AlertTriangle, ArrowDownToLine, ArrowUpFromLine, BadgeCheck, Banknote, Check, ChevronRight, Copy, ExternalLink, BookOpen, Gavel, GraduationCap, Home as HomeIcon, ScanLine,
   Inbox, LifeBuoy, Megaphone, Scale, Newspaper, UserCog, Receipt, RefreshCw, Search, ShieldCheck, Snowflake, Ticket, Undo2, Users, Wallet, type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
@@ -11,10 +11,12 @@ import { Header, Sheet, Success } from '../components/ui'
 import { KIND_LABEL, api, money, staffCan, type Cur, type StaffArea } from '../lib/live'
 import { BannersTab, ContentTab, TeamTab } from '../components/AdminCommunity'
 import { UniAdminTab } from '../components/LiveUni'
+import { GuidesTab } from '../components/LiveGuides'
+import { TicketCheck } from '../components/TicketCheck'
 import { useLive } from '../lib/liveStore'
 
-type Tab = 'overview' | 'bills' | 'cases' | 'disputes' | 'p2p' | 'users' | 'topups' | 'withdrawals' | 'content' | 'uni' | 'banners' | 'team'
-const TAB_AREA: Record<Tab, StaffArea> = { overview: 'overview', bills: 'bills', cases: 'cases', disputes: 'disputes', p2p: 'disputes', users: 'users', topups: 'money', withdrawals: 'money', content: 'content', uni: 'content', banners: 'banners', team: 'team' }
+type Tab = 'overview' | 'bills' | 'cases' | 'disputes' | 'p2p' | 'users' | 'topups' | 'withdrawals' | 'content' | 'uni' | 'guides' | 'banners' | 'tickets' | 'team'
+const TAB_AREA: Record<Tab, StaffArea> = { overview: 'overview', bills: 'bills', cases: 'cases', disputes: 'disputes', p2p: 'disputes', users: 'users', topups: 'money', withdrawals: 'money', content: 'content', uni: 'content', guides: 'content', banners: 'banners', tickets: 'tickets', team: 'team' }
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–')
 const waited = (iso: string) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d` }
 const short = (ref: string) => '…' + ref.slice(-8)
@@ -61,7 +63,7 @@ export default function LiveAdmin() {
   const tabs = ([
     { v: 'overview', l: 'Home', i: HomeIcon }, { v: 'bills', l: 'Bills', i: Receipt, n: o?.billsPending }, { v: 'cases', l: 'Cases', i: Inbox, n: o?.openCases },
     { v: 'p2p', l: 'P2P disputes', i: Scale }, { v: 'disputes', l: 'Held money', i: Gavel }, { v: 'users', l: 'Users', i: Users }, { v: 'topups', l: 'Top-ups', i: ArrowDownToLine }, { v: 'withdrawals', l: 'Payouts', i: ArrowUpFromLine },
-    { v: 'content', l: 'Content', i: Newspaper }, { v: 'uni', l: 'Uni calendars', i: GraduationCap }, { v: 'banners', l: 'Banners', i: Megaphone }, { v: 'team', l: 'Team', i: UserCog },
+    { v: 'content', l: 'Content', i: Newspaper }, { v: 'uni', l: 'Uni calendars', i: GraduationCap }, { v: 'guides', l: 'Guides & terms', i: BookOpen }, { v: 'tickets', l: 'Ticket check', i: ScanLine }, { v: 'banners', l: 'Banners', i: Megaphone }, { v: 'team', l: 'Team', i: UserCog },
   ] as { v: Tab; l: string; i: LucideIcon; n?: number }[]).filter((t) => allow(t.v))
   const go = (t: Tab) => { setTab(t); void load() }
   return (
@@ -81,6 +83,8 @@ export default function LiveAdmin() {
         {tab === 'p2p' && <P2PDisputes canDecide={staffCan(st, 'disputes', 'full')} me={me?.profile.username ?? ''} />}
         {tab === 'banners' && <BannersTab staff={st} />}
         {tab === 'uni' && <UniAdminTab staff={st} />}
+        {tab === 'guides' && <GuidesTab staff={st} />}
+        {tab === 'tickets' && <TicketCheck />}
         {tab === 'team' && <TeamTab />}
         {tab === 'bills' && <BillsTab onChange={load} />}
         {tab === 'cases' && <CasesTab />}
@@ -356,6 +360,7 @@ function P2PCaseSheet({ id, canDecide, me, onClose }: { id: string; canDecide: b
           {o.ask_due && !['done', 'cancelled'].includes(o.status) && <AskStatus o={o} />}
           {!['done', 'cancelled'].includes(o.status) && <div className="flex flex-col gap-2 rounded-2xl bg-fg/[0.04] p-3">
             <textarea className="input min-h-20 text-sm" maxLength={800} placeholder="Message both people (e.g. please upload today's bank statement)" value={msg} onChange={(e) => setMsg(e.target.value)} />
+            <button className="chip self-start bg-sky-400/15 py-1.5 text-xs text-sky-200" onClick={() => { setMsg('Please record a proof video of your bank app (not a screenshot), following these steps, and add it here. You can choose "Luda team only" if you don\'t want the other person to see your statement. [guide:p2p-proof]'); setWho('both') }}>📹 Fill in: ask for a proof video (with the guide)</button>
             <p className="text-[11px] text-slate-400">Needs a reply from</p>
             <div className="flex flex-wrap gap-1.5">{([['', 'No reply needed'], ['both', 'Both'], ['payer', `@${o.payer?.username} (Naira)`], ['sender', `@${o.sender?.username} (lira)`]] as const).map(([v, l]) => <button key={v} onClick={() => setWho(v)} className={`chip py-1.5 ${who === v ? 'bg-mint-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{l}</button>)}</div>
             {who && <><p className="text-[11px] text-slate-400">Within</p><div className="flex flex-wrap gap-1.5">{([[15, '15 min'], [30, '30 min'], [60, '1 hour'], [180, '3 hours'], [1440, '24 hours']] as const).map(([v, l]) => <button key={v} onClick={() => setMins(v)} className={`chip py-1.5 ${mins === v ? 'bg-mint-400 text-ink-950' : 'bg-fg/5 text-slate-300'}`}>{l}</button>)}</div></>}
@@ -400,7 +405,7 @@ function P2PEvidence({ id }: { id: string }) {
       <p><b>{o.asset ?? 'TRY'} {(o.amount_try / 100).toLocaleString('en-US')}</b> for <b>{money(o.amount_ngn, 'NGN')}</b> at ₦{Number(o.price).toFixed(2)} · {o.method === 'cash' ? `cash${o.try_to?.area ? ` in ${o.try_to.area}` : ''}` : `to ${o.try_to?.bank} ${o.try_to?.iban} (${o.try_to?.holder})`}</p>
       <p className="text-slate-400">Status: {o.status}{o.sent_at ? ` · marked sent ${when(o.sent_at)}` : ''}</p>
       {o.receiptUrls?.filter(Boolean).length > 0 && <div className="flex gap-2">{o.receiptUrls.filter(Boolean).map((u: string, i: number) => <a key={i} href={u} target="_blank" rel="noreferrer"><img src={u} alt="Receipt" className="size-16 rounded-xl object-cover ring-1 ring-fg/10" /></a>)}</div>}
-      <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">{(o.messages ?? []).map((m: any) => <p key={m.id} className="selectable"><b className={m.kind === 'staff' ? 'text-violet-300' : 'text-slate-300'}>{m.kind === 'staff' ? m.by : m.by ? `@${m.by}` : 'Luda'}:</b> {m.body}{m.files?.filter(Boolean).map((u: string, i: number) => <a key={i} href={u} target="_blank" rel="noreferrer" className="ms-1 text-mint-300 underline">photo</a>)}</p>)}</div>
+      <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">{(o.messages ?? []).map((m: any) => <p key={m.id} className="selectable"><b className={m.kind === 'staff' ? 'text-violet-300' : 'text-slate-300'}>{m.kind === 'staff' ? m.by : m.by ? `@${m.by}` : 'Luda'}:</b>{m.private ? ' 🔒(team only)' : ''} {m.body}{m.files?.filter(Boolean).map((u: string, i: number) => <a key={i} href={u} target="_blank" rel="noreferrer" className="ms-1 text-mint-300 underline">{/\.(mp4|webm|mov|3gp)(\?|$)/i.test(u) ? '▶ video' : 'photo'}</a>)}</p>)}</div>
     </div>
   )
 }

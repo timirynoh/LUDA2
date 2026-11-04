@@ -1,3 +1,4 @@
+import { GuideLink, loadGuide } from '../components/LiveGuides'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AtSign, Check, ChevronLeft, Eye, EyeOff, Fingerprint, Globe, Lock, Mail, User } from 'lucide-react'
 import { bioOn, bioUnlock } from '../lib/bio'
@@ -214,7 +215,8 @@ export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () 
     setBusy(true); setErr('')
     if (LIVE) {
       try {
-        const r = await liveSignUp({ email: f.email.trim(), username: f.username, fullName: f.name.trim().replace(/\s+/g, ' '), password: f.password, country: s.country })
+        const terms = await loadGuide('terms').then((g) => g.version).catch(() => 0)
+        const r = await liveSignUp({ email: f.email.trim(), username: f.username, fullName: f.name.trim().replace(/\s+/g, ' '), password: f.password, country: s.country, terms })
         if (r.needsConfirm) { setConfirm(true); setBusy(false); return }
       } catch (e) { setErr(e instanceof Error ? e.message : 'Could not create your account'); setBusy(false); return }
     }
@@ -245,7 +247,7 @@ export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () 
           </div>
         )}
         <label className="flex items-center gap-3 ps-1 text-sm text-slate-300"><input type="checkbox" className="size-4 accent-emerald-500" checked={stay} onChange={(e) => setStay(e.target.checked)} /> Keep me signed in on this phone</label>
-        <label className="flex items-start gap-3 ps-1 text-xs text-slate-400"><input type="checkbox" className="mt-0.5 size-4 accent-emerald-500" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> I agree to Luda's Terms and Privacy Policy and the community rules (no scams, no hate, no spam).</label>
+        <label className="flex items-start gap-3 ps-1 text-xs text-slate-400"><input type="checkbox" className="mt-0.5 size-4 accent-emerald-500" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> <span>I agree to Luda's <GuideLink slug="terms" className="font-semibold text-mint-300 underline">Terms & Conditions</GuideLink> and Privacy Policy and the community rules (no scams, no hate, no spam).</span></label>
         {err && <p className="text-sm text-rose-300">{err}</p>}
         {confirm && <p className="rounded-2xl bg-mint-400/10 p-3 text-sm text-mint-200">📧 Almost done! We sent a confirmation link to <b>{f.email.trim()}</b>. Open it, then <button className="underline" onClick={onSignIn}>sign in</button>.</p>}
         {taken && <p className="text-sm text-rose-300">That email or username is already registered. <button className="underline" onClick={onSignIn}>Sign in instead</button></p>}

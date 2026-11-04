@@ -31,6 +31,9 @@ async function refreshSession(): Promise<boolean> {
   return refreshing
 }
 
+/** Public (no sign-in) GET, for guides and terms on the sign-in screen. */
+export const publicGet = <T,>(route: string) => raw<T>('GET', route, undefined, false)
+
 async function raw<T>(method: string, route: string, body?: unknown, auth = true): Promise<T> {
   if (!BASE) throw new ApiError('Live mode is not set up', 0)
   const s = auth ? getSession() : null
@@ -61,7 +64,7 @@ try { const r = new URLSearchParams(location.search).get('ref'); if (r && /^LUDA
 export const pendingRef = () => { try { return localStorage.getItem('luda.ref') ?? '' } catch { return '' } }
 export const clearRef = () => { try { localStorage.removeItem('luda.ref') } catch { /* ignore */ } }
 
-export async function liveSignUp(f: { email: string; username: string; fullName: string; password: string; country?: string }) {
+export async function liveSignUp(f: { email: string; username: string; fullName: string; password: string; country?: string; terms?: number }) {
   const r = await raw<{ session: any; needsConfirm: boolean }>('POST', 'signup', { ...f, ref: pendingRef() || undefined }, false)
   clearRef()
   if (r.session) saveSession(r.session)
@@ -107,14 +110,14 @@ export interface LiveTicket { id: string; code: string; item: Record<string, any
 export interface LiveWithdrawal { reference: string; amount_minor: number; fee_minor: number; fee_currency?: Cur; bank_name: string | null; account_number: string; account_name: string; status: 'processing' | 'paid' | 'failed' | 'reversed'; created_at: string }
 export interface LiveDeposit { reference: string; provider: Provider; status: 'pending' | 'paid' | 'failed' | 'mismatch'; chargeMinor: number; currency: string; feeMinor: number; creditMinor: number; creditCurrency: Cur; createdAt: string; paidAt: string | null }
 export interface Me {
-  profile: { username: string; fullName: string; email: string; kyc: 'none' | 'pending' | 'verified' | 'failed'; kycName: string | null; hasPin: boolean; isAdmin?: boolean; staff?: StaffPerms | null; kycTriesLeft?: number; kycStartedAt?: string | null; frozen: boolean; frozenBy: 'user' | 'admin' | null; phone: string | null; phoneVerified: boolean; moneyHoldUntil: string | null; university?: string | null }
+  profile: { username: string; fullName: string; email: string; kyc: 'none' | 'pending' | 'verified' | 'failed'; kycName: string | null; hasPin: boolean; isAdmin?: boolean; staff?: StaffPerms | null; kycTriesLeft?: number; kycStartedAt?: string | null; frozen: boolean; frozenBy: 'user' | 'admin' | null; phone: string | null; phoneVerified: boolean; moneyHoldUntil: string | null; university?: string | null; termsVersion?: number; termsCurrent?: number }
   balances: Record<Cur, number>
   history: LedgerRow[]
   tickets: LiveTicket[]
   withdrawals: LiveWithdrawal[]
   deposits: LiveDeposit[]
 }
-export type StaffArea = 'overview' | 'users' | 'kyc' | 'money' | 'bills' | 'disputes' | 'cases' | 'content' | 'banners' | 'team'
+export type StaffArea = 'overview' | 'users' | 'kyc' | 'money' | 'bills' | 'disputes' | 'cases' | 'content' | 'banners' | 'tickets' | 'team'
 export type StaffLevel = 'view' | 'edit' | 'full'
 export interface StaffPerms { owner: boolean; perms: Partial<Record<StaffArea, StaffLevel>> }
 const RANK = { view: 1, edit: 2, full: 3 }
