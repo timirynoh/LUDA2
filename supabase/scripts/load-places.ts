@@ -38,9 +38,12 @@ async function overpass(city: string, cat: string) {
   throw new Error(errs.join(', '))
 }
 
+// Skip lists saved in the last 6 days, so a rerun continues where a slow run stopped.
+const fresh = new Set(((await sql(`select city || '/' || cat k from places_cache where fetched_at > now() - interval '6 days'`)) as { k: string }[]).map((r) => r.k))
 let ok = 0, failed = 0
 for (const city of Object.keys(PLACE_CITIES)) {
   for (const cat of Object.keys(PLACE_CATS)) {
+    if (fresh.has(`${city}/${cat}`) && !process.env.FORCE) { console.log(`${city} / ${cat}: already saved this week`); ok++; continue }
     try {
       const places = await overpass(city, cat)
       const json = JSON.stringify({ items: places }).replace(/'/g, "''")

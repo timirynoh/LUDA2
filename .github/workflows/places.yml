@@ -14,7 +14,7 @@ concurrency: load-places
 jobs:
   load:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 150
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       REF: ${{ secrets.SUPABASE_PROJECT_REF }}
