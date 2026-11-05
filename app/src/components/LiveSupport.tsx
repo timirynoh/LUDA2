@@ -1,9 +1,10 @@
 // Support cases / appeals (live mode): students explain a problem and attach photos; the Luda team replies.
-import { Camera, FileText, Loader2, MessageCircle, Paperclip, X } from 'lucide-react'
+import { Camera, FileText, Loader2, MessageCircle, Paperclip, RotateCcw, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { errMsg } from './LiveMoney'
 import { Sheet } from './ui'
 import { api } from '../lib/live'
+import { RateSheet, ReopenSheet, StarsView, useMyRatings } from './Ratings'
 
 export type CaseCategory = 'kyc' | 'payment' | 'withdrawal' | 'account' | 'other'
 export const CATEGORY_LABEL: Record<CaseCategory, string> = {
@@ -17,7 +18,7 @@ export const STATUS_LABEL: Record<string, { t: string; c: string }> = {
 }
 export interface CaseFile { name?: string; url: string | null }
 export interface CaseMsg { id: number; author: 'user' | 'admin'; authorName: string | null; body: string; at: string; files: CaseFile[] }
-export interface UserCase { id: string; category: CaseCategory; subject: string; reference: string | null; status: string; created_at: string; updated_at: string; messages: CaseMsg[] }
+export interface UserCase { id: string; category: CaseCategory; subject: string; reference: string | null; status: string; created_at: string; updated_at: string; closed_at?: string | null; reopens?: number; messages: CaseMsg[] }
 
 export interface Upload { name: string; type: string; data: string; preview?: string }
 
@@ -134,6 +135,7 @@ function useCases(active = true) {
   const [err, setErr] = useState('')
   const load = useCallback(async () => { try { setCases((await api<{ cases: UserCase[] }>('GET', 'cases')).cases); setErr('') } catch (e) { setErr(errMsg(e)) } }, [])
   useEffect(() => { if (active) void load() }, [load, active]) // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => { const on = () => void load(); window.addEventListener('luda:cases', on); return () => window.removeEventListener('luda:cases', on) }, [load])
   return { cases, err, load }
 }
 const openCount = (cases: UserCase[] | null) => (cases ?? []).filter((c) => c.status === 'open' || c.status === 'waiting_user').length
@@ -194,12 +196,41 @@ function CaseThread({ c, onBack, onChange }: { c: UserCase; onBack: () => void; 
       <span className={`self-start rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_LABEL[c.status]?.c}`}>{STATUS_LABEL[c.status]?.t}</span>
       {c.reference && <p className="text-xs text-slate-400">Reference: <span className="selectable font-mono">{c.reference}</span></p>}
       <Thread messages={c.messages} />
-      {c.status !== 'resolved' && <>
+      {(c.status === 'resolved' || c.status === 'rejected') && <ClosedCase c={c} onChange={onChange} />}
+      {(c.status === 'open' || c.status === 'waiting_user') && <>
         <textarea className="input min-h-20" maxLength={2000} placeholder="Write a reply…" value={msg} onChange={(e) => setMsg(e.target.value)} />
         <Attachments files={files} setFiles={setFiles} />
         {err && <p className="text-sm text-rose-300">{err}</p>}
         <button className="btn-primary py-3" disabled={busy || (!msg.trim() && !files.length)} onClick={send}>{busy && <Loader2 size={16} className="animate-spin" />} Send</button>
       </>}
+    </div>
+  )
+}
+
+/** A closed case: rate how the team did, or reopen it (within 7 days, twice at most). */
+function ClosedCase({ c, onChange }: { c: UserCase; onChange: () => void }) {
+  const { find } = useMyRatings()
+  const [rate, setRate] = useState(false)
+  const [reopen, setReopen] = useState(false)
+  const r = find('case', c.id)
+  const closed = Date.parse(c.closed_at ?? c.updated_at)
+  const [now] = useState(() => Date.now())
+  const canReopen = (c.reopens ?? 0) < 2 && now - closed < 7 * 86400e3
+  return (
+    <div className="flex flex-col gap-2 rounded-3xl bg-gradient-to-br from-gold-400/10 to-mint-400/5 p-4 ring-1 ring-gold-400/20">
+      {r?.stars ? (
+        <div className="flex items-center gap-2 text-sm"><span className="text-slate-300">You rated</span><StarsView n={r.stars} /><button className="ms-auto text-xs text-mint-300" onClick={() => setRate(true)}>Edit</button></div>
+      ) : (
+        <>
+          <p className="text-sm font-semibold">How did the Luda team do?</p>
+          <button className="flex justify-center gap-1.5 py-1" onClick={() => setRate(true)} aria-label="Rate this case"><StarsView n={0} size={30} /></button>
+        </>
+      )}
+      {canReopen ? (
+        <button className="btn-ghost py-2.5 text-sm" onClick={() => setReopen(true)}><RotateCcw size={15} /> Not solved? Reopen the case</button>
+      ) : <p className="text-[11px] text-slate-500">This case can't be reopened anymore. Open a new appeal if you still need help.</p>}
+      {rate && <RateSheet kind="case" refId={c.id} title="How did the Luda team do?" sub={c.subject} initial={r} onClose={() => setRate(false)} onSaved={onChange} />}
+      {reopen && <ReopenSheet caseId={c.id} onClose={() => setReopen(false)} onDone={onChange} />}
     </div>
   )
 }

@@ -13,6 +13,7 @@ import { JOB_EMOJI_PICK, jobEmoji } from '../lib/jobEmoji'
 import { api } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 import { useStore } from '../lib/store'
+import { RateButton } from '../components/Ratings'
 
 interface Job { emoji?: string; id: string; title: string; details: string; city: string; reward_minor: number; status: 'open' | 'taken' | 'done' | 'cancelled'; created_at: string; taken_at: string | null; poster_name?: string; helper_name?: string; mine: boolean }
 interface Board { open: Job[]; mine: Job[]; helping: Job[]; feePct: number }
@@ -131,6 +132,7 @@ function MyJob({ j, onChange }: { j: Job; onChange: () => void }) {
       <div className="flex items-center justify-between gap-3"><p className="min-w-0 truncate font-semibold">{j.title}</p><p className="font-extrabold text-mint-300">{lira(j.reward_minor)}</p></div>
       <div>{j.status === 'open' && <Pill tone="wait">Waiting for a helper</Pill>}{j.status === 'taken' && <Pill tone="wait">@{j.helper_name} is on it</Pill>}{j.status === 'done' && <Pill tone="ok">Done · paid @{j.helper_name}</Pill>}{j.status === 'cancelled' && <Pill tone="back">Cancelled · refunded</Pill>}</div>
       {j.status === 'open' && <button className="btn-ghost py-2.5 text-sm" onClick={cancel}>Cancel & get reward back</button>}
+      {j.status === 'done' && j.helper_name && <RateButton kind="flash" refId={j.id} title={`Rate @${j.helper_name}`} sub={j.title} />}
       {j.status === 'taken' && <div className="flex gap-2"><button className="btn-primary flex-1 py-3 text-sm" onClick={() => setPay(true)}>Job done · pay @{j.helper_name}</button><button className="btn-ghost px-4 py-3 text-sm" onClick={() => setHelp(true)}><LifeBuoy size={15} /> Problem</button></div>}
       {err && <p className="text-xs text-rose-300">{err}</p>}
       {pay && <Sheet open onClose={() => setPay(false)} title="Pay your helper">
@@ -152,6 +154,7 @@ function Helping({ j, feePct, onChange }: { j: Job; feePct: number; onChange: ()
       {j.details && <p className="text-sm text-slate-300">{j.details}</p>}
       <div>{j.status === 'taken' && <Pill tone="wait">In progress · paid when @{j.poster_name} confirms (or after 3 days)</Pill>}{j.status === 'done' && <Pill tone="ok">Paid to your wallet</Pill>}{j.status === 'cancelled' && <Pill tone="back">Cancelled</Pill>}</div>
       {j.status === 'taken' && <button className="btn-ghost py-2.5 text-sm" onClick={drop}>I can't do it</button>}
+      {j.status === 'done' && <RateButton kind="flash" refId={j.id} title={`Rate @${j.poster_name}`} sub={j.title} />}
       {err && <p className="text-xs text-rose-300">{err}</p>}
     </div>
   )

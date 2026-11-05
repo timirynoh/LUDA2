@@ -38,6 +38,7 @@ import Residency from './screens/Residency'
 import Rewards from './screens/Rewards'
 import Wallet from './screens/Wallet'
 import Chats from './screens/Chats'
+import { RateFromLink } from './components/Ratings'
 import ChatRoom from './screens/ChatRoom'
 import Admin from './screens/Admin'
 import Community from './screens/Community'
@@ -196,6 +197,7 @@ export default function App() {
           <GuidedTour />
           <PrivacyShield />
           <TermsGate />
+          <RateFromLink />
           <PasscodeNudge />
           {!inRoom && <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-app px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <div className="flex items-center justify-around rounded-[1.75rem] border border-fg/10 bg-ink-900/85 px-2 py-2 shadow-2xl shadow-black/50 backdrop-blur-2xl">

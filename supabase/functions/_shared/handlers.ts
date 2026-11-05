@@ -901,6 +901,7 @@ const routes: Record<string, Route> = {
     const p = await me(req, env, d)
     const c = await d.db.getCase(String(body.caseId ?? ''))
     if (!c || c.user_id !== p.user_id) throw new Fail('Case not found', 404)
+    if (c.status === 'resolved' || c.status === 'rejected') throw new Fail('This case is closed. Tap "Reopen the case" if it isn\'t solved, or open a new appeal.', 409)
     const message = cleanText(body.message, 2000)
     if (message.length < 2 && !(Array.isArray(body.files) && body.files.length)) throw new Fail('Write a message or attach a photo')
     await limit(d, `case-msg:${p.user_id}`, 30, 86400)
@@ -1098,7 +1099,10 @@ const routes: Record<string, Route> = {
     if (!message && !status) throw new Fail('Write a reply or change the status')
     if (message) await d.db.addCaseMessage({ case_id: c.id, author: 'admin', author_name: 'Luda team', body: message, files: [] })
     await d.db.updateCase(c.id, { ...(status ? { status } : message ? { status: 'waiting_user' as CaseStatus } : {}), ...(status === 'resolved' || status === 'rejected' ? { resolution: message || status } : {}) })
+    await d.db.fn('luda_mark_handled', { p_kind: 'case', p_id: c.id, p_staff: a.username })
     await d.db.log(c.id, 'admin_case_reply', { by: a.username, status })
+    if ((status === 'resolved' || status === 'rejected') && c.status !== status)
+      await pushUser(env, d, c.user_id, { title: status === 'resolved' ? '✅ Your case is solved' : '📁 Your case was closed', body: 'Tell us how we did, or reopen it if something is still wrong', url: `/help?rate=case:${c.id}`, tag: `case:${c.id}:closed`, cat: 'chats' })
     return { ok: true }
   },
 
@@ -1128,7 +1132,7 @@ const routes: Record<string, Route> = {
     // When acting from a support case, tell the user in that case and update its status.
     const caseNote = async (text: string, status: CaseStatus) => {
       const c = body.caseId ? await d.db.getCase(String(body.caseId)) : null
-      if (c && c.user_id === u.user_id) { await d.db.addCaseMessage({ case_id: c.id, author: 'admin', author_name: 'Luda team', body: text, files: [] }); await d.db.updateCase(c.id, { status, ...(status === 'resolved' ? { resolution: text } : {}) }) }
+      if (c && c.user_id === u.user_id) { await d.db.addCaseMessage({ case_id: c.id, author: 'admin', author_name: 'Luda team', body: text, files: [] }); await d.db.updateCase(c.id, { status, ...(status === 'resolved' ? { resolution: text } : {}) }); await d.db.fn('luda_mark_handled', { p_kind: 'case', p_id: c.id, p_staff: a.username }) }
     }
     switch (action) {
       case 'freeze': await d.db.updateProfile(u.user_id, { frozen: true, frozen_by: 'admin' }); break
@@ -1384,8 +1388,9 @@ const routes: Record<string, Route> = {
     const r = await d.db.fn<{ ok: boolean }>('luda_bill_settle', { p_bill: id, p_paid: paid, p_note: note || 'Paid by the Luda team', p_receipt: receipt })
     if (!r.ok) throw new Fail('This bill was already handled', 409)
     await d.db.log(id, paid ? 'admin_bill_paid' : 'admin_bill_refunded', { by: a.username, note })
+    await d.db.fn('luda_mark_handled', { p_kind: 'bill', p_id: id, p_staff: a.username })
     const owner = await d.db.fn<string | null>('luda_bill_user', { p_bill: id }).catch(() => null)
-    if (owner) await pushUser(env, d, owner, paid ? { title: '🧾 Your bill is paid', body: 'The receipt is in Bills', url: '/bills', tag: `bill:${id}`, cat: 'money' } : { title: '↩️ Bill refunded', body: note, url: '/bills', tag: `bill:${id}`, cat: 'money' })
+    if (owner) await pushUser(env, d, owner, paid ? { title: '🧾 Your bill is paid', body: 'The receipt is in Bills. Tell us how it went', url: `/bills?rate=bill:${id}`, tag: `bill:${id}`, cat: 'money' } : { title: '↩️ Bill refunded', body: note, url: '/bills', tag: `bill:${id}`, cat: 'money' })
     return { ok: true }
   },
 
@@ -1420,7 +1425,7 @@ const routes: Record<string, Route> = {
     if (!r.ok) throw new Fail('This was already settled', 409)
     if (body.caseId) {
       const c = await d.db.getCase(String(body.caseId))
-      if (c) { await d.db.addCaseMessage({ case_id: c.id, author: 'admin', author_name: 'Luda team', body: `Decision: ${note}`, files: [] }); await d.db.updateCase(c.id, { status: 'resolved', resolution: note }) }
+      if (c) { await d.db.addCaseMessage({ case_id: c.id, author: 'admin', author_name: 'Luda team', body: `Decision: ${note}`, files: [] }); await d.db.updateCase(c.id, { status: 'resolved', resolution: note }); await d.db.fn('luda_mark_handled', { p_kind: 'case', p_id: c.id, p_staff: a.username }) }
     }
     await d.db.log(String(body.escrowId), 'admin_escrow', { by: a.username, to, note })
     return { ok: true }
@@ -1942,6 +1947,44 @@ const routes: Record<string, Route> = {
   },
 
   /* ---------------- "To do" on Home: everything waiting for this user, worked out on the server ---------------- */
+  /* ---------------- ratings + reopening cases (v1.18.0) ---------------- */
+  'POST rate': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await limit(d, `rate:${p.user_id}`, 60, 86400, 'Too many ratings today. Try again tomorrow.')
+    const kind = String(body.kind ?? '') as RateKind
+    if (!RATE_TAGS[kind]) throw new Fail('Unknown rating')
+    const ref = uuid(body.ref)
+    const stars = kind === 'case' || kind === 'bill' ? int(body.stars) : null
+    const good = kind === 'market' || kind === 'flash' ? body.good : null
+    if (stars !== null && !(stars >= 1 && stars <= 5)) throw new Fail('Pick 1 to 5 stars')
+    if (good !== null && typeof good !== 'boolean') throw new Fail('Pick 👍 or 👎')
+    const tags = (Array.isArray(body.tags) ? body.tags : []).map(String).filter((t, i, a) => RATE_TAGS[kind].includes(t) && a.indexOf(t) === i).slice(0, 6)
+    const text = cleanText(body.body, 300)
+    if (text) { const bad = textProblem(text); if (bad) throw new Fail(bad) }
+    const r = await d.db.fn<{ ok: boolean; reason?: string }>('luda_rate', { p_user: p.user_id, p_kind: kind, p_ref: ref, p_stars: stars, p_good: good, p_tags: tags, p_body: text })
+    if (!r.ok) throw new Fail(r.reason === 'not_finished' ? 'You can rate this once it’s finished' : 'Not found', r.reason === 'not_finished' ? 409 : 404)
+    return { ok: true }
+  },
+  'GET ratings-mine': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    return { ratings: await d.db.fn('luda_ratings_mine', { p_user: p.user_id }), pending: await d.db.fn('luda_rate_pending', { p_user: p.user_id }) }
+  },
+  'POST case-reopen': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const reason = cleanText(body.reason, 500)
+    if (reason.length < 5) throw new Fail('Tell the team what is still wrong')
+    const bad = textProblem(reason); if (bad) throw new Fail(bad)
+    await limit(d, `case-reopen:${p.user_id}`, 10, 86400)
+    const r = await d.db.fn<{ ok: boolean; reason?: string }>('luda_case_reopen', { p_user: p.user_id, p_case: uuid(body.caseId), p_reason: reason, p_name: p.full_name })
+    if (!r.ok) throw new Fail(({ not_found: 'Case not found', open: 'This case is already open', too_many: 'This case was already reopened twice. Please open a new case.', too_late: 'Cases can be reopened within 7 days of being closed. Please open a new case.' } as Record<string, string>)[r.reason ?? ''] ?? 'Could not reopen', r.reason === 'not_found' ? 404 : 409)
+    return { ok: true }
+  },
+  'GET admin-ratings': async ({ req, env, d, url }) => {
+    await staff(req, env, d, 'overview', 'view')
+    const days = [7, 30, 90, 365].includes(Number(url.searchParams.get('days'))) ? Number(url.searchParams.get('days')) : 30
+    return { days, ...(await d.db.fn<Record<string, unknown>>('luda_admin_ratings', { p_days: days })) }
+  },
+
   /* ---------------- phone notifications (Web Push) ---------------- */
   'POST push-subscribe': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
@@ -2252,8 +2295,23 @@ async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
   for (const f of t.fees ?? []) items.push({ key: `fee:${f.id}:${f.due}`, emoji: '🎓', title: `${f.title}: ${amt(f.amount, f.currency)} due ${new Date(`${f.due}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`, sub: 'Mark it paid once it\'s done', to: '/uni?tab=fees', level: f.due <= cyprusDay() ? 'urgent' : 'action' })
   if (Number(t.bills)) items.push({ key: 'bills', emoji: '🧾', title: Number(t.bills) === 1 ? 'The Luda team is paying your bill' : `The Luda team is paying ${t.bills} bills`, to: '/bills', level: 'info' })
   if (Number(t.withdrawals)) items.push({ key: 'withdrawals', emoji: '🏦', title: 'Withdrawal on its way to your bank', to: '/wallet', level: 'info' })
+  const rp = await d.db.fn<Record<string, { id: string; subject?: string; provider?: string; title?: string; other?: string }[]>>('luda_rate_pending', { p_user: p.user_id }).catch(() => ({} as Record<string, never[]>))
+  for (const c of rp.cases ?? []) items.push({ key: `rate:case:${c.id}`, emoji: '⭐', title: 'How did the Luda team do?', sub: String(c.subject ?? ''), to: `/help?rate=case:${c.id}`, level: 'info' })
+  for (const b of rp.bills ?? []) items.push({ key: `rate:bill:${b.id}`, emoji: '⭐', title: `Rate your ${b.provider} bill payment`, to: `/bills?rate=bill:${b.id}`, level: 'info' })
+  for (const l of rp.market ?? []) items.push({ key: `rate:market:${l.id}`, emoji: '⭐', title: `Rate @${l.other}`, sub: String(l.title ?? ''), to: `/market?rate=market:${l.id}`, level: 'info' })
+  for (const j of rp.flash ?? []) items.push({ key: `rate:flash:${j.id}`, emoji: '⭐', title: `Rate @${j.other}`, sub: String(j.title ?? ''), to: `/flash?rate=flash:${j.id}`, level: 'info' })
   const rank = { urgent: 0, action: 1, info: 2 }
   return items.sort((a, b) => rank[a.level] - rank[b.level])
+}
+
+/* ---------------- ratings ---------------- */
+type RateKind = 'case' | 'bill' | 'market' | 'flash'
+/** Quick tags people can pick (same list in the app, components/Ratings.tsx). */
+const RATE_TAGS: Record<RateKind, string[]> = {
+  case: ['fast', 'helpful', 'polite', 'clear', 'solved', 'slow', 'not_solved', 'unclear', 'unhelpful'],
+  bill: ['fast', 'correct', 'clear_receipt', 'easy', 'slow', 'wrong_amount', 'no_receipt', 'confusing'],
+  market: ['friendly', 'on_time', 'as_described', 'smooth', 'late', 'no_show', 'not_as_described', 'rude'],
+  flash: ['friendly', 'on_time', 'good_work', 'smooth', 'late', 'no_show', 'poor_work', 'rude'],
 }
 
 /* ---------------- phone notifications: helpers ---------------- */

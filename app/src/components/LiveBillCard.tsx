@@ -1,6 +1,7 @@
 import { Droplets, ExternalLink, Home, Receipt, Smartphone, Wifi, Zap, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Pill, ago, lira } from './LiveKit'
+import { RateButton } from './Ratings'
 
 export const BILL_ICON: Record<string, LucideIcon> = { electricity: Zap, water: Droplets, internet: Wifi, phone: Smartphone, rent: Home, other: Receipt }
 export const BILL_TINT: Record<string, string> = { electricity: 'from-amber-400 to-orange-500', water: 'from-sky-400 to-blue-500', internet: 'from-violet-400 to-fuchsia-500', phone: 'from-yellow-300 to-amber-500', rent: 'from-emerald-400 to-teal-500', other: 'from-slate-400 to-slate-600' }
@@ -8,7 +9,7 @@ export const BILL_TINT: Record<string, string> = { electricity: 'from-amber-400 
 export const Ago = ({ iso }: { iso: string }) => <span>{ago(iso)}</span>
 
 /** One bill with its status; used on the user's Bills screen. */
-export function BillCard({ b, footer }: { b: { eta_at?: string | null; created_at?: string; type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: string; note: string | null; receiptUrls?: (string | null)[] }; footer?: ReactNode }) {
+export function BillCard({ b, footer }: { b: { id: string; eta_at?: string | null; created_at?: string; type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: string; note: string | null; receiptUrls?: (string | null)[] }; footer?: ReactNode }) {
   const I = BILL_ICON[b.type] ?? Receipt
   return (
     <div className="card flex flex-col gap-3">
@@ -28,6 +29,7 @@ export function BillCard({ b, footer }: { b: { eta_at?: string | null; created_a
         {(b.receiptUrls ?? []).filter(Boolean).map((u, i) => <a key={i} href={u!} target="_blank" rel="noreferrer" className="chip bg-fg/[0.06] text-slate-200"><ExternalLink size={12} /> Receipt{i ? ` ${i + 1}` : ''}</a>)}
       </div>
       {b.status === 'refunded' && b.note && <p className="text-xs text-slate-400">Reason: {b.note}</p>}
+      {(b.status === 'paid' || b.status === 'refunded') && <RateButton kind="bill" refId={b.id} title="Rate this bill payment" sub={b.provider} />}
       {footer}
     </div>
   )

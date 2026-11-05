@@ -8,11 +8,13 @@ import { Header } from '../components/ui'
 import { Presence } from '../components/Presence'
 import { COUNTRIES } from '../lib/data'
 import { api } from '../lib/live'
+import { tagLabel } from '../components/Ratings'
 
 interface Trader {
   username: string; name: string; verified: boolean; country: string | null; since: string; ads: number; blocked: boolean; me: boolean; lastSeen?: string | null
   stats: { trades: number; rate: number | null; good?: number; bad?: number; releaseMin?: number | null; sendMin?: number | null }
   reviews: { good: boolean; body: string; at: string; by: string }[]
+  community?: { good: number; bad: number; reviews: { kind: 'market' | 'flash'; good: boolean; tags: string[]; body: string; at: string; by: string }[] }
 }
 
 export function LiveTrader() {
@@ -58,6 +60,20 @@ export function LiveTrader() {
             </div>
           )) : <p className="card text-center text-sm text-slate-400">No reviews yet. Reviews appear after completed trades.</p>}
         </section>
+        {t.community && (t.community.good + t.community.bad > 0) && <section>
+          <div className="mb-2 flex items-center justify-between"><p className="label">Market & Flash</p>
+            <p className="text-xs text-slate-400"><span className="text-mint-300">👍 {t.community.good}</span> · <span className="text-rose-300">👎 {t.community.bad}</span></p></div>
+          {t.community.reviews.map((r, i) => (
+            <div key={i} className="card mb-2 flex items-start gap-3 py-3">
+              {r.good ? <ThumbsUp size={18} className="mt-0.5 shrink-0 text-mint-300" /> : <ThumbsDown size={18} className="mt-0.5 shrink-0 text-rose-300" />}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">{r.body || (r.good ? 'Good experience' : 'Bad experience')}</p>
+                {r.tags.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{r.tags.map((x) => <span key={x} className="chip bg-fg/5 px-2 py-0.5 text-[10px] text-slate-300">{tagLabel(r.kind, x)}</span>)}</div>}
+                <p className="mt-1 text-[11px] text-slate-500">{r.kind === 'market' ? '🛍️ Market' : '⚡ Flash'} · @{r.by} · {new Date(r.at).toLocaleDateString()}</p>
+              </div>
+            </div>
+          ))}
+        </section>}
         {!t.me && <button className="mx-auto flex items-center gap-1 text-xs text-slate-500" disabled={busy} onClick={() => void block(!t.blocked)}><Ban size={12} /> {t.blocked ? `Unblock @${t.username}` : `Block @${t.username}`}</button>}
         {err && <p className="text-center text-sm text-rose-300">{err}</p>}
       </div>

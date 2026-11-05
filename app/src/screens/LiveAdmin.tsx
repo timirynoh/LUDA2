@@ -1,7 +1,7 @@
 // Owner's admin page (live mode). Only accounts the server marks as admin can load any of this.
 import {
   AlertTriangle, ArrowDownToLine, ArrowUpFromLine, BadgeCheck, Banknote, Check, ChevronRight, Copy, ExternalLink, BookOpen, Gavel, GraduationCap, Home as HomeIcon, ScanLine,
-  Inbox, LifeBuoy, Megaphone, Scale, Newspaper, UserCog, Receipt, RefreshCw, Search, ShieldCheck, Snowflake, Ticket, Undo2, Users, Wallet, type LucideIcon,
+  Inbox, LifeBuoy, Megaphone, Scale, Newspaper, UserCog, Receipt, RefreshCw, Search, ShieldCheck, Snowflake, Ticket, Undo2, Users, Wallet, Star, type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { BILL_ICON, BILL_TINT } from '../components/LiveBillCard'
@@ -14,9 +14,10 @@ import { UniAdminTab } from '../components/LiveUni'
 import { GuidesTab } from '../components/LiveGuides'
 import { TicketCheck } from '../components/TicketCheck'
 import { useLive } from '../lib/liveStore'
+import { RatingsTab } from '../components/AdminRatings'
 
-type Tab = 'overview' | 'bills' | 'cases' | 'disputes' | 'p2p' | 'users' | 'topups' | 'withdrawals' | 'content' | 'uni' | 'guides' | 'banners' | 'tickets' | 'team'
-const TAB_AREA: Record<Tab, StaffArea> = { overview: 'overview', bills: 'bills', cases: 'cases', disputes: 'disputes', p2p: 'disputes', users: 'users', topups: 'money', withdrawals: 'money', content: 'content', uni: 'content', guides: 'content', banners: 'banners', tickets: 'tickets', team: 'team' }
+type Tab = 'overview' | 'ratings' | 'bills' | 'cases' | 'disputes' | 'p2p' | 'users' | 'topups' | 'withdrawals' | 'content' | 'uni' | 'guides' | 'banners' | 'tickets' | 'team'
+const TAB_AREA: Record<Tab, StaffArea> = { overview: 'overview', ratings: 'overview', bills: 'bills', cases: 'cases', disputes: 'disputes', p2p: 'disputes', users: 'users', topups: 'money', withdrawals: 'money', content: 'content', uni: 'content', guides: 'content', banners: 'banners', tickets: 'tickets', team: 'team' }
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–')
 const waited = (iso: string) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d` }
 const short = (ref: string) => '…' + ref.slice(-8)
@@ -61,7 +62,7 @@ export default function LiveAdmin() {
   const st = me?.profile.staff ?? null
   const allow = (t: Tab) => staffCan(st, TAB_AREA[t])
   const tabs = ([
-    { v: 'overview', l: 'Home', i: HomeIcon }, { v: 'bills', l: 'Bills', i: Receipt, n: o?.billsPending }, { v: 'cases', l: 'Cases', i: Inbox, n: o?.openCases },
+    { v: 'overview', l: 'Home', i: HomeIcon }, { v: 'bills', l: 'Bills', i: Receipt, n: o?.billsPending }, { v: 'cases', l: 'Cases', i: Inbox, n: o?.openCases }, { v: 'ratings', l: 'Ratings', i: Star },
     { v: 'p2p', l: 'P2P disputes', i: Scale }, { v: 'disputes', l: 'Held money', i: Gavel }, { v: 'users', l: 'Users', i: Users }, { v: 'topups', l: 'Top-ups', i: ArrowDownToLine }, { v: 'withdrawals', l: 'Payouts', i: ArrowUpFromLine },
     { v: 'content', l: 'Content', i: Newspaper }, { v: 'uni', l: 'Uni calendars', i: GraduationCap }, { v: 'guides', l: 'Guides & terms', i: BookOpen }, { v: 'tickets', l: 'Ticket check', i: ScanLine }, { v: 'banners', l: 'Banners', i: Megaphone }, { v: 'team', l: 'Team', i: UserCog },
   ] as { v: Tab; l: string; i: LucideIcon; n?: number }[]).filter((t) => allow(t.v))
@@ -85,6 +86,7 @@ export default function LiveAdmin() {
         {tab === 'uni' && <UniAdminTab staff={st} />}
         {tab === 'guides' && <GuidesTab staff={st} />}
         {tab === 'tickets' && <TicketCheck />}
+        {tab === 'ratings' && <RatingsTab />}
         {tab === 'team' && <TeamTab />}
         {tab === 'bills' && <BillsTab onChange={load} />}
         {tab === 'cases' && <CasesTab />}

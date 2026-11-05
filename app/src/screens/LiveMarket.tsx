@@ -11,6 +11,7 @@ import { CITIES } from '../lib/data'
 import { api } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 import { useStore } from '../lib/store'
+import { RateButton } from '../components/Ratings'
 
 interface Item { id: string; title: string; description: string; category: string; city: string; price_minor: number; status: 'active' | 'reserved' | 'sold' | 'removed'; created_at: string; updated_at: string; reserved_at: string | null; seller_name?: string; buyer_name?: string; mine: boolean; photoUrls: (string | null)[] }
 interface Market { items: Item[]; mine: Item[]; bought: Item[]; feePct: number }
@@ -104,6 +105,7 @@ function MyListing({ x, onChange }: { x: Item; onChange: () => void }) {
         {x.status === 'active' && <Pill tone="ok">On sale</Pill>}{x.status === 'reserved' && <Pill tone="wait">Paid · awaiting pickup</Pill>}{x.status === 'sold' && <Pill tone="ok">Sold · paid to you</Pill>}
       </div>
       {x.status === 'reserved' && <p className="text-xs text-slate-300">@{x.buyer_name} paid. Hand it over; you're paid when they confirm (or automatically after 7 days).</p>}
+      {x.status === 'sold' && x.buyer_name && <RateButton kind="market" refId={x.id} title={`Rate @${x.buyer_name}`} sub={x.title} />}
       <div className="flex gap-2">
         {x.status === 'active' && <button className="btn-ghost flex-1 py-2.5 text-sm" onClick={() => act('market-remove', 'Remove this listing?')}>Remove</button>}
         {x.status === 'reserved' && <button className="btn-ghost flex-1 py-2.5 text-sm" onClick={() => act('market-cancel', "Cancel this sale? The buyer gets their money back and the item goes back on sale.")}>Can't sell · refund buyer</button>}
@@ -122,6 +124,7 @@ function Purchase({ x, onChange }: { x: Item; onChange: () => void }) {
         <div className="min-w-0 flex-1"><p className="truncate font-semibold">{x.title}</p><p className="text-xs text-slate-400">from @{x.seller_name} · {lira(x.price_minor)}</p></div>
         {x.status === 'reserved' ? <Pill tone="wait">Money held</Pill> : x.status === 'sold' ? <Pill tone="ok">Completed</Pill> : <Pill tone="back">Refunded</Pill>}
       </div>
+      {x.status === 'sold' && <RateButton kind="market" refId={x.id} title={`Rate @${x.seller_name}`} sub={x.title} />}
       {x.status === 'reserved' && <div className="flex gap-2">
         <button className="btn-primary flex-1 py-3 text-sm" onClick={() => setConfirm(true)}>I received it</button>
         <button className="btn-ghost px-4 py-3 text-sm" onClick={() => setHelp(true)}><LifeBuoy size={15} /> Problem</button>
