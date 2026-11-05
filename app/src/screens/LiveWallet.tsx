@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 // Live (real-money) wallet: Naira + Lira balances held on the Luda server.
 import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Download, Share2, Eye, EyeOff, Plus, RefreshCw, Send, ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -43,7 +44,7 @@ export default function LiveWallet() {
           ))}
         </div>
         <div className="flex items-center justify-between">
-        <button className="text-xs font-semibold text-mint-300" onClick={() => setOpen('fees')}>💳 Fees</button>
+        <span className="flex items-center gap-3"><button className="text-xs font-semibold text-mint-300" onClick={() => setOpen('fees')}>💳 Fees</button><Link to="/statements" className="text-xs font-semibold text-mint-300">📄 Statements</Link></span>
         <button className="text-xs text-slate-400" onClick={() => set((p) => ({ ...p, security: { ...p.security, hideBalances: !hide } }))}>{hide ? <><Eye size={12} className="inline" /> Show</> : <><EyeOff size={12} className="inline" /> Hide</>} balances</button>
         </div>
         <div className="grid grid-cols-4 gap-2">

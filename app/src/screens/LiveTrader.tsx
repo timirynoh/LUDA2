@@ -9,11 +9,13 @@ import { Presence } from '../components/Presence'
 import { COUNTRIES } from '../lib/data'
 import { api } from '../lib/live'
 import { tagLabel } from '../components/Ratings'
+import { ExchangerBadge } from '../components/Exchanger'
 
 interface Trader {
   username: string; name: string; verified: boolean; country: string | null; since: string; ads: number; blocked: boolean; me: boolean; lastSeen?: string | null
   stats: { trades: number; rate: number | null; good?: number; bad?: number; releaseMin?: number | null; sendMin?: number | null }
   reviews: { good: boolean; body: string; at: string; by: string }[]
+  exchanger?: boolean
   community?: { good: number; bad: number; reviews: { kind: 'market' | 'flash'; good: boolean; tags: string[]; body: string; at: string; by: string }[] }
 }
 
@@ -35,7 +37,7 @@ export function LiveTrader() {
         <div className="card flex items-center gap-4">
           <span className="grid size-16 shrink-0 place-items-center rounded-3xl bg-gradient-to-br from-violet-400/40 to-indigo-700/50 text-2xl font-extrabold">{t.name.slice(0, 1).toUpperCase()}</span>
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-lg font-bold">{t.name} {t.verified && <BadgeCheck size={18} className="text-mint-300" />}</p>
+            <p className="flex items-center gap-1.5 text-lg font-bold">{t.name} {t.verified && <BadgeCheck size={18} className="text-mint-300" />}{t.exchanger && <ExchangerBadge />}</p>
             <p className="text-xs text-slate-400">{c ? `${c.flag} ${c.name} · ` : ''}{`On Luda since ${new Date(t.since).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}`}</p>
             <p className="text-xs text-slate-400">{t.verified ? 'ID verified' : 'ID not verified yet'}</p>
             {!t.me && <Presence at={t.lastSeen ?? null} />}

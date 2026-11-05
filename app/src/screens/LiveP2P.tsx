@@ -14,6 +14,7 @@ import { CITIES } from '../lib/data'
 import { api, money } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 import { useStore } from '../lib/store'
+import { ExchangerBadge, ExchangerCard } from '../components/Exchanger'
 
 export type Asset = 'TRY' | 'USD' | 'EUR' | 'GBP'
 export const ASSETS: { v: Asset; sym: string; label: string; flag: string }[] = [
@@ -23,7 +24,7 @@ const symOf = (a?: string) => ASSETS.find((x) => x.v === a)?.sym ?? '₺'
 const nameOf = (a?: string) => (ASSETS.find((x) => x.v === a)?.label ?? 'Lira').toLowerCase()
 export const fa = (minor: number, a?: string) => `${symOf(a)}${(minor / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
 const APPEAL_WAIT_MIN = 15 // the server enforces the same wait
-export interface Ad {
+export interface Ad { exchanger?: boolean;
   id: string; side: 'sell' | 'buy'; asset?: Asset; price: number; min_try: number; max_try: number; available_try: number; methods: ('bank' | 'cash')[]
   city: string; area: string; terms: string; status: string; maker?: string; makerName?: string; verified?: boolean; mine?: boolean
   stats?: { trades: number; rate: number | null; since: string; good?: number; bad?: number; releaseMin?: number | null; sendMin?: number | null }; nearby?: number; lastSeen?: string | null
@@ -56,10 +57,10 @@ function Copyable({ label, value, mono }: { label: string; value: string; mono?:
   )
 }
 // side 'sell' = this trader sends the lira (show how fast they send); 'buy' = they pay Naira and release (show how fast they release).
-const Trader = ({ name, user, verified, stats, side, seen }: { name?: string; user?: string; verified?: boolean; stats?: Ad['stats']; side?: 'sell' | 'buy'; seen?: string | null }) => (
+const Trader = ({ name, user, verified, stats, side, seen, exchanger }: { name?: string; user?: string; verified?: boolean; stats?: Ad['stats']; side?: 'sell' | 'buy'; seen?: string | null; exchanger?: boolean }) => (
   <div className="flex min-w-0 items-center gap-2.5">
     <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-violet-400/40 to-indigo-700/50 font-bold">{(name || user || '?').slice(0, 1).toUpperCase()}</span>
-    <div className="min-w-0"><Link to={`/u/${user}`} onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 truncate text-sm font-bold">{name?.split(' ')[0]} <span className="font-normal text-slate-400">@{user}</span>{verified && <BadgeCheck size={14} className="shrink-0 text-mint-300" />}</Link>
+    <div className="min-w-0"><Link to={`/u/${user}`} onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 truncate text-sm font-bold">{name?.split(' ')[0]} <span className="font-normal text-slate-400">@{user}</span>{verified && <BadgeCheck size={14} className="shrink-0 text-mint-300" />}{exchanger && <ExchangerBadge small />}</Link>
       {seen !== undefined && <Presence at={seen} />}
       {stats && <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-slate-400">{stats.trades === 1 ? '1 trade' : `${stats.trades} trades`}{stats.rate !== null ? <span className={`rounded-md px-1.5 font-bold ${stats.rate >= 90 ? 'bg-mint-400/15 text-mint-300' : stats.rate >= 70 ? 'bg-gold-400/15 text-gold-300' : 'bg-rose-500/15 text-rose-300'}`}>{`${stats.rate}% completed`}</span> : <span>new trader</span>}{(stats.good || stats.bad) ? <span>{`👍 ${stats.good ?? 0} 👎 ${stats.bad ?? 0}`}</span> : null}</p>}
       {stats && side === 'sell' && stats.sendMin != null && <p className="text-[11px] text-slate-400">⏱ Usually sends in ~{Math.max(1, stats.sendMin)} min</p>}
@@ -108,7 +109,7 @@ export function P2PMarket() {
       {data && ads.length === 0 && <Empty emoji="🤝" title={want_ ? 'No offer for that amount yet' : buying ? `No one is selling ${nameOf(asset)} yet` : `No one is buying ${nameOf(asset)} yet`} sub="Post your own ad and let people come to you." action={data.canTrade ? <button className="btn-primary mt-2 px-5 py-3" onClick={() => setSheet('ads')}><Plus size={16} /> Post an ad</button> : undefined} />}
       {ads.map((a) => (
         <div key={a.id} className="card flex flex-col gap-3">
-          <div className="flex items-start justify-between gap-2"><Trader name={a.makerName} user={a.maker} verified={a.verified} stats={a.stats} side={a.side} seen={a.lastSeen ?? null} />
+          <div className="flex items-start justify-between gap-2"><Trader name={a.makerName} user={a.maker} verified={a.verified} stats={a.stats} side={a.side} seen={a.lastSeen ?? null} exchanger={a.exchanger} />
             {!!a.nearby && <span className="chip shrink-0 bg-mint-400/15 py-0.5 text-[10px] text-mint-200"><MapPin size={10} /> {a.nearby >= 2 ? 'Your area' : 'Your city'}</span>}</div>
           <div className="flex items-end justify-between gap-3">
             <div><p className="text-[11px] text-slate-400">Price</p><p className="text-2xl font-extrabold">₦{Number(a.price).toFixed(2)}<span className="text-sm font-semibold text-slate-400"> / {sym}1</span></p>
@@ -127,6 +128,7 @@ export function P2PMarket() {
         <button onClick={() => setSheet('ads')} className="glass flex flex-col items-center gap-1 rounded-2xl py-3 text-xs font-semibold"><Plus size={18} className="text-mint-300" />My ad</button>
         <button onClick={() => setSheet('banks')} className="glass flex flex-col items-center gap-1 rounded-2xl py-3 text-xs font-semibold"><Landmark size={18} className="text-mint-300" />Bank accounts</button>
       </div>
+      <ExchangerCard />
       <HowItWorks />
       {take && data && <TakeSheet ad={{ ...take, asset }} want={want} preset={want_} fee={data.rules} area={area} onClose={() => setTake(null)} onDone={(id) => { setTake(null); nav(`/p2p/${id}`) }} />}
       {sheet === 'banks' && <BankAccounts onClose={() => setSheet(null)} />}

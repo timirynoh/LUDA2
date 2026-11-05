@@ -21,6 +21,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { OfflineBanner } from './components/OfflineBanner'
 import Security from './screens/Security'
 import Inbox from './screens/Inbox'
+import LiveStatements from './screens/LiveStatements'
 import Search from './screens/Search'
 import Help from './screens/Help'
 import { DisputeList, DisputeView } from './screens/Disputes'
@@ -164,6 +165,7 @@ export default function App() {
                 <Route path="/flash" element={LIVE ? <LiveFlash /> : <Flash />} />
                 <Route path="/security" element={<Security />} />
                 <Route path="/inbox" element={<Inbox />} />
+                <Route path="/statements" element={LIVE ? <LiveStatements /> : <Navigate to="/wallet" replace />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/help" element={<Help />} />
                 <Route path="/check" element={<TicketCheckPage />} />
