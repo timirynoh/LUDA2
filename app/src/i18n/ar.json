@@ -3157,5 +3157,14 @@
 "Couldn’t load your notifications. Pull down or try again.": "تعذّر تحميل إشعاراتك. حاول مرة أخرى.",
 "Yesterday": "أمس",
 "Earlier": "سابقًا",
-"{} new": "{} جديدة"
+"{} new": "{} جديدة",
+"Top-up received": "تم استلام الشحن",
+"{} added to your wallet": "تمت إضافة {} إلى محفظتك",
+"{} is back in your wallet": "عاد {} إلى محفظتك",
+"You received {}": "استلمت {}",
+"From @{}": "من @{}",
+"From @{} · {}": "من @{} · {}",
+"Luda notifications are on": "إشعارات Luda مفعّلة",
+"You'll get alerts here even when Luda is closed": "ستصلك التنبيهات هنا حتى عندما يكون Luda مغلقًا",
+"Rate your {} bill payment": "قيّم دفع فاتورة {}"
 }

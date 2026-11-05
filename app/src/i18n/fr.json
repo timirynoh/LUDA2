@@ -3128,5 +3128,14 @@
 "Couldn’t load your notifications. Pull down or try again.": "Impossible de charger vos notifications. Réessayez.",
 "Yesterday": "Hier",
 "Earlier": "Plus tôt",
-"{} new": "{} nouvelles"
+"{} new": "{} nouvelles",
+"Top-up received": "Recharge reçue",
+"{} added to your wallet": "{} ajoutés à votre portefeuille",
+"{} is back in your wallet": "{} est de retour dans votre portefeuille",
+"You received {}": "Vous avez reçu {}",
+"From @{}": "De @{}",
+"From @{} · {}": "De @{} · {}",
+"Luda notifications are on": "Les notifications Luda sont activées",
+"You'll get alerts here even when Luda is closed": "Vous recevrez des alertes ici même quand Luda est fermée",
+"Rate your {} bill payment": "Notez votre paiement de facture {}"
 }

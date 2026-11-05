@@ -3146,5 +3146,14 @@
 "Couldn’t load your notifications. Pull down or try again.": "Imeshindikana kupakia arifa zako. Jaribu tena.",
 "Yesterday": "Jana",
 "Earlier": "Awali",
-"{} new": "{} mpya"
+"{} new": "{} mpya",
+"Top-up received": "Pesa imeingia",
+"{} added to your wallet": "{} imeongezwa kwenye pochi yako",
+"{} is back in your wallet": "{} imerudi kwenye pochi yako",
+"You received {}": "Umepokea {}",
+"From @{}": "Kutoka @{}",
+"From @{} · {}": "Kutoka @{} · {}",
+"Luda notifications are on": "Arifa za Luda zimewashwa",
+"You'll get alerts here even when Luda is closed": "Utapata arifa hapa hata Luda ikiwa imefungwa",
+"Rate your {} bill payment": "Toa alama kwa malipo yako ya bili ya {}"
 }

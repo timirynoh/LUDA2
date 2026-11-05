@@ -104,6 +104,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       ['10987654321', { first_name: 'BOLA', last_name: 'ADEYEMI', date_of_birth: '15-Apr-2000' }]]),
     calls: [] as string[],
     overpassDown: false,
+    diditNoCredit: false,
     pushes: [] as { endpoint: string; headers: Record<string, string>; body: Uint8Array }[],
     didit: new Map<string, Record<string, unknown>>(), // session id -> decision JSON
     files: new Map<string, number>(), // storage path -> size
@@ -194,6 +195,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     // Didit (document + selfie KYC)
     if (url.host === 'verification.didit.me') {
       if (new Headers(init?.headers).get('x-api-key') !== 'didit_key') return ok({ detail: 'bad key' }, 401)
+      if (url.pathname === '/v3/session/' && init?.method === 'POST' && world.diditNoCredit) return ok({ detail: 'Insufficient credits. Please top up your balance.' }, 402)
       if (url.pathname === '/v3/session/' && init?.method === 'POST') { const id = 'ds_' + ++world.diditN; world.calls.push('didit-start:' + body.vendor_data); return ok({ session_id: id, url: `https://verify.didit.me/session/${id}` }, 201) }
       const m = url.pathname.match(/^\/v3\/session\/([^/]+)\/decision\/$/)
       if (m) return ok(world.didit.get(m[1]) ?? { status: 'Not Started', id_verifications: null })

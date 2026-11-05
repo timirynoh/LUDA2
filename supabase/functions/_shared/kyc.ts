@@ -57,13 +57,25 @@ export interface DiditEnv { DIDIT_API_KEY?: string; DIDIT_WORKFLOW_ID?: string; 
 export const diditEnabled = (e: DiditEnv) => !!(e.DIDIT_API_KEY && e.DIDIT_WORKFLOW_ID)
 const diditBase = (e: DiditEnv) => (e.DIDIT_BASE_URL || 'https://verification.didit.me').replace(/\/$/, '')
 
+/** Didit couldn't start a check: why (for the Luda team) — users get a friendly message and the manual route. */
+export class DiditUnavailable extends Error {
+  reason: 'no_credit' | 'key' | 'other'; status: number; said: string
+  constructor(reason: 'no_credit' | 'key' | 'other', status: number, said: string) { super(`didit ${reason} ${status}`); this.reason = reason; this.status = status; this.said = said }
+}
+
 export async function diditStart(userId: string, callback: string, env: DiditEnv, f: Fetch = fetch) {
   const r = await f(`${diditBase(env)}/v3/session/`, {
     method: 'POST', headers: { 'x-api-key': env.DIDIT_API_KEY!, 'content-type': 'application/json' },
     body: JSON.stringify({ workflow_id: env.DIDIT_WORKFLOW_ID, vendor_data: userId, callback }), signal: AbortSignal.timeout(20000),
   })
   const j = (await r.json().catch(() => ({}))) as Record<string, any>
-  if (!r.ok || !j.url || !j.session_id) throw new Error(r.status === 401 || r.status === 403 ? 'ID checks are misconfigured (Didit key). Contact support.' : 'Could not start the ID check. Try again.')
+  if (!r.ok || !j.url || !j.session_id) {
+    const said = JSON.stringify(j).slice(0, 300)
+    // Didit refuses new checks when the account has no credit left (every check is billed).
+    if (r.status === 402 || /credit|balance|insufficient|payment required|top.?up/i.test(said)) throw new DiditUnavailable('no_credit', r.status, said)
+    if (r.status === 401 || r.status === 403) throw new DiditUnavailable('key', r.status, said)
+    throw new DiditUnavailable('other', r.status, said)
+  }
   return { sessionId: String(j.session_id), url: String(j.url) }
 }
 

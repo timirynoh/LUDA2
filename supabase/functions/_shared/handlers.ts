@@ -2,12 +2,13 @@
 // Rules: the server owns every balance and price; money moves only through the SQL
 // functions (atomic, idempotent); deposits are confirmed with the provider before
 // crediting; spending needs the user's PIN; withdrawing and sending need KYC.
+import { NOTIFY_I18N } from './notify_i18n.ts'
 import { newVapid, pushHostOk, sendPush, type PushMsg, type PushSub, type Vapid } from './webpush.ts'
 import { OVERPASS_MIRRORS, PLACE_CATS, PLACE_CITIES, overpassQuery, parseOverpass, type PlaceOut } from './places.ts'
 import { hashPin, randomHex, recover, refresh, setPassword, signIn, signUp, userFromToken, type AuthEnv } from './auth.ts'
 import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion } from './webauthn.ts'
 import { MoneyError, type CaseRow, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
-import { accountMatchesName, diditDecision, diditEnabled, diditSignatureOk, diditStart, docHash, idMatchesName, kycEnabled, lookupId, nameTokens, normDate, type DiditEnv, type KycEnv } from './kyc.ts'
+import { DiditUnavailable, accountMatchesName, diditDecision, diditEnabled, diditSignatureOk, diditStart, docHash, idMatchesName, kycEnabled, lookupId, nameTokens, normDate, type DiditEnv, type KycEnv } from './kyc.ts'
 import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, billFee, depositFee, featureFees, foreignEnabled, foreignFee, margin, ngnPerTry, p2pFeeTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
 import { PayoutRefused, checkTransfer, createRecipient, flwBanks, flwCheckTransfer, flwResolve, flwSendTransfer, listBanks, matchFlwBank, payoutRefusalMessage, resolveAccount, sendTransfer, type PayoutProvider } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
@@ -20,6 +21,7 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv {
   APP_URL: string
   ALLOWED_ORIGINS?: string
   TICKET_QR_SECRET?: string
+  EXCHANGER_BOND_TRY?: string
   PUSH_ALLOW_TEST?: string
   SUPABASE_URL: string
   AUTH_KEY: string // key used to talk to Supabase Auth
@@ -530,6 +532,13 @@ async function settleReferrals(p: Profile, env: Env, d: Deps) {
 /* ------------------------- P2P exchange (Naira in Luda ⇄ lira outside) ------------------------- */
 export const P2P_RULES = { maxAds: 1, maxTry: 5_000_00, minTry: 50_00, windowMin: 30, priceBand: 0.5, appealWaitMin: 15, assets: ['TRY', 'USD', 'EUR', 'GBP'] }
 const P2P_SYMBOL: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }
+/** Verified Exchanger (owner's numbers): 5 ads up to ₺50,000 each, ₺2,000 bond; to apply: verified ID + a good P2P record. */
+const EXCHANGER = { maxAds: 5, maxTry: 50_000_00, minTrades: 5, minRate: 90 }
+const exchangerBond = (env: Env) => Math.max(0, Math.round(Number(env.EXCHANGER_BOND_TRY ?? 2000) * 100)) || 2000_00
+async function p2pLimits(userId: string, d: Deps) {
+  const x = await d.db.fn<{ status: string } | null>('luda_exchanger', { p_user: userId }).catch(() => null)
+  return x?.status === 'approved' ? { ...P2P_RULES, maxAds: EXCHANGER.maxAds, maxTry: EXCHANGER.maxTry, exchanger: true } : { ...P2P_RULES, exchanger: false }
+}
 const p2pAsset = (v: unknown) => (P2P_RULES.assets.includes(String(v)) ? String(v) : 'TRY')
 /** Today's market price in Naira for 1 unit of the asset (null if unknown). Only used as a sanity guard: people set their own rate. */
 async function marketNgnPer(asset: string, env: Env, d: Deps) {
@@ -870,7 +879,7 @@ const routes: Record<string, Route> = {
         { user_id: to.user_id, currency: cur, amount_minor: amount, kind: 'receive', ref, meta: { from: p.username, note } },
       ])
     } catch (e) { moneyMsg(e) }
-    await pushUser(env, d, to.user_id, { title: `💸 You received ${fmtMoney(amount, cur)}`, body: `From @${p.username}${note ? ` · ${note}` : ''}`, url: '/wallet', tag: `recv:${ref}`, cat: 'money' })
+    await pushUser(env, d, to.user_id, { title: `💸 You received ${fmtMoney(amount, cur)}`, body: note ? `From @${p.username} · ${note}` : `From @${p.username}`, url: '/wallet', tag: `recv:${ref}`, cat: 'money' })
     return { ok: true, to: to.username }
   },
 
@@ -919,7 +928,15 @@ const routes: Record<string, Route> = {
     // 2 attempts a day (owner's rule). After that: try again tomorrow, or send the ID to the Luda team.
     const left = kycTriesLeft(p)
     if (left <= 0) throw new Fail(`You've used today's ${KYC_TRIES_PER_DAY} ID checks. Try again tomorrow, or send your ID to the Luda team from Help.`, 429)
-    const s = await diditStart(p.user_id, `${env.APP_URL.replace(/\/$/, '')}/kyc/return`, env, d.fetch).catch((e) => { throw new Fail(e instanceof Error ? e.message : 'Could not start the ID check', 502) })
+    const s = await diditStart(p.user_id, `${env.APP_URL.replace(/\/$/, '')}/kyc/return`, env, d.fetch).catch(async (e) => {
+      // Record the real reason for the Luda team (live check + Luda HQ), at most a few times an hour.
+      const why = e instanceof DiditUnavailable ? { reason: e.reason, status: e.status, said: e.said } : { reason: 'network', said: String(e).slice(0, 200) }
+      if (await d.db.hit('diditfail', 10, 3600).catch(() => false)) await d.db.log(p.user_id, 'kyc_start_failed', why).catch(() => {})
+      // The person isn't stuck: their try isn't counted, and they can send their ID to the team instead.
+      throw new Fail(e instanceof DiditUnavailable && e.reason !== 'other'
+        ? 'Automatic ID checks are paused for a moment. Please tap “Send your ID to the Luda team” below and we’ll verify you by hand.'
+        : 'Could not start the ID check. Try again in a minute, or send your ID to the Luda team below.', 503)
+    })
     const today = new Date().toISOString().slice(0, 10)
     await d.db.updateProfile(p.user_id, { kyc_session_id: s.sessionId, kyc_started_at: new Date().toISOString(), kyc_tries: (p.kyc_tries_day === today ? p.kyc_tries : 0) + 1, kyc_tries_day: today, ...(p.kyc_status === 'failed' || p.kyc_status === 'pending' ? { kyc_status: 'none' } : {}) } as Partial<Profile>)
     return { url: s.url, triesLeft: left - 1 }
@@ -1511,14 +1528,15 @@ const routes: Record<string, Route> = {
     const hidden = new Set((await d.db.fn<{ hidden: string[] }>('luda_p2p_blocks', { p_user: p.user_id })).hidden)
     ads = ads.filter((a) => !hidden.has(a.maker))
     const seen = ads.length ? await d.db.fn<Record<string, string | null>>('luda_presence', { p_usernames: [...new Set(ads.map((x) => String(x.maker)))] }) : {}
-    ads = ads.map((x) => ({ ...x, lastSeen: seen[x.maker] ?? null }))
+    const exNames = new Set(await d.db.fn<string[]>('luda_exchanger_names', {}).catch(() => [] as string[]))
+    ads = ads.map((x) => ({ ...x, lastSeen: seen[x.maker] ?? null, exchanger: exNames.has(x.maker) }))
     const near = (a: Record<string, any>) => (area && String(a.area).toLowerCase() === area ? 2 : 0) + (city && a.city === city ? 1 : 0)
     if (url.searchParams.get('near') === '1') ads = ads.filter((a) => near(a) > 0)
     // Bybit-style: best price first (cheapest when you buy, highest when you sell); nearby breaks ties.
     ads.sort((a, b) => (want === 'buy' ? a.price - b.price : b.price - a.price) || near(b) - near(a))
     const mid = await marketNgnPer(asset, env, d)
     const mine = await d.db.fn<Record<string, any>[]>('luda_p2p_my_ads', { p_user: p.user_id })
-    return { ads: ads.map((a) => ({ ...a, nearby: near(a) })), mine, asset, market: mid, rules: { ...P2P_RULES, feePct: featureFees(env).p2pPct, feeMinTry: featureFees(env).p2pMinMinor, feeMaxTry: featureFees(env).p2pMaxMinor, assetPerTry: asset === 'TRY' ? 1 : await perTry(asset, env, d.fetch).catch(() => null) }, canTrade: !p2pBlock(p), why: p2pBlock(p) }
+    return { ads: ads.map((a) => ({ ...a, nearby: near(a) })), mine, asset, market: mid, rules: { ...(await p2pLimits(p.user_id, d)), feePct: featureFees(env).p2pPct, feeMinTry: featureFees(env).p2pMinMinor, feeMaxTry: featureFees(env).p2pMaxMinor, assetPerTry: asset === 'TRY' ? 1 : await perTry(asset, env, d.fetch).catch(() => null) }, canTrade: !p2pBlock(p), why: p2pBlock(p) }
   },
   'POST p2p-ad-save': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
@@ -1530,8 +1548,8 @@ const routes: Record<string, Route> = {
     const mid = await marketNgnPer(asset, env, d)
     if (!(price > 0) || !(price < 1_000_000)) throw new Fail('Enter your price in Naira')
     if (mid && Math.abs(price - mid) / mid > P2P_RULES.priceBand) throw new Fail(`That price looks like a typo: today's market is about ₦${mid.toFixed(2)} per ${sym}1`)
-    const minTry = int(body.minTry), maxTry = int(body.maxTry)
-    if (!(minTry >= P2P_RULES.minTry) || !(maxTry >= minTry) || maxTry > P2P_RULES.maxTry || minTry % 100 || maxTry % 100) throw new Fail(`Limits must be whole lira between ₺${P2P_RULES.minTry / 100} and ₺${(P2P_RULES.maxTry / 100).toLocaleString('en-US')}`)
+    const minTry = int(body.minTry), maxTry = int(body.maxTry), lim = await p2pLimits(p.user_id, d)
+    if (!(minTry >= lim.minTry) || !(maxTry >= minTry) || maxTry > lim.maxTry || minTry % 100 || maxTry % 100) throw new Fail(`Limits must be whole lira between ₺${lim.minTry / 100} and ₺${(lim.maxTry / 100).toLocaleString('en-US')}${lim.exchanger ? '' : '. Verified Exchangers can go up to ₺50,000'}`)
     const methods = (Array.isArray(body.methods) ? body.methods : []).filter((m: unknown) => m === 'bank' || m === 'cash')
     if (!methods.length) throw new Fail('Choose how the lira is paid: bank transfer and/or cash')
     let receive: string | null = null
@@ -1545,7 +1563,7 @@ const routes: Record<string, Route> = {
     if (methods.includes('cash') && !area) throw new Fail('For cash, add the area where you meet (e.g. Hamitköy)')
     await limit(d, `p2pad:${p.user_id}`, 20, 86400, 'Too many ad changes today')
     const status = body.status === 'paused' ? 'paused' : body.status === 'removed' ? 'removed' : 'active'
-    const ad = await d.db.fn('luda_p2p_ad_save', { p_user: p.user_id, p_id: body.id ? uuid(body.id) : null, p_max_ads: P2P_RULES.maxAds,
+    const ad = await d.db.fn('luda_p2p_ad_save', { p_user: p.user_id, p_id: body.id ? uuid(body.id) : null, p_max_ads: lim.maxAds,
       p: { side, asset, price: Math.round(price * 10000) / 10000, min_try: minTry, max_try: maxTry, methods, receive_method: receive ?? '', city: cleanText(body.city, 30), area, terms, status } }).catch(p2pErr)
     await d.db.log(String((ad as { id: string }).id), 'p2p_ad', { user: p.username, side, price, status })
     return { ad }
@@ -1971,6 +1989,96 @@ const routes: Record<string, Route> = {
   },
 
   /* ---------------- "To do" on Home: everything waiting for this user, worked out on the server ---------------- */
+  /* ---------------- statements & insights (v1.21.0): a month of the wallet, from the server ledger ---------------- */
+  'GET statement': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    const m = String(url.searchParams.get('month') ?? '')
+    const month = /^20\d\d-(0[1-9]|1[0-2])$/.test(m) ? `${m}-01` : new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 8) + '01'
+    const st = await d.db.fn<Record<string, unknown>>('luda_statement', { p_user: p.user_id, p_month: month })
+    return { ...st, holder: { name: p.kyc_name || p.full_name, username: p.username, email: p.email } }
+  },
+
+  /* ---------------- Luda HQ: daily money report (v1.21.0) ---------------- */
+  'GET admin-money': async ({ req, env, d, url }) => {
+    await staff(req, env, d, 'money', 'view')
+    const days = [7, 14, 30].includes(Number(url.searchParams.get('days'))) ? Number(url.searchParams.get('days')) : 7
+    const r = await d.db.fn<Record<string, unknown>>('luda_admin_money', { p_days: days })
+    // Paystack's own total for the same days (successful charges), to compare with what Luda recorded.
+    let paystack: { volume: number; count: number } | null = null
+    if (env.PAYSTACK_SECRET_KEY) {
+      try {
+        const from = new Date(Date.now() - days * 86400e3).toISOString().slice(0, 10)
+        const res = await (d.fetch ?? fetch)(`https://api.paystack.co/transaction/totals?from=${from}`, { headers: { authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}` }, signal: AbortSignal.timeout(6000) })
+        const j = (await res.json()) as { status?: boolean; data?: { total_volume?: number; total_transactions?: number } }
+        if (res.ok && j.status && j.data) paystack = { volume: Number(j.data.total_volume ?? 0), count: Number(j.data.total_transactions ?? 0) }
+      } catch { /* shown as 'not available' */ }
+    }
+    return { days, ...r, paystack }
+  },
+
+  /* ---------------- Verified Exchanger (v1.21.0) ---------------- */
+  'GET exchanger': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    const stats = await d.db.fn<{ trades?: number; rate?: number | null }>('luda_p2p_stats', { p_user: p.user_id }).catch(() => ({} as { trades?: number; rate?: number | null }))
+    const trades = Number(stats.trades ?? 0), rate = stats.rate == null ? null : Number(stats.rate)
+    const checks = { kyc: p.kyc_status === 'verified', trades: trades >= EXCHANGER.minTrades, rate: rate !== null && rate >= EXCHANGER.minRate }
+    return { me: await d.db.fn('luda_exchanger', { p_user: p.user_id }), rules: { ...EXCHANGER, bond: exchangerBond(env), member: { maxAds: P2P_RULES.maxAds, maxTry: P2P_RULES.maxTry } }, stats: { trades, rate }, checks, eligible: checks.kyc && checks.trades && checks.rate }
+  },
+  'POST exchanger-apply': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    needKyc(p, 'become a Verified Exchanger'); noHold(p, d)
+    const stats = await d.db.fn<{ trades?: number; rate?: number | null }>('luda_p2p_stats', { p_user: p.user_id }).catch(() => ({} as { trades?: number; rate?: number | null }))
+    if (Number(stats.trades ?? 0) < EXCHANGER.minTrades || !(Number(stats.rate ?? 0) >= EXCHANGER.minRate)) throw new Fail(`You need at least ${EXCHANGER.minTrades} completed P2P trades and a ${EXCHANGER.minRate}% completion rate`, 403)
+    await verifyAuth(p, body, env, d)
+    const x = await d.db.fn('luda_exchanger_apply', { p_user: p.user_id, p_bond: exchangerBond(env) }).catch((e) => {
+      if (e instanceof MoneyError && e.message === 'already_applied') throw new Fail('You already applied', 409)
+      return moneyMsg(e)
+    })
+    await d.db.log(p.user_id, 'exchanger_apply', { user: p.username, bond: exchangerBond(env) })
+    return { me: x }
+  },
+  'POST exchanger-leave': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await verifyAuth(p, body, env, d)
+    const open = (await d.db.fn<{ status: string }[]>('luda_p2p_orders', { p_user: p.user_id })).filter((o) => ['waiting', 'sent', 'appeal'].includes(o.status))
+    if (open.length) throw new Fail('Finish your open P2P orders first', 409)
+    const x = await d.db.fn('luda_exchanger_set', { p_user: p.user_id, p_status: 'left', p_by: p.username, p_note: 'Left the program', p_keep: false }).catch((e) => {
+      if (e instanceof MoneyError && (e.message === 'not_active' || e.message === 'not_found')) throw new Fail('You are not in the program', 409)
+      throw e
+    })
+    return { me: x }
+  },
+  'GET admin-exchangers': async ({ req, env, d }) => { await staff(req, env, d, 'disputes', 'view'); return { exchangers: await d.db.fn('luda_admin_exchangers', {}), rules: { ...EXCHANGER, bond: exchangerBond(env) } } },
+  'POST admin-exchanger': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'disputes', 'full')
+    await verifyAuth(a, body, env, d)
+    const u = await d.db.profileByUsername(String(body.username ?? '').toLowerCase())
+    if (!u) throw new Fail('Not found', 404)
+    const action = String(body.action ?? ''), note = cleanText(body.note, 300)
+    const status = ({ approve: 'approved', reject: 'rejected', remove: 'removed' } as Record<string, string>)[action]
+    if (!status) throw new Fail('Unknown action')
+    if (status !== 'approved' && !note) throw new Fail('Write the reason (the person sees it)')
+    const keep = status === 'removed' && body.keepBond === true
+    const x = await d.db.fn('luda_exchanger_set', { p_user: u.user_id, p_status: status, p_by: a.username, p_note: note || 'Approved', p_keep: keep }).catch((e) => {
+      if (e instanceof MoneyError) throw new Fail(e.message === 'not_pending' ? 'This application was already decided' : 'Not in the program', 409)
+      throw e
+    })
+    await d.db.log(u.user_id, `admin_exchanger_${action}`, { by: a.username, user: u.username, note, keep })
+    await notifyUser(env, d, u.user_id, status === 'approved'
+      ? { emoji: '🏅', title: 'You’re a Verified Exchanger', body: 'You can now post 5 ads up to ₺50,000 each', url: '/exchange?tab=p2p', tag: `exch:${Date.now()}`, cat: 'money' }
+      : { emoji: '🛡️', title: status === 'rejected' ? 'Your Exchanger application was not approved' : 'You were removed from the Verified Exchanger program', body: note, url: '/exchange?tab=p2p', tag: `exch:${Date.now()}`, cat: 'money' })
+    return { exchanger: x }
+  },
+
+  /* ---------------- app language (v1.21.0): phone notifications arrive in it ---------------- */
+  'POST lang': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const lang = String(body.lang ?? '')
+    if (!['en', 'fr', 'tr', 'sw', 'ar'].includes(lang)) throw new Fail('Unknown language')
+    if (p.lang !== lang) await d.db.updateProfile(p.user_id, { lang } as Partial<Profile>)
+    return { ok: true }
+  },
+
   /* ---------------- in-app notifications (v1.20.0): the 🔔 inbox lives on the server ---------------- */
   'GET inbox': async ({ req, env, d }) => { const p = await me(req, env, d); return await d.db.fn('luda_inbox', { p_user: p.user_id, p_limit: 100 }) },
   'POST inbox-read': async ({ req, env, d, body }) => {
@@ -2287,7 +2395,7 @@ const routes: Record<string, Route> = {
     if (!USERNAME.test(u)) throw new Fail('Not found', 404)
     const t = await d.db.fn<Record<string, unknown> | null>('luda_trader', { p_username: u, p_viewer: p.user_id })
     if (!t) throw new Fail('No Luda user with that name', 404)
-    return { trader: t }
+    return { trader: { ...t, exchanger: (await d.db.fn<string[]>('luda_exchanger_names', {}).catch(() => [] as string[])).includes(u) } }
   },
 
   /* ---------------- team (owner only) ---------------- */
@@ -2413,12 +2521,34 @@ export async function notifyUser(env: Env, d: Deps, userId: string | null | unde
 type Parties = Record<string, any>
 const parties = (d: Deps, kind: 'p2p' | 'market' | 'flash', id: string) => d.db.fn<Parties | null>('luda_parties', { p_kind: kind, p_id: id }).catch(() => null)
 
+/** Translates a notification text the server wrote in English into the person's app language (same rules as the
+ *  app: exact text, or a pattern with {} / {1} {2}). A leading emoji is kept as it is. Unknown text stays English. */
+const notifyPatterns: Record<string, [RegExp, string][]> = {}
+export function trNotify(lang: string, text: string | undefined): string | undefined {
+  const dict = NOTIFY_I18N[lang]
+  if (!text || !dict) return text
+  const m = /^(\p{Extended_Pictographic}[\u{FE0F}\u{200D}\p{Extended_Pictographic}]*\s+)?([\s\S]+)$/u.exec(text)!
+  const lead = m[1] ?? '', key = m[2].trim()
+  if (dict[key] !== undefined) return lead + dict[key]
+  notifyPatterns[lang] ??= Object.entries(dict).filter(([k]) => k.includes('{}'))
+    .map(([k, v]) => [new RegExp('^' + k.split('{}').map((x) => x.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('([\\s\\S]+?)') + '$'), v] as [RegExp, string])
+    .sort((a, b) => b[0].source.length - a[0].source.length)
+  for (const [re, v] of notifyPatterns[lang]) {
+    const r = re.exec(key)
+    if (r) { let i = 1; return lead + v.replace(/\{(\d?)\}/g, (_, n: string) => (n ? r[Number(n)] : r[i++]) ?? '') }
+  }
+  return text
+}
+
 /** Sends a notification to every phone of this person (respecting their categories). Never throws. */
 export async function pushUser(env: Env, d: Deps, userId: string, msg: PushMsg & { cat?: string }): Promise<number> {
   try {
     const subs = await d.db.fn<(PushSub & { prefs: Record<string, boolean> })[]>('luda_push_subs', { p_user: userId })
     if (!subs?.length) return 0
     const v = await vapid(d), subject = /^https:\/\//.test(env.APP_URL ?? '') ? env.APP_URL.replace(/\/$/, '') : 'mailto:support@luda.app'
+    // In the person's own language (owner's pick, v1.21.0).
+    const lang = (await d.db.profile(userId).catch(() => null))?.lang ?? 'en'
+    if (lang !== 'en') msg = { ...msg, title: trNotify(lang, msg.title) ?? msg.title, body: trNotify(lang, msg.body) }
     let n = 0
     for (const s of subs) {
       if (msg.cat && s.prefs?.[msg.cat] === false) continue

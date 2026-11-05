@@ -3145,5 +3145,14 @@
 "Couldn’t load your notifications. Pull down or try again.": "Bildirimleriniz yüklenemedi. Tekrar deneyin.",
 "Yesterday": "Dün",
 "Earlier": "Daha önce",
-"{} new": "{} yeni"
+"{} new": "{} yeni",
+"Top-up received": "Yükleme alındı",
+"{} added to your wallet": "{} cüzdanınıza eklendi",
+"{} is back in your wallet": "{} cüzdanınıza geri döndü",
+"You received {}": "{} aldınız",
+"From @{}": "@{} tarafından",
+"From @{} · {}": "@{} tarafından · {}",
+"Luda notifications are on": "Luda bildirimleri açık",
+"You'll get alerts here even when Luda is closed": "Luda kapalıyken bile uyarıları burada alacaksınız",
+"Rate your {} bill payment": "{} fatura ödemenizi değerlendirin"
 }
