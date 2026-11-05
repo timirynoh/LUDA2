@@ -1,6 +1,5 @@
 // Live: marketplace with escrow. The buyer's money is held by Luda until they confirm they got the item;
 // then the seller is paid (minus a small fee). Sellers must be ID-verified. Disputes go to the Luda team.
-import { InfoTip } from '../components/LiveGuides'
 import { BadgeCheck, Camera, ImageOff, LifeBuoy, MapPin, Plus, ShieldCheck, Tag } from 'lucide-react'
 import { useState } from 'react'
 import { Empty, Pill, Tabs, ago, lira, toMinor, useApi } from '../components/LiveKit'
@@ -12,6 +11,7 @@ import { api } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 import { useStore } from '../lib/store'
 import { RateButton } from '../components/Ratings'
+import { HelpChip } from '../components/HelpCenter'
 
 interface Item { id: string; title: string; description: string; category: string; city: string; price_minor: number; status: 'active' | 'reserved' | 'sold' | 'removed'; created_at: string; updated_at: string; reserved_at: string | null; seller_name?: string; buyer_name?: string; mine: boolean; photoUrls: (string | null)[] }
 interface Market { items: Item[]; mine: Item[]; bought: Item[]; feePct: number }
@@ -38,7 +38,7 @@ export default function LiveMarket() {
 
   return (
     <div className="pb-8">
-      <Header back title="Marketplace" sub="Buy & sell safely · money held until you get it" right={<div className="flex items-center gap-2"><InfoTip slug="tip-market" /><button className="btn-primary px-4 py-2.5 text-sm" onClick={() => setSell(true)}><Plus size={16} /> Sell</button></div>} />
+      <Header back title="Marketplace" sub="Buy & sell safely · money held until you get it" right={<div className="flex items-center gap-2"><HelpChip topic="market" /><button className="btn-primary px-4 py-2.5 text-sm" onClick={() => setSell(true)}><Plus size={16} /> Sell</button></div>} />
       <div className="flex flex-col gap-4 px-5">
         <Tabs value={tab} onChange={setTab} tabs={[{ value: 'browse', label: 'Browse' }, { value: 'selling', label: 'Selling' }, { value: 'bought', label: 'Bought', badge: toConfirm }]} />
         {tab === 'browse' && <>

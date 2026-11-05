@@ -7,7 +7,7 @@ import { errMsg } from './LiveMoney'
 import { StarsView, tagLabel, type RateKind } from './Ratings'
 
 interface Item { id: number; kind: RateKind; ref: string; stars: number | null; good: boolean | null; tags: string[]; body: string; staff: string | null; by: string; target: string | null; at: string; low: boolean; title: string | null; caseStatus: string | null }
-interface Data { days: number; summary: Partial<Record<RateKind, { n: number; avg: number | null; good: number; bad: number; low: number }>>; staff: { staff: string; n: number; avg: number }[]; reopened: number; items: Item[] }
+interface Data { days: number; summary: Partial<Record<RateKind, { n: number; avg: number | null; good: number; bad: number; low: number }>>; staff: { staff: string; n: number; avg: number }[]; reopened: number; items: Item[]; help?: { slug: string; title: string; topic: string; yes: number; no: number }[] }
 const KIND: Record<RateKind, string> = { case: '💬 Support cases', bill: '🧾 Bills', market: '🛍️ Market', flash: '⚡ Flash' }
 
 export function RatingsTab() {
@@ -49,6 +49,13 @@ export function RatingsTab() {
           <div key={m.staff} className="mt-2 flex items-center gap-2 text-sm"><span className="flex-1">@{m.staff}</span><StarsView n={Math.round(Number(m.avg))} /><span className="w-10 text-end text-xs text-slate-400">{Number(m.avg).toFixed(1)}</span><span className="w-12 text-end text-xs text-slate-500">{m.n}×</span></div>
         )) : <p className="mt-1 text-xs text-slate-500">No team ratings yet.</p>}
       </div>
+      {(data.help?.length ?? 0) > 0 && <div className="card py-3">
+        <p className="text-sm font-semibold">Help Center articles</p>
+        <p className="text-[11px] text-slate-500">Most “not helpful” first: rewrite these in Guides & terms.</p>
+        {data.help!.slice(0, 8).map((h) => (
+          <div key={h.slug} className="mt-2 flex items-center gap-2 text-sm"><span className="min-w-0 flex-1 truncate">{h.title}</span><span className="text-xs text-mint-300">👍 {h.yes}</span><span className="text-xs text-rose-300">👎 {h.no}</span></div>
+        ))}
+      </div>}
       <div className="flex gap-2 overflow-x-auto">
         {([['low', '⚠️ Low first'], ['all', 'All'], ['case', 'Cases'], ['bill', 'Bills'], ['market', 'Market'], ['flash', 'Flash']] as const).map(([v, l]) => (
           <button key={v} onClick={() => setShow(v)} className={`chip shrink-0 px-3 py-2 text-xs ${show === v ? 'bg-mint-400 text-ink-950' : 'glass text-slate-300'}`}>{l}</button>

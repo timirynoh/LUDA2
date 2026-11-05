@@ -19,6 +19,7 @@ import { api, LIVE } from '../lib/live'
 import { KibhasLive } from '../components/KibhasBooking'
 import { brandOf } from '../lib/cards'
 import { ERCAN, km } from '../lib/transport'
+import { HelpChip } from '../components/HelpCenter'
 
 type Tab = 'tickets' | 'airport'
 
@@ -29,7 +30,7 @@ export default function Transport() {
   const [saver, setSaver] = useState(false)
   return (
     <div>
-      <Header back title={t('act.transport')} sub="Bus tickets & airport shuttle" />
+      <Header back title={t('act.transport')} sub="Bus tickets & airport shuttle" right={<HelpChip topic="tickets" />} />
       {!LIVE && <div className="px-5 pb-3"><SaverCard onOpen={() => setSaver(true)} /></div>}
       {saver && <SaverSheet onClose={() => setSaver(false)} />}
       <div className="px-5"><Segmented value={tab} onChange={setTab} options={[{ value: 'tickets', label: '🎟️ Bus tickets' }, { value: 'airport', label: '✈️ Airport' }]} /></div>

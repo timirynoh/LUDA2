@@ -1,6 +1,5 @@
 // Live: Flash help with escrow. The reward is held from the poster's wallet when the job is posted, so helpers
 // know the money is real; the helper is paid when the poster confirms (or automatically after 3 days).
-import { InfoTip } from '../components/LiveGuides'
 import { BadgeCheck, LifeBuoy, Lock, MapPin, Plus, Zap } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
@@ -14,6 +13,7 @@ import { api } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 import { useStore } from '../lib/store'
 import { RateButton } from '../components/Ratings'
+import { HelpChip } from '../components/HelpCenter'
 
 interface Job { emoji?: string; id: string; title: string; details: string; city: string; reward_minor: number; status: 'open' | 'taken' | 'done' | 'cancelled'; created_at: string; taken_at: string | null; poster_name?: string; helper_name?: string; mine: boolean }
 interface Board { open: Job[]; mine: Job[]; helping: Job[]; feePct: number }
@@ -34,7 +34,7 @@ export default function LiveFlash() {
 
   return (
     <div className="pb-8">
-      <Header back title="Flash help" sub="Quick paid help from students nearby" right={<div className="flex items-center gap-2"><InfoTip slug="tip-flash" /><button className="btn-primary px-4 py-2.5 text-sm" onClick={() => setPost(true)}><Plus size={16} /> Ask</button></div>} />
+      <Header back title="Flash help" sub="Quick paid help from students nearby" right={<div className="flex items-center gap-2"><HelpChip topic="market" /><button className="btn-primary px-4 py-2.5 text-sm" onClick={() => setPost(true)}><Plus size={16} /> Ask</button></div>} />
       <div className="flex flex-col gap-4 px-5">
         <Tabs value={tab} onChange={setTab} tabs={[{ value: 'board', label: 'Jobs' }, { value: 'mine', label: 'My requests', badge: toPay }, { value: 'helping', label: "I'm helping" }]} />
         {tab === 'board' && <>

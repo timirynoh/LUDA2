@@ -1,4 +1,4 @@
-import { GuideLink, loadGuide } from '../components/LiveGuides'
+import { GuideSheet, loadGuide } from '../components/LiveGuides'
 import { PasscodeSetup } from '../components/Passcode'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AtSign, Check, ChevronLeft, Eye, EyeOff, Fingerprint, Globe, Lock, Mail, User } from 'lucide-react'
@@ -188,6 +188,10 @@ export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () 
   const [show, setShow] = useState(false)
   const [stay, setStay] = useState(true)
   const [agree, setAgree] = useState(false)
+  // Owner: people must SEE the terms before they can tick the box. Ticking first opens them; 'I agree' at the end ticks it.
+  const [readTerms, setReadTerms] = useState(false)
+  const [showTerms, setShowTerms] = useState(false)
+  const [showPrivacy, setShowPrivacy] = useState(false)
   const [touched, setTouched] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -249,7 +253,13 @@ export function SignUp({ onBack, onSignIn }: { onBack: () => void; onSignIn: () 
           </div>
         )}
         <label className="flex items-center gap-3 ps-1 text-sm text-slate-300"><input type="checkbox" className="size-4 accent-emerald-500" checked={stay} onChange={(e) => setStay(e.target.checked)} /> Keep me signed in on this phone</label>
-        <label className="flex items-start gap-3 ps-1 text-xs text-slate-400"><input type="checkbox" className="mt-0.5 size-4 accent-emerald-500" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> <span>I agree to Luda's <GuideLink slug="terms" className="font-semibold text-mint-300 underline">Terms & Conditions</GuideLink> and Privacy Policy and the community rules (no scams, no hate, no spam).</span></label>
+        <div className="flex items-start gap-3 ps-1 text-xs text-slate-400">
+          <input type="checkbox" aria-label="I agree to the Terms & Conditions" className="mt-0.5 size-4 shrink-0 accent-emerald-500" checked={agree}
+            onChange={(e) => { if (LIVE && !readTerms && e.target.checked) { setShowTerms(true); return } setAgree(e.target.checked) }} />
+          <span>I agree to Luda's <button type="button" className="font-semibold text-mint-300 underline" onClick={() => (LIVE ? setShowTerms(true) : setAgree(!agree))}>Terms & Conditions</button>{LIVE ? <> and <button type="button" className="font-semibold text-mint-300 underline" onClick={() => setShowPrivacy(true)}>Privacy notice</button></> : ' and Privacy Policy'} and the community rules (no scams, no hate, no spam).{LIVE && !readTerms && <span className="mt-1 block text-[11px] text-slate-500">Tap to read them first.</span>}</span>
+        </div>
+        {showTerms && <GuideSheet slug="terms" onClose={() => setShowTerms(false)} onAgree={() => { setReadTerms(true); setAgree(true) }} />}
+        {showPrivacy && <GuideSheet slug="privacy" onClose={() => setShowPrivacy(false)} />}
         {err && <p className="text-sm text-rose-300">{err}</p>}
         {confirm && <p className="rounded-2xl bg-mint-400/10 p-3 text-sm text-mint-200">📧 Almost done! We sent a confirmation link to <b>{f.email.trim()}</b>. Open it, then <button className="underline" onClick={onSignIn}>sign in</button>.</p>}
         {taken && <p className="text-sm text-rose-300">That email or username is already registered. <button className="underline" onClick={onSignIn}>Sign in instead</button></p>}

@@ -1947,6 +1947,32 @@ const routes: Record<string, Route> = {
   },
 
   /* ---------------- "To do" on Home: everything waiting for this user, worked out on the server ---------------- */
+  /* ---------------- Help Center (v1.19.0): articles on the server, editable in Luda HQ ---------------- */
+  'GET help': async ({ req, d }) => { await limit(d, `help-ip:${clientIp(req)}`, 300, 600); return { topics: HELP_TOPICS, articles: await d.db.fn('luda_help', {}) } },
+  'POST help-vote': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await limit(d, `helpvote:${p.user_id}`, 100, 86400)
+    if (typeof body.helpful !== 'boolean') throw new Fail('Pick yes or no')
+    if (!(await d.db.fn<boolean>('luda_help_vote', { p_slug: String(body.slug ?? '').slice(0, 40), p_user: p.user_id, p_helpful: body.helpful }))) throw new Fail('Not found', 404)
+    return { ok: true }
+  },
+  'POST admin-help-create': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'content', 'edit')
+    const topic = String(body.topic ?? '')
+    if (!HELP_TOPICS.some((t) => t.id === topic)) throw new Fail('Pick a topic')
+    const slug = `help-${topic}-${randomHex(3)}`
+    const g = await d.db.fn('luda_help_create', { p_slug: slug, p_topic: topic, p_title: clean(body.title, 120, 'a question', 5), p_by: a.username })
+    await d.db.log(slug, 'admin_help_created', { by: a.username })
+    return { guide: g }
+  },
+  'POST admin-help-delete': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'content', 'full')
+    const slug = String(body.slug ?? '').slice(0, 40)
+    if (!(await d.db.fn<boolean>('luda_help_delete', { p_slug: slug }))) throw new Fail('Not found', 404)
+    await d.db.log(slug, 'admin_help_deleted', { by: a.username })
+    return { ok: true }
+  },
+
   /* ---------------- ratings + reopening cases (v1.18.0) ---------------- */
   'POST rate': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
@@ -1982,7 +2008,7 @@ const routes: Record<string, Route> = {
   'GET admin-ratings': async ({ req, env, d, url }) => {
     await staff(req, env, d, 'overview', 'view')
     const days = [7, 30, 90, 365].includes(Number(url.searchParams.get('days'))) ? Number(url.searchParams.get('days')) : 30
-    return { days, ...(await d.db.fn<Record<string, unknown>>('luda_admin_ratings', { p_days: days })) }
+    return { days, ...(await d.db.fn<Record<string, unknown>>('luda_admin_ratings', { p_days: days })), help: await d.db.fn('luda_help_votes', {}) }
   },
 
   /* ---------------- phone notifications (Web Push) ---------------- */
@@ -2107,7 +2133,7 @@ const routes: Record<string, Route> = {
   'POST admin-guide-save': async ({ req, env, d, body }) => {
     const slug = String(body.slug ?? '').slice(0, 40)
     // Changing the terms (and asking everyone to accept again) needs content:full; guides and tips need edit.
-    const a = await staff(req, env, d, 'content', slug === 'terms' ? 'full' : 'edit')
+    const a = await staff(req, env, d, 'content', slug === 'terms' || slug === 'privacy' ? 'full' : 'edit')
     const steps = (Array.isArray(body.steps) ? body.steps : []).slice(0, 30).map((x: any) => ({ title: cleanText(x?.title, 120), body: cleanText(x?.body, 1500) })).filter((x: any) => x.title || x.body)
     const g = await d.db.fn('luda_guide_save', { p_slug: slug, p_title: clean(body.title, 120, 'a title', 2), p_intro: cleanText(body.intro, 1500), p_steps: { items: steps }, p_by: a.username, p_bump: slug === 'terms' && !!body.bump }).catch((e) => {
       if (e instanceof MoneyError && e.message === 'not_found') throw new Fail('Not found', 404)
@@ -2303,6 +2329,19 @@ async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
   const rank = { urgent: 0, action: 1, info: 2 }
   return items.sort((a, b) => rank[a.level] - rank[b.level])
 }
+
+/* ---------------- Help Center topics (the app shows them in this order) ---------------- */
+const HELP_TOPICS = [
+  { id: 'start', emoji: '🚀', title: 'Getting started', category: 'other' },
+  { id: 'wallet', emoji: '💰', title: 'Wallet & top-ups', category: 'payment' },
+  { id: 'withdraw', emoji: '🏦', title: 'Withdrawals', category: 'withdrawal' },
+  { id: 'p2p', emoji: '🤝', title: 'P2P exchange', category: 'payment' },
+  { id: 'bills', emoji: '🧾', title: 'Bills', category: 'payment' },
+  { id: 'tickets', emoji: '🚌', title: 'Bus tickets', category: 'payment' },
+  { id: 'market', emoji: '🛍️', title: 'Market & Flash', category: 'other' },
+  { id: 'kyc', emoji: '🪪', title: 'ID check', category: 'kyc' },
+  { id: 'account', emoji: '🔐', title: 'Account & security', category: 'account' },
+]
 
 /* ---------------- ratings ---------------- */
 type RateKind = 'case' | 'bill' | 'market' | 'flash'

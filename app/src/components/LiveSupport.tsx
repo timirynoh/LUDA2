@@ -130,7 +130,7 @@ export function Thread({ messages }: { messages: CaseMsg[] }) {
   )
 }
 
-function useCases(active = true) {
+export function useCases(active = true) {
   const [cases, setCases] = useState<UserCase[] | null>(null)
   const [err, setErr] = useState('')
   const load = useCallback(async () => { try { setCases((await api<{ cases: UserCase[] }>('GET', 'cases')).cases); setErr('') } catch (e) { setErr(errMsg(e)) } }, [])
@@ -138,14 +138,15 @@ function useCases(active = true) {
   useEffect(() => { const on = () => void load(); window.addEventListener('luda:cases', on); return () => window.removeEventListener('luda:cases', on) }, [load])
   return { cases, err, load }
 }
-const openCount = (cases: UserCase[] | null) => (cases ?? []).filter((c) => c.status === 'open' || c.status === 'waiting_user').length
+export const ticketNo = (id: string) => `#${id.replace(/-/g, '').slice(0, 6).toUpperCase()}`
+export const openCount = (cases: UserCase[] | null) => (cases ?? []).filter((c) => c.status === 'open' || c.status === 'waiting_user').length
 const waitingOnMe = (cases: UserCase[] | null) => (cases ?? []).filter((c) => c.status === 'waiting_user').length
 
 /** The appeals pop-up: "My cases" and "New appeal" in one place, with each conversation inside. */
-export function CasesHub({ onClose, start = 'list', category, reference, subject }: { onClose: () => void; start?: 'list' | 'new'; category?: CaseCategory; reference?: string; subject?: string }) {
+export function CasesHub({ onClose, start = 'list', category, reference, subject, caseId }: { onClose: () => void; start?: 'list' | 'new'; category?: CaseCategory; reference?: string; subject?: string; caseId?: string }) {
   const { cases, err, load } = useCases()
   const [view, setView] = useState<'list' | 'new'>(start)
-  const [openId, setOpenId] = useState<string | null>(null)
+  const [openId, setOpenId] = useState<string | null>(caseId ?? null)
   const current = cases?.find((c) => c.id === openId)
   return (
     <Sheet open onClose={onClose} title={current ? current.subject : 'Appeals & help'}>
@@ -170,7 +171,7 @@ export function CasesHub({ onClose, start = 'list', category, reference, subject
             )}
             {cases?.map((c) => (
               <button key={c.id} className="glass flex items-center gap-3 rounded-2xl p-3 text-start" onClick={() => setOpenId(c.id)}>
-                <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{c.subject}</p><p className="truncate text-xs text-slate-500">{CATEGORY_LABEL[c.category]} · {new Date(c.updated_at).toLocaleDateString()}</p></div>
+                <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{c.subject}</p><p className="truncate text-xs text-slate-500"><span translate="no" className="font-mono">{ticketNo(c.id)}</span> · {CATEGORY_LABEL[c.category]} · {new Date(c.updated_at).toLocaleDateString()}</p></div>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_LABEL[c.status]?.c}`}>{STATUS_LABEL[c.status]?.t}</span>
               </button>
             ))}
@@ -193,7 +194,7 @@ function CaseThread({ c, onBack, onChange }: { c: UserCase; onBack: () => void; 
   return (
     <div className="flex flex-col gap-3">
       <button className="self-start text-sm text-mint-300" onClick={onBack}>← All cases</button>
-      <span className={`self-start rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_LABEL[c.status]?.c}`}>{STATUS_LABEL[c.status]?.t}</span>
+      <div className="flex items-center gap-2"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_LABEL[c.status]?.c}`}>{STATUS_LABEL[c.status]?.t}</span><span translate="no" className="font-mono text-xs text-slate-500">{ticketNo(c.id)}</span></div>
       {c.reference && <p className="text-xs text-slate-400">Reference: <span className="selectable font-mono">{c.reference}</span></p>}
       <Thread messages={c.messages} />
       {(c.status === 'resolved' || c.status === 'rejected') && <ClosedCase c={c} onChange={onChange} />}

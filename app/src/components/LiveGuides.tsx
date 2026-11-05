@@ -9,7 +9,7 @@ import { Empty } from './LiveKit'
 import { errMsg } from './LiveMoney'
 import { Header, Sheet } from './ui'
 
-export interface Guide { slug: string; kind: 'guide' | 'terms' | 'tip'; title: string; intro: string; steps: { title: string; body: string }[]; version: number; updated_at: string; updated_by?: string }
+export interface Guide { slug: string; kind: 'guide' | 'terms' | 'tip' | 'help' | 'privacy'; topic?: string | null; sort?: number; title: string; intro: string; steps: { title: string; body: string }[]; version: number; updated_at: string; updated_by?: string }
 
 const cache: Record<string, Guide> = {}
 let tipsLoaded: Promise<void> | null = null
@@ -54,11 +54,13 @@ export function GuideBody({ g }: { g: Guide }) {
   )
 }
 
-export function GuideSheet({ slug, onClose }: { slug: string; onClose: () => void }) {
+export function GuideSheet({ slug, onClose, onAgree }: { slug: string; onClose: () => void; onAgree?: () => void }) {
   const { g, err } = useGuide(slug)
   return (
     <Sheet open onClose={onClose} title={g?.title ?? ' '}>
-      <div className="pb-4">{g ? <GuideBody g={g} /> : <p className="text-sm text-slate-500">{err || 'Loading…'}</p>}</div>
+      <div className="pb-4">{g ? <GuideBody g={g} /> : <p className="text-sm text-slate-500">{err || 'Loading…'}</p>}
+        {g && onAgree && <button className="btn-primary mt-5 w-full py-4" onClick={() => { onAgree(); onClose() }}>I’ve read them and I agree</button>}
+      </div>
     </Sheet>
   )
 }
@@ -103,23 +105,32 @@ export function TermsGate() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const p = me?.profile
-  if (!LIVE || !p || !p.termsCurrent || (p.termsVersion ?? 0) >= p.termsCurrent) return null
+  const need = LIVE && !!p && !!p.termsCurrent && (p.termsVersion ?? 0) < p.termsCurrent
+  const { g: terms, err: termsErr } = useGuide(need ? 'terms' : null)
+  if (!need || !p) return null
   const first = !p.termsVersion
   const accept = async () => {
     setBusy(true); setErr('')
     try { await api('POST', 'terms-accept', { version: p.termsCurrent }); await refresh() } catch (e) { setErr(errMsg(e)); setBusy(false) }
   }
+  // The full terms are shown right here (a pop-up used to open BEHIND this screen, so they couldn't be read).
+  // The tick box and Accept sit at the end, after the text.
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => { const el = e.currentTarget; if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) setView(true) }
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 backdrop-blur-sm">
-      <div className="pb-safe w-full max-w-app rounded-t-[2rem] bg-ink-900 px-5 pt-5 shadow-2xl">
-        <div className="flex items-center gap-3"><span className="grid size-11 place-items-center rounded-2xl bg-mint-400/15 text-mint-300"><FileText size={22} /></span>
-          <div><p className="text-lg font-bold">{first ? 'Luda Terms & Conditions' : 'We updated our terms'}</p><p className="text-xs text-slate-400">{first ? 'Please read and accept to keep using Luda.' : 'Please read what changed and accept to continue.'}</p></div></div>
-        <button className="btn-ghost mt-4 w-full py-3 text-sm" onClick={() => setView(true)}><FileText size={15} /> Read the terms</button>
-        <label className="mt-3 flex items-start gap-3 text-sm"><input type="checkbox" className="mt-0.5 size-5 accent-emerald-500" checked={ok} onChange={(e) => setOk(e.target.checked)} /> I have read and agree to Luda's Terms & Conditions.</label>
-        {err && <p className="mt-2 text-sm text-rose-300">{err}</p>}
-        <button className="btn-primary mb-5 mt-4 w-full py-4" disabled={!ok || busy} onClick={() => void accept()}>Accept and continue</button>
+      <div className="pt-safe flex h-[100dvh] w-full max-w-app flex-col bg-ink-900 shadow-2xl tab:h-[92dvh] tab:rounded-t-[2rem]">
+        <div className="flex items-center gap-3 border-b border-fg/5 px-5 py-4"><span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-mint-400/15 text-mint-300"><FileText size={22} /></span>
+          <div className="min-w-0"><p className="text-lg font-bold">{first ? 'Luda Terms & Conditions' : 'We updated our terms'}</p><p className="text-xs text-slate-400">{first ? 'Please read them, then accept at the end.' : 'Please read what changed, then accept at the end.'}</p></div></div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4" onScroll={onScroll}>
+          {terms ? <GuideBody g={terms} /> : <p className="text-sm text-slate-500">{termsErr || 'Loading…'}</p>}
+          {terms && <div className="mt-6 flex flex-col gap-3 border-t border-fg/10 pt-5">
+            <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-0.5 size-5 shrink-0 accent-emerald-500" checked={ok} onChange={(e) => setOk(e.target.checked)} /> I have read and agree to Luda's Terms & Conditions.</label>
+            {err && <p className="text-sm text-rose-300">{err}</p>}
+            <button className="btn-primary pb-safe w-full py-4" disabled={!ok || busy} onClick={() => void accept()}>Accept and continue</button>
+          </div>}
+        </div>
+        {terms && !view && <p className="pb-safe border-t border-fg/5 px-5 py-3 text-center text-xs text-slate-400">↓ Scroll to the end to accept</p>}
       </div>
-      {view && <GuideSheet slug="terms" onClose={() => setView(false)} />}
     </div>
   )
 }
@@ -132,24 +143,48 @@ export function GuidesTab({ staff }: { staff: StaffPerms | null }) {
   const load = useCallback(() => { api<{ guides: Guide[] }>('GET', 'admin-guides').then((r) => setList(r.guides)).catch((e) => setErr(errMsg(e))) }, [])
   useEffect(() => { load() }, [load])
   const canEdit = staffCan(staff, 'content', 'edit'), canTerms = staffCan(staff, 'content', 'full')
-  const group = (k: Guide['kind']) => (list ?? []).filter((g) => g.kind === k)
+  const group = (k: Guide['kind']) => (list ?? []).filter((g) => g.kind === k).sort((a, b) => `${a.topic ?? ''}${String(a.sort ?? 0).padStart(3, '0')}`.localeCompare(`${b.topic ?? ''}${String(b.sort ?? 0).padStart(3, '0')}`))
+  const [adding, setAdding] = useState(false)
+  const del = async (g: Guide) => { if (!confirm(`Delete "${g.title}"?`)) return; try { await api('POST', 'admin-help-delete', { slug: g.slug }); load() } catch (e) { setErr(errMsg(e)) } }
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-slate-400">Everything users read in guides, the ⓘ tips and the Terms comes from here. Changes show in the app straight away (no update needed).</p>
       {err && <p className="text-sm text-rose-300">{err}</p>}
-      {!list ? <p className="text-sm text-slate-500">Loading…</p> : list.length === 0 ? <Empty emoji="📘" title="No guides" /> : (['terms', 'guide', 'tip'] as const).map((k) => (
+      {!list ? <p className="text-sm text-slate-500">Loading…</p> : list.length === 0 ? <Empty emoji="📘" title="No guides" /> : (['terms', 'privacy', 'help', 'guide', 'tip'] as const).map((k) => (
         <section key={k} className="flex flex-col gap-2">
-          <p className="label">{k === 'terms' ? 'Terms & Conditions' : k === 'guide' ? 'Guides (send them in chats)' : 'ⓘ Info tips'}</p>
+          <div className="flex items-center justify-between"><p className="label">{k === 'terms' ? 'Terms & Conditions' : k === 'privacy' ? 'Privacy notice' : k === 'help' ? 'Help Center articles' : k === 'guide' ? 'Guides (send them in chats)' : 'ⓘ Info tips'}</p>
+            {k === 'help' && canEdit && <button className="chip bg-mint-400/15 px-3 py-1.5 text-xs text-mint-200" onClick={() => setAdding(true)}><Plus size={13} /> New article</button>}</div>
           {group(k).map((g) => (
             <div key={g.slug} className="card flex items-center gap-3 py-3">
               <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{g.title}</p><p className="truncate text-[11px] text-slate-500">{g.kind === 'terms' ? `Version ${g.version} · ` : ''}{g.kind !== 'tip' ? `/${g.kind === 'terms' ? 'terms' : `guide/${g.slug}`} · ` : ''}updated {new Date(g.updated_at).toLocaleDateString()}{g.updated_by ? ` by @${g.updated_by}` : ''}</p></div>
-              {(k === 'terms' ? canTerms : canEdit) && <button className="text-mint-300" aria-label="Edit" onClick={() => setEdit(g)}><Pencil size={16} /></button>}
+              {(k === 'terms' || k === 'privacy' ? canTerms : canEdit) && <button className="text-mint-300" aria-label="Edit" onClick={() => setEdit(g)}><Pencil size={16} /></button>}
+              {k === 'help' && canTerms && <button className="text-rose-300" aria-label="Delete" onClick={() => void del(g)}><Trash2 size={16} /></button>}
             </div>
           ))}
         </section>
       ))}
       {edit && <GuideEditor g={edit} onClose={() => setEdit(null)} onDone={() => { delete cache[edit.slug]; tipsLoaded = null; load() }} />}
+      {adding && <NewHelpArticle onClose={() => setAdding(false)} onDone={(g) => { load(); setEdit(g) }} />}
     </div>
+  )
+}
+
+const HELP_TOPIC_NAMES: [string, string][] = [['start', '🚀 Getting started'], ['wallet', '💰 Wallet & top-ups'], ['withdraw', '🏦 Withdrawals'], ['p2p', '🤝 P2P exchange'], ['bills', '🧾 Bills'], ['tickets', '🚌 Bus tickets'], ['market', '🛍️ Market & Flash'], ['kyc', '🪪 ID check'], ['account', '🔐 Account & security']]
+function NewHelpArticle({ onClose, onDone }: { onClose: () => void; onDone: (g: Guide) => void }) {
+  const [topic, setTopic] = useState('start')
+  const [title, setTitle] = useState('')
+  const [err, setErr] = useState('')
+  const go = async () => { try { const r = await api<{ guide: Guide }>('POST', 'admin-help-create', { topic, title }); onClose(); onDone({ ...r.guide, steps: r.guide.steps ?? [] }) } catch (e) { setErr(errMsg(e)) } }
+  return (
+    <Sheet open onClose={onClose} title="New help article">
+      <div className="flex flex-col gap-3 pb-4">
+        <label className="text-xs text-slate-400">Topic<select className="input mt-1" value={topic} onChange={(e) => setTopic(e.target.value)}>{HELP_TOPIC_NAMES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
+        <label className="text-xs text-slate-400">Question<input className="input mt-1" maxLength={120} placeholder="e.g. Why is my balance hidden?" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+        <p className="text-[11px] text-slate-500">Next you write the answer. New texts show in English until their translation is added to the app.</p>
+        {err && <p className="text-sm text-rose-300">{err}</p>}
+        <button className="btn-primary py-3.5" disabled={title.trim().length < 5} onClick={() => void go()}>Create and write the answer</button>
+      </div>
+    </Sheet>
   )
 }
 

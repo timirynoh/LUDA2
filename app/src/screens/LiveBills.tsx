@@ -12,6 +12,7 @@ import { BILLERS, BILL_FIELDS, CITIES, type BillCategory } from '../lib/data'
 import { api } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 import { useStore } from '../lib/store'
+import { HelpChip } from '../components/HelpCenter'
 
 const ICONS: Record<BillCategory, typeof Zap> = { electricity: Zap, water: Droplets, gas: Flame, internet: Wifi, mobile: Smartphone, rent: Home }
 const SERVER_TYPE: Record<BillCategory, string> = { electricity: 'electricity', water: 'water', gas: 'other', internet: 'internet', mobile: 'phone', rent: 'rent' }
@@ -36,7 +37,7 @@ export default function LiveBills() {
 
   return (
     <div className="pb-8">
-      <Header back title="Pay bills" sub="From your Lira wallet · receipt in the app" />
+      <Header back title="Pay bills" sub="From your Lira wallet · receipt in the app" right={<HelpChip topic="bills" />} />
       <div className="flex flex-col gap-4 px-5">
         <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-400 via-orange-500 to-rose-600 p-5 text-white">
           <div className="absolute -end-8 -top-8 size-32 rounded-full bg-white/15 blur-2xl" />

@@ -15,6 +15,7 @@ import { handshakeCode, randomSecret, verifyHandshake } from '../lib/crypto'
 import { COUNTRIES, CURRENCIES, SAFE_SPOTS } from '../lib/data'
 import { convert, fmt, useRates } from '../lib/fx'
 import { uid, useStore, type Trade } from '../lib/store'
+import { HelpChip } from '../components/HelpCenter'
 
 const SPREAD = 0.008
 const TRADERS: [string, string][] = [
@@ -30,7 +31,7 @@ export default function Exchange() {
   const tab = params.get('tab') === 'p2p' ? 'p2p' : 'convert'
   return (
     <div>
-      <Header title={t('fx.title')} sub="Naira, Cedi, CFA & more ⇄ Lira" />
+      <Header title={t('fx.title')} sub="Naira, Cedi, CFA & more ⇄ Lira" right={<HelpChip topic="p2p" />} />
       <div className="px-5">
         <Segmented value={tab} onChange={(v) => setParams(v === 'p2p' ? { tab: 'p2p' } : {})}
           options={[{ value: 'convert', label: `💱 ${t('fx.convert')}` }, { value: 'p2p', label: `🤝 ${t('fx.p2p')}` }]} />
