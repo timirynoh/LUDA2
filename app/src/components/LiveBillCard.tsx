@@ -9,7 +9,7 @@ export const BILL_TINT: Record<string, string> = { electricity: 'from-amber-400 
 export const Ago = ({ iso }: { iso: string }) => <span>{ago(iso)}</span>
 
 /** One bill with its status; used on the user's Bills screen. */
-export function BillCard({ b, footer }: { b: { id: string; eta_at?: string | null; created_at?: string; type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: string; note: string | null; receiptUrls?: (string | null)[] }; footer?: ReactNode }) {
+export function BillCard({ b, footer }: { b: { id: string; claimed_at?: string | null; auto?: { status: string } | null; eta_at?: string | null; created_at?: string; type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: string; note: string | null; receiptUrls?: (string | null)[] }; footer?: ReactNode }) {
   const I = BILL_ICON[b.type] ?? Receipt
   return (
     <div className="card flex flex-col gap-3">
@@ -21,10 +21,10 @@ export function BillCard({ b, footer }: { b: { id: string; eta_at?: string | nul
         </div>
         <p className="text-lg font-extrabold">{lira(b.amount_minor)}</p>
       </div>
-      {b.status === 'pending' && <BillProgress eta={b.eta_at ?? null} />}
+      {b.status === 'pending' && (b.auto?.status === 'processing' ? <p className="text-xs text-mint-200">⚡ Sending your top-up… usually a few seconds.</p> : <BillProgress eta={b.eta_at ?? null} paying={!!b.claimed_at} />)}
       <div className="flex flex-wrap items-center gap-2">
-        {b.status === 'pending' && <Pill tone="wait">Being paid</Pill>}
-        {b.status === 'paid' && <Pill tone="ok">Paid</Pill>}
+        {b.status === 'pending' && <Pill tone="wait">{b.claimed_at ? 'Paying now' : 'Received'}</Pill>}
+        {b.status === 'paid' && <Pill tone="ok">{b.auto?.status === 'paid' ? 'Topped up automatically' : 'Paid'}</Pill>}
         {b.status === 'refunded' && <Pill tone="back">Refunded to wallet</Pill>}
         {(b.receiptUrls ?? []).filter(Boolean).map((u, i) => <a key={i} href={u!} target="_blank" rel="noreferrer" className="chip bg-fg/[0.06] text-slate-200"><ExternalLink size={12} /> Receipt{i ? ` ${i + 1}` : ''}</a>)}
       </div>
@@ -36,7 +36,7 @@ export function BillCard({ b, footer }: { b: { id: string; eta_at?: string | nul
 }
 
 /** Received → Paying → Receipt, with the promised time. */
-function BillProgress({ eta }: { eta: string | null }) {
+function BillProgress({ eta, paying }: { eta: string | null; paying: boolean }) {
   const late = !!eta && Date.parse(eta) < Date.now()
   const at = eta ? new Date(eta) : null
   const today = at && at.toDateString() === new Date().toDateString()
@@ -46,11 +46,12 @@ function BillProgress({ eta }: { eta: string | null }) {
       <div className="flex items-center gap-1.5">
         {['Received', 'Paying', 'Receipt'].map((s, i) => (
           <div key={s} className="flex flex-1 flex-col gap-1">
-            <div className={`h-1.5 rounded-full ${i === 0 ? 'bg-mint-400' : i === 1 ? 'animate-pulse bg-mint-400/60' : 'bg-fg/10'}`} />
-            <span className={`text-[10px] ${i < 2 ? 'text-mint-200' : 'text-slate-500'}`}>{s}</span>
+            <div className={`h-1.5 rounded-full ${i === 0 ? 'bg-mint-400' : i === 1 ? (paying ? 'animate-pulse bg-mint-400/70' : 'bg-fg/10') : 'bg-fg/10'}`} />
+            <span className={`text-[10px] ${i === 0 || (i === 1 && paying) ? 'text-mint-200' : 'text-slate-500'}`}>{s}</span>
           </div>
         ))}
       </div>
+      {paying && <p className="text-xs text-mint-200">💳 A Luda team member is paying it right now.</p>}
       {eta && <p className="text-xs text-slate-300">{late ? '⏳ Taking a little longer than usual. The team is on it.' : <>⚡ Expected by <b>{label}</b></>}</p>}
     </div>
   )

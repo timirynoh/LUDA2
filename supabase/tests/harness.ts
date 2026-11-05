@@ -109,6 +109,8 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     didit: new Map<string, Record<string, unknown>>(), // session id -> decision JSON
     files: new Map<string, number>(), // storage path -> size
     diditN: 0,
+    topup: 'SUCCESSFUL' as string, // what the top-up partner answers: SUCCESSFUL | PROCESSING | 'refuse' (4xx) | 'down' (5xx)
+    topups: new Map<string, { status: string; body: any }>(), // transaction id -> top-up
   }
   const ok = (j: unknown, status = 200) => new Response(JSON.stringify(j), { status })
   const f = (async (u: string, init?: RequestInit) => {
@@ -216,6 +218,20 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       ] })
     }
     // Dojah
+    // Top-up partner (Reloadly)
+    if (url.host === 'auth.reloadly.com') return body.client_secret === 'rl_secret' ? ok({ access_token: 'rl_tok', expires_in: 3600 }) : ok({ message: 'bad client' }, 401)
+    if (url.host === 'topups.reloadly.com') {
+      if (auth !== 'rl_tok') return ok({ message: 'unauthorized' }, 401)
+      if (url.pathname === '/topups' && init?.method === 'POST') {
+        if (world.topup === 'refuse') return ok({ message: 'Invalid phone number for operator', errorCode: 'INVALID_RECIPIENT' }, 400)
+        if (world.topup === 'down') return ok({ message: 'down' }, 503)
+        const id = String(5000 + world.topups.size); world.topups.set(id, { status: world.topup, body })
+        return ok({ transactionId: Number(id), status: world.topup, customIdentifier: body.customIdentifier })
+      }
+      const m = url.pathname.match(/^\/topups\/(\d+)\/status$/)
+      if (m) { const t = world.topups.get(m[1]); return t ? ok({ status: t.status }) : ok({ message: 'not found' }, 404) }
+      if (url.pathname.startsWith('/operators/countries/')) return ok([{ operatorId: 1234, name: 'KKTC Telsim', supportsLocalAmounts: true }, { operatorId: 5678, name: 'Kuzey Kibris Turkcell', supportsLocalAmounts: true }])
+    }
     if (url.host === 'api.dojah.io') {
       const n = url.searchParams.get('nin') ?? url.searchParams.get('bvn') ?? ''
       const e = world.ids.get(n)

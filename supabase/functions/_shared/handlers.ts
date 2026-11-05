@@ -13,11 +13,12 @@ import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, billFee, depositFee, f
 import { PayoutRefused, checkTransfer, createRecipient, flwBanks, flwCheckTransfer, flwResolve, flwSendTransfer, listBanks, matchFlwBank, payoutRefusalMessage, resolveAccount, sendTransfer, type PayoutProvider } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
 import { textProblem } from './moderation.ts'
+import { TopupRefused, mobileNumber, topupCheck, topupMaxMinor, topupOperatorList, topupOperators, topupSend, type TopupEnv } from './topup.ts'
 import { decodeFile, MAX_VIDEO_BYTES, putFile, signedUrl, uploadUrl, VIDEO_TYPES } from './storage.ts'
 import { checkCode, normPhone, sendCode, smsEnabled, type SmsEnv } from './sms.ts'
 import { checkWebhook, initCheckout, verifyPayment, webhookEvent, type Fetch, type Keys, type Provider } from './providers.ts'
 
-export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv {
+export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv, TopupEnv {
   APP_URL: string
   ALLOWED_ORIGINS?: string
   TICKET_QR_SECRET?: string
@@ -250,6 +251,66 @@ function billDetails(v: unknown): Record<string, string> {
   }
   return out
 }
+/** Saved-bill fields from the app (no payment): what it is, the number, details, a name and the reminder day (0 = off). */
+function savedBillArgs(body: Body) {
+  const biller = String(body.biller ?? '')
+  if (!/^[a-z]{2,12}$/.test(biller)) throw new Fail('Pick the bill')
+  const type = String(body.type ?? '')
+  if (!['electricity', 'water', 'internet', 'phone', 'rent', 'other'].includes(type)) throw new Fail('Pick what kind of bill it is')
+  const provider = cleanText(body.provider, 60), account = cleanText(body.account, 40).replace(/\s+/g, '')
+  if (provider.length < 2) throw new Fail('Add who the bill is from')
+  if (!/^[\w\-+./]{3,40}$/.test(account)) throw new Fail('Enter the customer / subscriber number from the bill')
+  const label = cleanText(body.label, 40)
+  const bad = label ? textProblem(label) : null
+  if (bad) throw new Fail(bad)
+  const remind = body.remind === undefined || body.remind === null ? null : int(body.remind)
+  if (remind !== null && !(remind >= 0 && remind <= 28)) throw new Fail('Pick a reminder day between 1 and 28')
+  const amount = body.amountMinor ? lira(body.amountMinor, 10, 20_000, 'The bill amount') : null
+  const details = Object.fromEntries(Object.entries(billDetails(body.details)).filter(([k]) => k !== 'period' && k !== 'reference'))
+  return { p_biller: biller, p_type: type, p_provider: provider, p_account: account, p_details: details, p_label: label, p_amount: amount, p_remind: remind }
+}
+const savedErr = (e: unknown): never => {
+  if (String((e as Error)?.message ?? e).includes('too_many_saved')) throw new Fail('You can save up to 12 bills. Remove one first.')
+  throw e
+}
+
+/**
+ * Sends an automatic top-up for a bill that is already held. Paid → the bill is settled. Refused → it simply waits
+ * for the Luda team. Unknown (network) → marked 'unknown': staff check the partner's dashboard before paying again.
+ */
+async function runTopup(env: Env, d: Deps, billId: string, op: { id: number; country: string }, amount: number, phone: string): Promise<string> {
+  await d.db.fn('luda_bill_auto', { p_bill: billId, p_auto: { partner: 'reloadly', ref: `bill-${billId}`, status: 'processing', at: new Date().toISOString() } })
+  try {
+    const t = await topupSend(env, d.fetch, { operatorId: op.id, country: op.country, amountMinor: amount, phone, ref: `bill-${billId}` })
+    await d.db.log(billId, 'bill_topup', { id: t.id, status: t.status })
+    await d.db.fn('luda_bill_auto', { p_bill: billId, p_auto: { id: t.id, status: t.status } })
+    if (t.status === 'paid') await settleAutoBill(env, d, billId)
+    return t.status
+  } catch (e) {
+    const refused = e instanceof TopupRefused
+    await d.db.log(billId, refused ? 'bill_topup_refused' : 'bill_topup_unknown', { error: String((e as Error)?.message ?? e).slice(0, 300) })
+    await d.db.fn('luda_bill_auto', { p_bill: billId, p_auto: { status: refused ? 'refused' : 'unknown', said: String((e as Error)?.message ?? e).slice(0, 200) } })
+    return refused ? 'refused' : 'unknown'
+  }
+}
+async function settleAutoBill(env: Env, d: Deps, billId: string) {
+  const r = await d.db.fn<{ ok: boolean; bill?: Record<string, any> }>('luda_bill_settle', { p_bill: billId, p_paid: true, p_note: 'Topped up automatically', p_receipt: [] })
+  if (!r.ok || !r.bill) return
+  await notifyUser(env, d, r.bill.user_id, { emoji: '📱', title: `Top-up sent: ${tl(Number(r.bill.amount_minor))}`, body: `${r.bill.provider} · ${String(r.bill.account_ref).slice(-4).padStart(8, '•')}`, url: '/bills', tag: `bill:${billId}`, cat: 'money' })
+}
+/** Asks the partner about top-ups still running (one person's, or everyone's from the team queue). */
+async function checkTopups(env: Env, d: Deps, userId?: string) {
+  const list = await d.db.fn<{ id: string; user_id: string; auto: { id?: string } }[]>('luda_bills_auto_pending', {}).catch(() => [])
+  for (const b of list.filter((x) => !userId || x.user_id === userId).slice(0, 10)) {
+    if (!b.auto?.id) continue
+    try {
+      const st = await topupCheck(env, d.fetch, b.auto.id)
+      if (st === 'paid') { await d.db.fn('luda_bill_auto', { p_bill: b.id, p_auto: { status: 'paid' } }); await settleAutoBill(env, d, b.id) }
+      else if (st === 'failed') { await d.db.fn('luda_bill_auto', { p_bill: b.id, p_auto: { status: 'failed' } }); await d.db.log(b.id, 'bill_topup_failed', {}) }
+    } catch { /* try again later */ }
+  }
+}
+
 /** When the team promises to have a bill paid: ~2 hours inside 09:00–21:00 Cyprus time, else 11:00 the next morning. */
 export function billEta(now: Date) {
   const H = 3 * 3600_000 // TRNC = UTC+3
@@ -1232,8 +1293,26 @@ const routes: Record<string, Route> = {
   'GET features': async ({ req, env, d }) => {
     const p = await me(req, env, d)
     const r = await d.db.fn<{ pots: unknown[]; bills: Record<string, any>[] }>('luda_features_mine', { p_user: p.user_id })
-    const bills = await Promise.all(r.bills.map(async (b) => ({ ...b, user_id: undefined, files: undefined, receipt: undefined, receiptUrls: await signAll(env, d, b.receipt), photoUrls: await signAll(env, d, b.files) })))
-    return { pots: r.pots, bills, fees: featureFees(env) }
+    if (r.bills.some((b) => b.status === 'pending' && b.auto?.status === 'processing') && (await d.db.hit(`topupchk:${p.user_id}`, 1, 30).catch(() => false))) {
+      await checkTopups(env, d, p.user_id)
+      Object.assign(r, await d.db.fn<{ pots: unknown[]; bills: Record<string, any>[] }>('luda_features_mine', { p_user: p.user_id }))
+    }
+    const bills = await Promise.all(r.bills.map(async (b) => ({ ...b, user_id: undefined, files: undefined, receipt: undefined, auto: b.auto ? { status: b.auto.status } : null, receiptUrls: await signAll(env, d, b.receipt), photoUrls: await signAll(env, d, b.files) })))
+    const saved = await d.db.fn<unknown[]>('luda_saved_bills', { p_user: p.user_id })
+    return { pots: r.pots, bills, saved, fees: featureFees(env), topup: { billers: Object.keys(topupOperators(env)), maxMinor: topupMaxMinor(env) } }
+  },
+
+  // Save a bill to pay again later (or change its name / monthly reminder) without paying now.
+  'POST saved-bill-save': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await limit(d, `savedbill:${p.user_id}`, 30, 86400, 'Too many changes today. Try again tomorrow.')
+    const s = savedBillArgs(body)
+    return { saved: await d.db.fn('luda_saved_bill_save', { p_user: p.user_id, ...s, p_paid: false }).catch(savedErr) }
+  },
+  'POST saved-bill-remove': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    if (!(await d.db.fn<boolean>('luda_saved_bill_remove', { p_user: p.user_id, p_id: uuid(body.id) }))) throw new Fail('Not found', 404)
+    return { ok: true }
   },
 
   'POST bill-create': async ({ req, env, d, body }) => {
@@ -1244,16 +1323,36 @@ const routes: Record<string, Route> = {
     const account = cleanText(body.account, 40).replace(/\s+/g, '')
     if (!/^[\w\-+./]{3,40}$/.test(account)) throw new Fail('Enter the customer / subscriber number from the bill')
     const amount = lira(body.amountMinor, 10, 20_000, 'The bill amount')
+    const biller = /^[a-z]{2,12}$/.test(String(body.biller ?? '')) ? String(body.biller) : null
+    const details = billDetails(body.details)
+    if (type === 'rent' && (!details.landlord || !details.iban || !details.period)) throw new Fail("Add the landlord's name, their IBAN and the rent month")
+    // Automatic top-up: prepaid TL for an operator the owner switched on, to a valid mobile number.
+    const op = type === 'phone' && biller && /top-up/i.test(details.kind ?? '') ? topupOperators(env)[biller] : undefined
+    const phone = op ? mobileNumber(account) : null
+    if (op && !phone) throw new Fail('Enter the mobile number like 0533 123 45 67')
+    if (op && amount > topupMaxMinor(env)) throw new Fail(`Top-ups can be up to ${tl(topupMaxMinor(env))} at a time`)
+    if (body.confirmed !== true) throw new Fail('Please confirm the bill details are correct')
     await verifyAuth(p, body, env, d)
     await limit(d, `bill:${p.user_id}`, 10, 86400, 'You can send up to 10 bills a day')
-    const details = billDetails(body.details)
-    if (body.confirmed !== true) throw new Fail('Please confirm the bill details are correct')
     const fee = billFee(amount, env)
     const files = await storeFiles(env, d, p.user_id, 'bills', body.files)
     const eta = billEta(d.now?.() ?? new Date())
     const bill = await d.db.fn<Record<string, unknown>>('luda_bill_create', { p_user: p.user_id, p_type: type, p_provider: provider, p_account: account, p_amount: amount, p_fee: fee, p_files: files, p_details: details, p_eta: eta.toISOString() }).catch(featureErr)
-    await d.db.log(String(bill.id), 'bill_new', { user: p.username, type, amount, fee })
-    return { bill: { ...bill, files: undefined, user_id: undefined } }
+    await d.db.log(String(bill.id), 'bill_new', { user: p.username, type, amount, fee, biller })
+    const id = String(bill.id)
+    if (biller) await d.db.fn('luda_bill_set_biller', { p_bill: id, p_biller: biller })
+    if (biller && body.save === true) {
+      const remind = body.remind === undefined ? null : int(body.remind)
+      await d.db.fn('luda_saved_bill_save', { p_user: p.user_id, p_biller: biller, p_type: type, p_provider: provider, p_account: account,
+        p_details: Object.fromEntries(Object.entries(details).filter(([k]) => k !== 'period' && k !== 'reference')), p_label: cleanText(body.label, 40),
+        p_amount: amount, p_remind: remind !== null && remind >= 0 && remind <= 28 ? remind : null, p_paid: true }).catch(() => null)
+    }
+    let status = 'pending', auto: string | null = null
+    if (op && phone) {
+      auto = await runTopup(env, d, id, op, amount, phone)
+      if (auto === 'paid') status = 'paid'
+    }
+    return { bill: { ...bill, biller, status, auto: auto ? { status: auto } : null, files: undefined, user_id: undefined } }
   },
 
   /* ---------------- marketplace ---------------- */
@@ -1396,6 +1495,7 @@ const routes: Record<string, Route> = {
   'GET admin-bills': async ({ req, env, d, url }) => {
     await staff(req, env, d, 'bills', 'view')
     const st = url.searchParams.get('status')
+    if ((st ?? 'pending') === 'pending' && (await d.db.hit('topupchk:all', 1, 30).catch(() => false))) await checkTopups(env, d)
     const list = await d.db.fn<Record<string, any>[]>('luda_admin_bills', { p_status: st === 'all' ? null : st || 'pending' })
     return { bills: await Promise.all(list.map(async (b) => ({ ...b, photoUrls: await signAll(env, d, b.files), receiptUrls: await signAll(env, d, b.receipt), files: undefined, receipt: undefined }))) }
   },
@@ -1405,6 +1505,10 @@ const routes: Record<string, Route> = {
     await verifyAuth(a, body, env, d)
     const id = uuid(body.billId), paid = body.paid === true, note = cleanText(body.note, 200)
     if (!paid && !note) throw new Fail('Tell the user why the bill could not be paid')
+    const cur = (await d.db.fn<Record<string, any>[]>('luda_admin_bills', { p_status: 'pending' })).find((x) => x.id === id)
+    if (cur?.auto?.status === 'processing') throw new Fail('An automatic top-up is still running for this bill. Wait for it to finish.', 409)
+    if (cur?.claimed_by && cur.claimed_by !== a.username && Date.parse(cur.claimed_at) > Date.now() - 45 * 60e3) throw new Fail(`@${cur.claimed_by} is paying this bill right now`, 409)
+    if (paid && body.checked !== true) throw new Fail('Tick that the receipt shows the same number and amount')
     if (!paid && !can(a.staff, 'bills', 'full')) throw new Fail("Your role can mark bills as paid, but refunds need the owner or a 'full' bills role", 403)
     const receipt = paid ? await storeFiles(env, d, a.user_id, `receipts`, body.files) : []
     if (paid && !receipt.length) throw new Fail('Attach the payment receipt (photo or PDF)')
@@ -1416,6 +1520,23 @@ const routes: Record<string, Route> = {
     if (owner && paid) await notifyUser(env, d, owner, { emoji: '🧾', title: 'Your bill is paid', body: 'The receipt is in Bills. Tell us how it went', url: `/bills?rate=bill:${id}`, tag: `bill:${id}`, cat: 'money' })
     else if (owner) await pushUser(env, d, owner, { title: '↩️ Bill refunded', body: note, url: '/bills', tag: `bill:${id}`, cat: 'money' })
     return { ok: true }
+  },
+
+  // "I'm paying this one" (or let it go): stops two people paying the same bill.
+  'POST admin-bill-claim': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'bills', 'edit')
+    const r = await d.db.fn<{ ok: boolean; why?: string; by?: string }>('luda_bill_claim', { p_bill: uuid(body.billId), p_staff: a.username, p_release: body.release === true })
+    if (!r.ok) throw new Fail(r.why === 'auto' ? 'An automatic top-up is still running for this bill' : r.why === 'claimed' ? `@${r.by} is already paying this bill` : 'This bill was already handled', 409)
+    return { ok: true, claimedBy: body.release === true ? null : a.username }
+  },
+
+  // The top-up partner's operators for a country, so the owner can pick the right North Cyprus ids for TOPUP_OPERATORS.
+  'GET admin-topup-operators': async ({ req, env, d, url }) => {
+    await staff(req, env, d, 'bills', 'full')
+    if (!env.RELOADLY_CLIENT_ID || !env.RELOADLY_CLIENT_SECRET) return { on: false, operators: [], active: {} }
+    const country = /^[A-Z]{2}$/.test(url.searchParams.get('country') ?? '') ? url.searchParams.get('country')! : 'TR'
+    const operators = await topupOperatorList(env, d.fetch, country).catch((e) => { throw new Fail(`The top-up partner didn't answer: ${String((e as Error).message)}`, 502) })
+    return { on: true, operators, active: topupOperators(env) }
   },
 
   'GET admin-escrows': async ({ req, env, d, url }) => {
@@ -2467,6 +2588,19 @@ async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
   for (const b of rp.bills ?? []) items.push({ key: `rate:bill:${b.id}`, emoji: '⭐', title: `Rate your ${b.provider} bill payment`, to: `/bills?rate=bill:${b.id}`, level: 'info' })
   for (const l of rp.market ?? []) items.push({ key: `rate:market:${l.id}`, emoji: '⭐', title: `Rate @${l.other}`, sub: String(l.title ?? ''), to: `/market?rate=market:${l.id}`, level: 'info' })
   for (const j of rp.flash ?? []) items.push({ key: `rate:flash:${j.id}`, emoji: '⭐', title: `Rate @${j.other}`, sub: String(j.title ?? ''), to: `/flash?rate=flash:${j.id}`, level: 'info' })
+  // Saved bills whose monthly reminder day has come and that aren't paid yet this month.
+  const saved = await d.db.fn<{ id: string; provider: string; label: string | null; due: boolean; amount_minor: number | null }[]>('luda_saved_bills', { p_user: p.user_id }).catch(() => [])
+  for (const s of saved.filter((x) => x.due)) items.push({ key: `savedbill:${s.id}:${cyprusDay().slice(0, 7)}`, emoji: '🗓️', title: `Time to pay ${s.label || s.provider}`, sub: s.amount_minor ? `Last time ${amt(s.amount_minor, 'TRY')} · two taps to pay` : 'Two taps to pay from your Lira wallet', to: `/bills?pay=${s.id}`, level: 'action' })
+  // Luda team: bills waiting to be paid (new ones, and ones close to the promised time).
+  const sp = await permsOf(p, env, d).catch(() => null)
+  if (sp && can(sp, 'bills', 'edit')) {
+    const q = await d.db.fn<Record<string, any>[]>('luda_admin_bills', { p_status: 'pending' }).catch(() => [])
+    const free = q.filter((b) => b.auto?.status !== 'processing' && (!b.claimed_by || Date.parse(b.claimed_at) < Date.now() - 45 * 60e3))
+    for (const b of free.slice(0, 5)) {
+      const late = !!b.eta_at && Date.parse(b.eta_at) - Date.now() < 30 * 60e3
+      items.push({ key: `staffbill:${b.id}${late ? ':late' : ''}`, emoji: late ? '⏰' : '🧾', title: late ? `Bill due soon: ${b.provider} ${amt(b.amount_minor, 'TRY')}` : `New bill to pay: ${b.provider} ${amt(b.amount_minor, 'TRY')}`, sub: `@${b.username} · Luda HQ → Bills`, to: '/admin?tab=bills', level: late ? 'urgent' : 'action' })
+    }
+  }
   const rank = { urgent: 0, action: 1, info: 2 }
   return items.sort((a, b) => rank[a.level] - rank[b.level])
 }

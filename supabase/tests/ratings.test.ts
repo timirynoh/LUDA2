@@ -70,7 +70,7 @@ test('bills, Market and Flash: rated once finished; reviews show on the personâ€
   // Bill paid by the team â†’ rate it
   const b = (await call('POST', 'bill-create', { type: 'electricity', provider: 'KIB-TEK', account: '12345678', amountMinor: 300_00, pin: '4826', files: [PHOTO], confirmed: true, details: { name: 'Ada Okafor', district: 'Girne' } }, T.ada)).j.bill
   assert.equal((await call('POST', 'rate', { kind: 'bill', ref: b.id, stars: 5 }, T.ada)).status, 409)
-  await call('POST', 'admin-bill', { billId: b.id, paid: true, pin: '4826', files: [PHOTO] }, T.boss)
+  await call('POST', 'admin-bill', { billId: b.id, paid: true, checked: true, pin: '4826', files: [PHOTO] }, T.boss)
   assert.ok((await todo('ada')).some((i) => i.key === `rate:bill:${b.id}`))
   assert.equal((await call('POST', 'rate', { kind: 'bill', ref: b.id, stars: 5, tags: ['fast', 'clear_receipt'] }, T.ada)).status, 200)
   assert.equal((await q(`select staff from ratings where kind='bill'`))[0].staff, 'boss')

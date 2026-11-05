@@ -66,8 +66,8 @@ test('assisted bill pay: held from the wallet, team pays with a receipt, or refu
   const list = (await call('GET', 'admin-bills', undefined, T.boss)).j.bills
   const b = list.find((x: any) => x.id === r.j.bill.id)
   assert.equal(b.account_ref, '12345678'); assert.equal(b.amount_minor, 640_00); assert.equal(b.username, 'ada'); assert.equal(b.photoUrls.length, 1); assert.equal(b.details.district, 'Girne', 'admin sees every detail')
-  assert.match((await call('POST', 'admin-bill', { billId: b.id, paid: true, pin: '4826' }, T.boss)).j.error, /receipt/)
-  assert.equal((await call('POST', 'admin-bill', { billId: b.id, paid: true, pin: '4826', files: [PHOTO] }, T.boss)).status, 200)
+  assert.match((await call('POST', 'admin-bill', { billId: b.id, paid: true, checked: true, pin: '4826' }, T.boss)).j.error, /receipt/)
+  assert.equal((await call('POST', 'admin-bill', { billId: b.id, paid: true, checked: true, pin: '4826', files: [PHOTO] }, T.boss)).status, 200)
   assert.equal((await call('POST', 'admin-bill', { billId: b.id, paid: false, note: 'x', pin: '4826' }, T.boss)).status, 409, 'handled once')
   const mine = (await call('GET', 'features', undefined, T.ada)).j.bills
   assert.equal(mine[0].status, 'paid'); assert.equal(mine[0].receiptUrls.length, 1)
@@ -78,7 +78,7 @@ test('assisted bill pay: held from the wallet, team pays with a receipt, or refu
   await call('POST', 'admin-bill', { billId: r2.j.bill.id, paid: false, note: 'Account number not found', pin: '4826' }, T.boss)
   assert.equal(await TRY('ada'), before - 650_00, 'refunded incl. fee')
   // bigger bills: ₺20 fee above ₺1,000
-  const r3 = await call('POST', 'bill-create', { type: 'rent', provider: 'Rent', account: 'ROOM-4', amountMinor: 1_500_00, pin: '4826', confirmed: true, details: { iban: 'TR33 0006 1005 1978 6457 8413 26', landlord: 'Mehmet Y.' } }, T.ada)
+  const r3 = await call('POST', 'bill-create', { type: 'rent', provider: 'Rent', account: 'ROOM-4', amountMinor: 1_500_00, pin: '4826', confirmed: true, details: { iban: 'TR33 0006 1005 1978 6457 8413 26', landlord: 'Mehmet Y.', period: 'Nov 2026' } }, T.ada)
   assert.equal(r3.status, 200, JSON.stringify(r3.j)); assert.equal(r3.j.bill.fee_minor, 20_00); assert.equal(r3.j.bill.details.iban, 'TR330006100519786457841326')
 })
 

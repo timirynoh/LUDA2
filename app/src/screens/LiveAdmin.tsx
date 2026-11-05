@@ -57,7 +57,7 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
 
 export default function LiveAdmin() {
   const { me } = useLive()
-  const [tab, setTab] = useState<Tab>('overview')
+  const [tab, setTab] = useState<Tab>(() => { const t = new URLSearchParams(window.location.search).get('tab'); return (t && t in TAB_AREA ? t : 'overview') as Tab })
   const [userId, setUserId] = useState<string | null>(null)
   const { data: o, load } = useLoad<Record<string, any>>('admin-overview')
   if (me && !me.profile.isAdmin) return <div><Header back title="Admin" /><p className="px-6 pt-10 text-center text-sm text-slate-400">This page is only for the Luda team.</p></div>
@@ -170,47 +170,97 @@ function Overview({ o, go }: { o: Record<string, any> | null; go: (t: Tab) => vo
 
 /* ------------------------------- bills to pay ------------------------------- */
 
-interface AdminBill { details?: Record<string, string>; eta_at?: string | null; id: string; username: string; type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: string; note: string | null; created_at: string; photoUrls: (string | null)[]; receiptUrls: (string | null)[] }
+interface AdminBill { biller?: string | null; claimed_by?: string | null; claimed_at?: string | null; auto?: { status: string; ref?: string; said?: string } | null; details?: Record<string, string>; eta_at?: string | null; id: string; username: string; type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: string; note: string | null; created_at: string; photoUrls: (string | null)[]; receiptUrls: (string | null)[] }
+
+const claimLive = (b: AdminBill) => !!b.claimed_by && !!b.claimed_at && Date.parse(b.claimed_at) > Date.now() - 45 * 60e3
+const hhmm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+/** Official pay pages we're sure of; anything else opens a search. Rent is paid from the bank app. */
+const PAY_SITE: Record<string, string> = { kibtek: 'https://www.kibtek.com', turkcell: 'https://www.kktcell.com', telsim: 'https://www.telsim.com.tr' }
 
 function BillsTab({ onChange }: { onChange: () => void }) {
+  const { me } = useLive()
   const [status, setStatus] = useState('pending')
   const { data, err, load } = useLoad<{ bills: AdminBill[] }>(`admin-bills?status=${status}`)
   const [open, setOpen] = useState<AdminBill | null>(null)
+  const [, tick] = useState(0)
+  // the queue refreshes itself every 30 s (new bills, claims, automatic top-ups finishing)
+  useEffect(() => { if (status !== 'pending') return; const t = setInterval(() => { void load(); tick((n) => n + 1) }, 30_000); return () => clearInterval(t) }, [status, load])
   const bills = data?.bills ?? []
+  const meName = me?.profile.username
+  const full = staffCan(me?.profile.staff ?? null, 'bills', 'full')
+  const late = bills.filter((b) => b.eta_at && Date.parse(b.eta_at) < Date.now()).length
   return (
     <div className="flex flex-col gap-3">
       <div className="flex gap-2">{[['pending', 'To pay'], ['paid', 'Paid'], ['refunded', 'Refunded']].map(([v, l]) => <button key={v} onClick={() => setStatus(v)} className={`chip py-2 ${status === v ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}>{l}</button>)}</div>
-      {status === 'pending' && bills.length > 0 && <p className="text-xs text-slate-400">Oldest first. Total to pay: <b className="text-slate-200">{lira(bills.reduce((a, b) => a + Number(b.amount_minor), 0))}</b></p>}
+      {status === 'pending' && bills.length > 0 && <p className="text-xs text-slate-400">Soonest promised first. Total to pay: <b className="text-slate-200">{lira(bills.reduce((a, b) => a + Number(b.amount_minor), 0))}</b>{late > 0 && <b className="text-rose-300"> · {late} late</b>}. Tap a bill, then “I’m paying this” so nobody pays it twice.</p>}
       {err && <p className="text-sm text-rose-300">{err}</p>}
       {data && bills.length === 0 && <p className="rounded-3xl border border-dashed border-fg/10 py-10 text-center text-sm text-slate-400">{status === 'pending' ? 'No bills waiting 🎉' : 'Nothing here.'}</p>}
-      {(status === 'pending' ? bills : [...bills].reverse()).map((b) => { const I = BILL_ICON[b.type] ?? Receipt; return (
-        <button key={b.id} onClick={() => setOpen(b)} className="glass flex items-center gap-3 rounded-3xl p-4 text-start">
+      {bills.map((b) => { const I = BILL_ICON[b.type] ?? Receipt; const lateB = b.status === 'pending' && !!b.eta_at && Date.parse(b.eta_at) < Date.now(); const soon = b.status === 'pending' && !!b.eta_at && !lateB && Date.parse(b.eta_at) - Date.now() < 30 * 60e3; return (
+        <button key={b.id} onClick={() => setOpen(b)} className={`glass flex items-center gap-3 rounded-3xl p-4 text-start ${lateB ? 'ring-1 ring-rose-400/60' : soon ? 'ring-1 ring-gold-400/60' : ''}`}>
           <span className={`grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${BILL_TINT[b.type] ?? BILL_TINT.other} text-white`}><I size={22} /></span>
           <div className="min-w-0 flex-1">
             <p className="truncate font-bold">{b.provider}</p>
             <p className="truncate font-mono text-sm text-slate-300">{b.account_ref}</p>
-            <p className="text-[11px] text-slate-500">@{b.username} · {status === 'pending' ? `waiting ${waited(b.created_at)}` : when(b.created_at)}</p>
+            <p className="text-[11px] text-slate-500">@{b.username} · {status === 'pending' ? (b.eta_at ? <span className={lateB ? 'text-rose-300' : soon ? 'text-gold-200' : ''}>{lateB ? `late (promised ${hhmm(b.eta_at)})` : `due ${hhmm(b.eta_at)}`}</span> : `waiting ${waited(b.created_at)}`) : when(b.created_at)}</p>
+            {status === 'pending' && b.auto?.status === 'processing' && <p className="text-[11px] text-sky-300">📱 Automatic top-up running — don’t pay</p>}
+            {status === 'pending' && b.auto && ['refused', 'unknown', 'failed'].includes(b.auto.status) && <p className="text-[11px] text-gold-200">📱 Automatic top-up {b.auto.status === 'unknown' ? 'didn’t confirm' : 'failed'} — pay by hand</p>}
+            {status === 'pending' && claimLive(b) && <p className="text-[11px] text-mint-300">🙋 {b.claimed_by === meName ? 'You are paying this' : `@${b.claimed_by} is paying`}</p>}
           </div>
           <div className="flex flex-col items-end gap-1"><p className="text-xl font-extrabold">{lira(b.amount_minor)}</p>{status !== 'pending' && <Badge s={b.status} />}</div>
         </button>
       ) })}
-      {open && <BillPaySheet b={open} onClose={() => setOpen(null)} onDone={() => { void load(); onChange() }} />}
+      {status === 'pending' && full && <TopupPartnerCard />}
+      {open && <BillPaySheet b={open} meName={meName ?? ''} onClose={() => setOpen(null)} onDone={() => { void load(); onChange() }} />}
+    </div>
+  )
+}
+
+/** Owner: which operators the top-up partner offers, and which ones are switched on (TOPUP_OPERATORS). */
+function TopupPartnerCard() {
+  const [country, setCountry] = useState<'TR' | 'CY'>('TR')
+  const [r, setR] = useState<{ on: boolean; operators: { id: number; name: string; localAmounts: boolean }[]; active: Record<string, { id: number; country: string }> } | null>(null)
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const check = async () => { setBusy(true); setErr(''); try { setR(await api('GET', `admin-topup-operators?country=${country}`)) } catch (e) { setErr(errMsg(e)) } finally { setBusy(false) } }
+  return (
+    <div className="card mt-2 flex flex-col gap-2 text-sm">
+      <p className="font-semibold">📱 Automatic mobile top-ups</p>
+      <p className="text-xs text-slate-400">Prepaid TL top-ups for operators switched on in the server secret TOPUP_OPERATORS (e.g. <span className="font-mono">telsim:1234,turkcell:5678</span>) are sent by the partner (Reloadly) in seconds. Check the list below and only switch on an operator whose name is clearly the North Cyprus one (KKTC Telsim / Kuzey Kıbrıs Turkcell). Turkey’s Turkcell won’t top up a KKTC line.</p>
+      <div className="flex gap-2">{(['TR', 'CY'] as const).map((c) => <button key={c} onClick={() => setCountry(c)} className={`chip py-1.5 text-xs ${country === c ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}>{c === 'TR' ? 'Turkey (+90)' : 'Cyprus'}</button>)}
+        <button className="chip bg-fg/[0.08] py-1.5 text-xs" disabled={busy} onClick={() => void check()}>{busy ? 'Checking…' : 'Check operators'}</button></div>
+      {err && <p className="text-xs text-rose-300">{err}</p>}
+      {r && !r.on && <p className="text-xs text-gold-200">The partner isn’t set up yet: add RELOADLY_CLIENT_ID and RELOADLY_CLIENT_SECRET in Supabase → Edge Functions → Secrets.</p>}
+      {r?.on && <>
+        <p className="text-xs text-slate-400">Switched on: {Object.entries(r.active).map(([k, v]) => `${k} → ${v.id}`).join(', ') || 'none'}</p>
+        <div className="max-h-60 overflow-y-auto rounded-2xl bg-fg/[0.04] text-xs">{r.operators.map((o) => <div key={o.id} className="flex justify-between gap-2 px-3 py-2"><span>{o.name}</span><span className="font-mono text-slate-400">{o.id}{o.localAmounts ? '' : ' · no TL amounts'}</span></div>)}</div>
+      </>}
     </div>
   )
 }
 
 const DETAIL_LABEL: Record<string, string> = { name: 'Name on the bill', district: 'District', meter: 'Meter type', period: 'Month', municipality: 'Municipality', address: 'Address', size: 'Cylinder', brand: 'Brand', kind: 'What to pay', package: 'Package', isp: 'Internet provider', landlord: 'Account holder', iban: 'IBAN', reference: 'Payment description' }
 const REFUSE = ['Customer number not found', 'Amount on the bill is different', 'Provider site is down, try again later', 'Bill already paid']
+const REFUSE_RENT = ['The IBAN is wrong', 'The name doesn’t match the IBAN', 'The bank refused the transfer']
 
-/** Everything the team needs to pay one bill, already filled in: copy the number and amount, pay, attach the receipt. */
-function BillPaySheet({ b, onClose, onDone }: { b: AdminBill; onClose: () => void; onDone: () => void }) {
+/** Everything the team needs to pay one bill, already filled in: claim it, copy, pay, attach the receipt, check, done. */
+function BillPaySheet({ b, meName, onClose, onDone }: { b: AdminBill; meName: string; onClose: () => void; onDone: () => void }) {
   const [files, setFiles] = useState<Upload[]>([])
   const [mode, setMode] = useState<'pay' | 'refuse'>('pay')
   const [note, setNote] = useState('')
   const [review, setReview] = useState(false)
+  const [checked, setChecked] = useState(false)
+  const [claimed, setClaimed] = useState(claimLive(b) ? b.claimed_by : null)
+  const [claimErr, setClaimErr] = useState('')
+  const rent = b.type === 'rent'
   const amount = (Number(b.amount_minor) / 100).toFixed(2).replace(/\.00$/, '')
-  const search = `https://www.google.com/search?q=${encodeURIComponent(`${b.provider} online ödeme`)}`
-  const run = async (auth: Approval) => { await api('POST', 'admin-bill', { billId: b.id, paid: mode === 'pay', note, files: files.map(({ name, type, data }) => ({ name, type, data })), ...auth }); onDone() }
+  const site = (b.biller && PAY_SITE[b.biller]) || `https://www.google.com/search?q=${encodeURIComponent(`${b.provider} online ödeme`)}`
+  const autoRunning = b.auto?.status === 'processing'
+  const mine = claimed === meName
+  const claim = async (release = false) => {
+    setClaimErr('')
+    try { await api('POST', 'admin-bill-claim', { billId: b.id, release }); setClaimed(release ? null : meName); onDone() } catch (e) { setClaimErr(errMsg(e)) }
+  }
+  const run = async (auth: Approval) => { await api('POST', 'admin-bill', { billId: b.id, paid: mode === 'pay', checked, note, files: files.map(({ name, type, data }) => ({ name, type, data })), ...auth }); onDone() }
   if (b.status !== 'pending') return (
     <Sheet open onClose={onClose} title={b.provider}>
       <div className="flex flex-col gap-3 pb-4 text-sm"><p>{lira(b.amount_minor)} for @{b.username} · <Badge s={b.status} /></p>{b.note && <p className="text-slate-400">{b.note}</p>}
@@ -218,7 +268,7 @@ function BillPaySheet({ b, onClose, onDone }: { b: AdminBill; onClose: () => voi
     </Sheet>
   )
   return (
-    <Sheet open onClose={onClose} title={`Pay ${b.provider}`}>
+    <Sheet open onClose={onClose} title={rent ? 'Send rent transfer' : `Pay ${b.provider}`}>
       {review ? (
         <ReviewAndPin holdLabel={mode === 'pay' ? 'Hold to mark as paid' : 'Hold to refund'} onClose={() => setReview(false)} run={run}
           rows={mode === 'pay' ? [['Bill', b.provider], ['Number', b.account_ref], ['Amount paid', <b key="a">{lira(b.amount_minor)}</b>], ['Receipt', `${files.length} file(s)`], ['For', `@${b.username}`]]
@@ -226,32 +276,50 @@ function BillPaySheet({ b, onClose, onDone }: { b: AdminBill; onClose: () => voi
           done={<Success title={mode === 'pay' ? 'Marked as paid ✅' : 'Refunded'} sub={mode === 'pay' ? `@${b.username} can now see the receipt.` : 'The full amount and fee are back in their wallet.'} onClose={onClose} />} />
       ) : (
         <div className="flex flex-col gap-4 pb-4">
+          {autoRunning && <p className="rounded-2xl bg-sky-400/10 p-3 text-sm text-sky-200">📱 The automatic top-up is still running. Don’t pay this by hand; it updates itself within a minute.</p>}
+          {b.auto?.status === 'unknown' && <p className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-200">⚠️ The automatic top-up didn’t confirm. Before paying, check the Reloadly dashboard for reference <span className="font-mono">{b.auto.ref ?? `bill-${b.id}`}</span>. If it went through, mark this as paid with a screenshot of it.</p>}
+          {b.auto && ['refused', 'failed'].includes(b.auto.status) && <p className="rounded-2xl bg-gold-400/10 p-3 text-xs text-gold-200">📱 The automatic top-up was refused{b.auto.said ? `: ${b.auto.said}` : ''}. Nothing was sent, so pay it by hand.</p>}
           <div className="rounded-3xl bg-gradient-to-br from-fg/[0.07] to-fg/[0.02] p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pay exactly</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{rent ? 'Send exactly' : 'Pay exactly'}</p>
             <div className="mt-1 flex items-center justify-between gap-3"><p className="text-3xl font-extrabold">{lira(b.amount_minor)}</p><CopyBtn text={amount} label="Amount" /></div>
-            <div className="my-3 h-px bg-fg/10" />
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Customer / subscriber number</p>
-            <div className="mt-1 flex items-center justify-between gap-3"><p className="selectable break-all font-mono text-xl font-bold">{b.account_ref}</p><CopyBtn text={b.account_ref} label="Number" /></div>
-            {Object.entries(b.details ?? {}).map(([k, v]) => <div key={k}><div className="my-3 h-px bg-fg/10" />
+            {!rent && <><div className="my-3 h-px bg-fg/10" />
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Customer / subscriber number</p>
+              <div className="mt-1 flex items-center justify-between gap-3"><p className="selectable break-all font-mono text-xl font-bold">{b.account_ref}</p><CopyBtn text={b.account_ref} label="Number" /></div></>}
+            {Object.entries(b.details ?? {}).filter(([k]) => !rent || k !== 'period').map(([k, v]) => <div key={k}><div className="my-3 h-px bg-fg/10" />
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{DETAIL_LABEL[k] ?? k}</p>
-              <div className="mt-1 flex items-center justify-between gap-3"><p className="selectable break-all font-semibold">{v}</p><CopyBtn text={v} label={DETAIL_LABEL[k] ?? k} /></div></div>)}
-            <p className="mt-3 text-xs text-slate-400">For @{b.username} · sent {when(b.created_at)} · fee earned {lira(b.fee_minor)}{b.eta_at ? <> · <b className={Date.parse(b.eta_at) < Date.now() ? 'text-rose-300' : 'text-gold-200'}>promised by {new Date(b.eta_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></> : null}</p>
+              <div className="mt-1 flex items-center justify-between gap-3"><p className={`selectable break-all font-semibold ${k === 'iban' ? 'font-mono' : ''}`}>{k === 'iban' ? v.replace(/(.{4})/g, '$1 ').trim() : v}</p><CopyBtn text={v} label={DETAIL_LABEL[k] ?? k} /></div></div>)}
+            {rent && <p className="mt-3 text-xs text-slate-400">Room / flat: {b.account_ref} · month: {b.details?.period ?? '–'}</p>}
+            <p className="mt-3 text-xs text-slate-400">For @{b.username} · sent {when(b.created_at)} · fee earned {lira(b.fee_minor)}{b.eta_at ? <> · <b className={Date.parse(b.eta_at) < Date.now() ? 'text-rose-300' : 'text-gold-200'}>promised by {hhmm(b.eta_at)}</b></> : null}</p>
             <p className="mt-1 text-[11px] text-mint-300">✓ The user confirmed these details are correct.</p>
           </div>
           {b.photoUrls.filter(Boolean).length > 0 && <div className="flex gap-2">{b.photoUrls.filter(Boolean).map((u, i) => <a key={i} href={u!} target="_blank" rel="noreferrer"><img src={u!} alt="Bill" className="size-20 rounded-2xl object-cover ring-1 ring-fg/10" /></a>)}<p className="self-center text-xs text-slate-400">The user's photo of the bill. Tap to zoom.</p></div>}
 
+          {!autoRunning && (mine ? (
+            <div className="flex items-center justify-between rounded-2xl bg-mint-400/10 px-3 py-2.5 text-sm text-mint-200"><span>🙋 You’re paying this one</span><button className="text-xs text-slate-300 underline" onClick={() => void claim(true)}>Let it go</button></div>
+          ) : claimed ? (
+            <div className="flex items-center justify-between rounded-2xl bg-gold-400/10 px-3 py-2.5 text-sm text-gold-200"><span>@{claimed} is paying this</span></div>
+          ) : (
+            <button className="btn-primary py-3.5" onClick={() => void claim()}>🙋 I’m paying this now</button>
+          ))}
+          {claimErr && <p className="text-sm text-rose-300">{claimErr}</p>}
+
+          {!autoRunning && <>
           <div className="flex rounded-2xl bg-fg/[0.05] p-1">{(['pay', 'refuse'] as const).map((m) => <button key={m} onClick={() => setMode(m)} className={`flex-1 rounded-xl py-2.5 text-sm font-semibold ${mode === m ? 'bg-fg/10 text-slate-100' : 'text-slate-400'}`}>{m === 'pay' ? '✅ I paid it' : "↩️ Can't pay"}</button>)}</div>
           {mode === 'pay' ? <>
             <ol className="flex flex-col gap-2 text-sm">
-              <li className="flex items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400/20 text-xs font-bold text-mint-200">1</span><span className="flex-1">Pay on the official site or your bank app</span><a href={search} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-xl bg-fg/[0.07] px-3 py-2 text-xs font-semibold"><ExternalLink size={13} /> Find site</a></li>
-              <li className="flex items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400/20 text-xs font-bold text-mint-200">2</span><span className="flex-1">Screenshot or save the receipt, then attach it</span></li>
+              {rent ? <li className="flex items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400/20 text-xs font-bold text-mint-200">1</span><span className="flex-1">In your bank app: send a FAST/EFT transfer to the IBAN above, to exactly this name, with the description</span></li>
+                : <li className="flex items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400/20 text-xs font-bold text-mint-200">1</span><span className="flex-1">Pay on the official site or your bank app</span><a href={site} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-xl bg-fg/[0.07] px-3 py-2 text-xs font-semibold"><ExternalLink size={13} /> {b.biller && PAY_SITE[b.biller] ? 'Open pay site' : 'Find site'}</a></li>}
+              <li className="flex items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400/20 text-xs font-bold text-mint-200">2</span><span className="flex-1">{rent ? 'Save the bank receipt (dekont), then attach it' : 'Screenshot or save the receipt, then attach it'}</span></li>
             </ol>
             <Attachments files={files} setFiles={setFiles} />
-            <button className="btn-primary py-4" disabled={!files.length} onClick={() => setReview(true)}>Mark as paid</button>
+            {files.length > 0 && <label className="flex items-start gap-3 rounded-2xl bg-mint-400/10 p-3 text-sm"><input type="checkbox" className="mt-0.5 size-5 accent-emerald-400" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+              <span>The receipt shows {rent ? <>the same <b>IBAN/name</b></> : <>the same <b>number</b></>} ({rent ? b.details?.landlord : b.account_ref}) and <b>{lira(b.amount_minor)}</b>.</span></label>}
+            <button className="btn-primary py-4" disabled={!files.length || !checked || (!!claimed && !mine)} onClick={() => setReview(true)}>Mark as paid</button>
           </> : <>
-            <div className="flex flex-wrap gap-2">{REFUSE.map((r) => <button key={r} onClick={() => setNote(r)} className={`chip py-2 ${note === r ? 'bg-sky-400/20 text-sky-200' : 'bg-fg/[0.06] text-slate-300'}`}>{r}</button>)}</div>
+            <div className="flex flex-wrap gap-2">{(rent ? REFUSE_RENT : REFUSE).map((r) => <button key={r} onClick={() => setNote(r)} className={`chip py-2 ${note === r ? 'bg-sky-400/20 text-sky-200' : 'bg-fg/[0.06] text-slate-300'}`}>{r}</button>)}</div>
             <input className="input text-sm" maxLength={200} placeholder="Or write the reason (sent to the user)" value={note} onChange={(e) => setNote(e.target.value)} />
-            <button className="btn-ghost py-4" disabled={!note.trim()} onClick={() => setReview(true)}><Undo2 size={16} /> Refund {lira(Number(b.amount_minor) + Number(b.fee_minor))}</button>
+            <button className="btn-ghost py-4" disabled={!note.trim() || (!!claimed && !mine)} onClick={() => setReview(true)}><Undo2 size={16} /> Refund {lira(Number(b.amount_minor) + Number(b.fee_minor))}</button>
+          </>}
           </>}
         </div>
       )}
