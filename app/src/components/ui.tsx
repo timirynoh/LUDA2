@@ -30,6 +30,8 @@ export function Header({ title, back, right, sub }: { title: string; back?: bool
 // While any sheet is open the page behind it can't scroll. Phones scroll the page when the keyboard opens; without
 // this the sheet was left pushed up and cut off after the keyboard closed (owner's report on the support form).
 let openSheets = 0, savedY = 0
+/** True while any pop-up (sheet) is open, e.g. someone is in the middle of a payment. */
+export const anySheetOpen = () => openSheets > 0
 function lockPage() {
   if (openSheets++ === 0) { savedY = window.scrollY; document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden' }
 }
