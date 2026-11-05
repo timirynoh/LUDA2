@@ -10,6 +10,7 @@ import { checkText } from '../lib/moderation'
 import { uid, useStore } from '../lib/store'
 import { LIVE, api } from '../lib/live'
 import { useLive } from '../lib/liveStore'
+import { disablePush, enablePush, needsInstall, pushPrefs, pushTest, serverPushActive } from '../lib/push'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -299,26 +300,60 @@ function LiveChallenges() {
 export function NotificationSettings() {
   const { s, set, toast } = useStore()
   const supported = typeof window !== 'undefined' && 'Notification' in window
+  const [busy, setBusy] = useState(false)
+  const [iosHelp, setIosHelp] = useState(false)
+  const on = LIVE ? s.pushOn && serverPushActive() : s.pushOn
   const enable = async () => {
+    if (LIVE) {
+      setBusy(true)
+      const r = await enablePush(s.notifPrefs)
+      setBusy(false)
+      if (r === 'on') {
+        set((p) => ({ ...p, pushOn: true }))
+        const t = await pushTest().catch(() => ({ sent: 0 }))
+        toast({ title: t.sent ? 'Notifications are on. Check your phone' : 'Notifications are on', emoji: '🔔' })
+      } else if (r === 'install') setIosHelp(true)
+      else if (r === 'denied') toast({ title: 'Notifications blocked. Allow them in your phone/browser settings', emoji: '🔕' })
+      else if (r === 'unsupported') toast({ title: 'This browser doesn’t support notifications here', emoji: 'ℹ️' })
+      else toast({ title: 'Couldn’t turn on notifications. Please try again', emoji: '⚠️' })
+      return
+    }
     if (!supported) return toast({ title: 'This browser doesn’t support notifications here', emoji: 'ℹ️' })
     const r = await Notification.requestPermission().catch(() => 'denied' as NotificationPermission)
     if (r === 'granted') { set((p) => ({ ...p, pushOn: true })); new Notification('🔔 Luda', { body: 'Notifications are on. We’ll only send what you choose.' }) }
     else toast({ title: 'Notifications blocked. Allow them in your phone/browser settings', emoji: '🔕' })
   }
+  const disable = async () => {
+    if (LIVE) { setBusy(true); await disablePush(); setBusy(false) }
+    set((p) => ({ ...p, pushOn: false }))
+  }
+  const toggle = (key: string) => {
+    const next = { ...s.notifPrefs, [key]: !s.notifPrefs[key as keyof typeof s.notifPrefs] }
+    set((p) => ({ ...p, notifPrefs: next }))
+    if (LIVE) void pushPrefs(next)
+  }
   return (
     <section className="card">
       <div className="flex items-center gap-3">
-        <Bell className={s.pushOn ? 'text-mint-300' : 'text-slate-500'} />
-        <div className="flex-1"><p className="font-semibold">Phone notifications</p><p className="text-xs text-slate-400">{s.pushOn ? 'On: choose what you want below' : 'Get alerts for money, classes, chats & more'}</p></div>
-        {s.pushOn ? <button className="chip bg-fg/5 py-2 text-slate-300" onClick={() => set((p) => ({ ...p, pushOn: false }))}>Turn off</button> : <button className="btn-primary px-3 py-2 text-sm" onClick={enable}>Turn on</button>}
+        <Bell className={on ? 'text-mint-300' : 'text-slate-500'} />
+        <div className="flex-1"><p className="font-semibold">Phone notifications</p><p className="text-xs text-slate-400">{on ? 'On: choose what you want below' : 'Get alerts for money, classes, chats & more'}</p></div>
+        {on ? <button className="chip bg-fg/5 py-2 text-slate-300" disabled={busy} onClick={() => void disable()}>Turn off</button> : <button className="btn-primary px-3 py-2 text-sm" disabled={busy} onClick={() => void enable()}>{busy ? '…' : 'Turn on'}</button>}
       </div>
+      {LIVE && !on && (iosHelp || needsInstall()) && (
+        <div className="mt-3 rounded-2xl bg-sky-400/10 p-3 text-xs text-sky-100">
+          <p className="font-semibold">📱 On iPhone or iPad</p>
+          <p className="mt-1">Apple only allows notifications in apps on the Home Screen. In Safari tap Share, then “Add to Home Screen”. Open Luda from the new icon and turn notifications on there.</p>
+        </div>
+      )}
       <div className="mt-3 grid grid-cols-2 gap-2">
         {NOTIF_CATS.map((c) => (
-          <button key={c.key} onClick={() => set((p) => ({ ...p, notifPrefs: { ...p.notifPrefs, [c.key]: !p.notifPrefs[c.key] } }))}
+          <button key={c.key} onClick={() => toggle(c.key)}
             className={`rounded-2xl p-2.5 text-start text-xs font-semibold ${s.notifPrefs[c.key] ? 'bg-mint-400/15 text-mint-200 ring-1 ring-mint-400/40' : 'bg-fg/5 text-slate-400'}`}>{c.emoji} {c.label}</button>
         ))}
       </div>
-      <p className="mt-2 text-[11px] text-slate-500">Everything also appears in your 🔔 inbox. In the installed app, notifications arrive even when Luda is closed.</p>
+      {LIVE && on && <button className="mt-3 w-full rounded-2xl bg-fg/5 py-2.5 text-xs font-semibold text-slate-300" disabled={busy}
+        onClick={async () => { const t = await pushTest().catch(() => ({ sent: 0 })); toast({ title: t.sent ? 'Test sent. Check your phone' : 'Couldn’t reach this phone. Turn notifications off and on again', emoji: t.sent ? '🔔' : '⚠️' }) }}>Send a test notification</button>}
+      <p className="mt-2 text-[11px] text-slate-500">{LIVE ? 'Luda sends these from its server, so they arrive even when the app is closed. Everything also appears in your 🔔 inbox.' : 'Everything also appears in your 🔔 inbox.'}</p>
     </section>
   )
 }

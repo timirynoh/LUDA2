@@ -54,6 +54,7 @@ import { GuidePage, TermsGate } from './components/LiveGuides'
 import { PasscodeNudge } from './components/Passcode'
 import { TicketCheck } from './components/TicketCheck'
 import { useTodoAlerts } from './components/LiveTodo'
+import { usePushSync } from './components/PushSync'
 import { useUniReminders } from './components/LiveUni'
 import LiveBoard from './screens/LiveBoard'
 import LiveChats from './screens/LiveChats'
@@ -88,6 +89,7 @@ export default function App() {
   useRateAlerts()
   useReferralProgress()
   useTodoAlerts()
+  usePushSync()
   useUniReminders()
   usePromoConfirms()
   useOAuthReturn()

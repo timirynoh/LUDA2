@@ -6,6 +6,9 @@ import './index.css'
 import App from './App'
 import { StoreProvider } from './lib/store'
 import { LiveProvider } from './lib/liveStore'
+import { registerWorker } from './lib/push'
+
+registerWorker()
 
 // Embedded/sandboxed hosts can't use URL paths, so they route in memory.
 const Router = import.meta.env.VITE_ROUTER === 'memory' ? MemoryRouter : BrowserRouter

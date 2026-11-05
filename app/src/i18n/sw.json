@@ -2905,5 +2905,15 @@
 "{} spend-only": "{} ya matumizi tu",
 "You can buy up to ₺5,000 of lira with Instant per 24 hours. Try again later, or use P2P.": "Unaweza kununua hadi ₺5,000 kwa Instant kila saa 24. Jaribu tena baadaye, au tumia P2P.",
 "Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "Lira iliyonunuliwa kwa Instant inaweza kutumika ndani ya Luda tu (bili, tiketi, Market, Flash). Unaweza kutuma hadi {}.",
-"Couldn't load places right now. Please try again.": "Imeshindikana kupakia maeneo kwa sasa. Tafadhali jaribu tena."
+"Couldn't load places right now. Please try again.": "Imeshindikana kupakia maeneo kwa sasa. Tafadhali jaribu tena.",
+"Apple only allows notifications in apps on the Home Screen. In Safari tap Share, then “Add to Home Screen”. Open Luda from the new icon and turn notifications on there.": "Apple huruhusu arifa kwa programu zilizo kwenye Skrini ya Mwanzo tu. Kwenye Safari gusa Shiriki, kisha “Ongeza kwenye Skrini ya Mwanzo”. Fungua Luda kutoka kwenye aikoni mpya na uwashe arifa hapo.",
+"Couldn’t reach this phone. Turn notifications off and on again": "Imeshindikana kufikia simu hii. Zima arifa kisha uziwashe tena",
+"Couldn’t turn on notifications. Please try again": "Imeshindikana kuwasha arifa. Tafadhali jaribu tena",
+"Everything also appears in your 🔔 inbox.": "Kila kitu pia kinaonekana kwenye kikasha chako 🔔.",
+"Luda sends these from its server, so they arrive even when the app is closed. Everything also appears in your 🔔 inbox.": "Luda huzituma kutoka kwenye seva yake, hivyo zinafika hata programu ikiwa imefungwa. Kila kitu pia kinaonekana kwenye kikasha chako 🔔.",
+"Notifications are on": "Arifa zimewashwa",
+"Notifications are on. Check your phone": "Arifa zimewashwa. Angalia simu yako",
+"Send a test notification": "Tuma arifa ya majaribio",
+"Test sent. Check your phone": "Jaribio limetumwa. Angalia simu yako",
+"📱 On iPhone or iPad": "📱 Kwenye iPhone au iPad"
 }

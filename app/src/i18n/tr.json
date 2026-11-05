@@ -2904,5 +2904,15 @@
 "{} spend-only": "{} sadece harcamalık",
 "You can buy up to ₺5,000 of lira with Instant per 24 hours. Try again later, or use P2P.": "24 saatte Instant ile en fazla 5.000 ₺ lira alabilirsin. Sonra tekrar dene veya P2P kullan.",
 "Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "Instant ile alınan lira yalnızca Luda'da harcanabilir (faturalar, biletler, Market, Flash). En fazla {} gönderebilirsin.",
-"Couldn't load places right now. Please try again.": "Şu anda yerler yüklenemedi. Lütfen tekrar deneyin."
+"Couldn't load places right now. Please try again.": "Şu anda yerler yüklenemedi. Lütfen tekrar deneyin.",
+"Apple only allows notifications in apps on the Home Screen. In Safari tap Share, then “Add to Home Screen”. Open Luda from the new icon and turn notifications on there.": "Apple bildirimlere yalnızca Ana Ekran'daki uygulamalarda izin verir. Safari'de Paylaş'a, ardından “Ana Ekrana Ekle”ye dokunun. Luda'yı yeni simgeden açın ve bildirimleri orada açın.",
+"Couldn’t reach this phone. Turn notifications off and on again": "Bu telefona ulaşılamadı. Bildirimleri kapatıp yeniden açın",
+"Couldn’t turn on notifications. Please try again": "Bildirimler açılamadı. Lütfen tekrar deneyin",
+"Everything also appears in your 🔔 inbox.": "Her şey 🔔 gelen kutunuzda da görünür.",
+"Luda sends these from its server, so they arrive even when the app is closed. Everything also appears in your 🔔 inbox.": "Luda bunları kendi sunucusundan gönderir, böylece uygulama kapalıyken bile gelir. Her şey 🔔 gelen kutunuzda da görünür.",
+"Notifications are on": "Bildirimler açık",
+"Notifications are on. Check your phone": "Bildirimler açık. Telefonunuza bakın",
+"Send a test notification": "Deneme bildirimi gönder",
+"Test sent. Check your phone": "Deneme gönderildi. Telefonunuza bakın",
+"📱 On iPhone or iPad": "📱 iPhone veya iPad'de"
 }

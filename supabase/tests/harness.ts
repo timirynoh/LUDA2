@@ -104,6 +104,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       ['10987654321', { first_name: 'BOLA', last_name: 'ADEYEMI', date_of_birth: '15-Apr-2000' }]]),
     calls: [] as string[],
     overpassDown: false,
+    pushes: [] as { endpoint: string; headers: Record<string, string>; body: Uint8Array }[],
     didit: new Map<string, Record<string, unknown>>(), // session id -> decision JSON
     files: new Map<string, number>(), // storage path -> size
     diditN: 0,
@@ -196,6 +197,11 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       if (url.pathname === '/v3/session/' && init?.method === 'POST') { const id = 'ds_' + ++world.diditN; world.calls.push('didit-start:' + body.vendor_data); return ok({ session_id: id, url: `https://verify.didit.me/session/${id}` }, 201) }
       const m = url.pathname.match(/^\/v3\/session\/([^/]+)\/decision\/$/)
       if (m) return ok(world.didit.get(m[1]) ?? { status: 'Not Started', id_verifications: null })
+    }
+    // Web Push services (phone notifications): record what was sent; an endpoint containing 'gone' has expired
+    if (url.hostname.endsWith('.push.test')) {
+      world.pushes.push({ endpoint: u, headers: Object.fromEntries(new Headers(init?.headers).entries()), body: new Uint8Array(init?.body as ArrayBuffer) })
+      return u.includes('gone') ? ok({}, 410) : ok({}, 201)
     }
     // OpenStreetMap Overpass (Nearby directory): first mirror down when world.overpassDown, else real-looking data
     if (/overpass/.test(url.host)) {

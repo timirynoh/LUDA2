@@ -2886,5 +2886,15 @@
 "{} spend-only": "{} à dépenser uniquement",
 "You can buy up to ₺5,000 of lira with Instant per 24 hours. Try again later, or use P2P.": "Vous pouvez acheter jusqu'à 5 000 ₺ avec Instant par 24 heures. Réessayez plus tard ou utilisez le P2P.",
 "Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "Les livres achetées avec Instant ne peuvent être dépensées que dans Luda (factures, billets, Market, Flash). Vous pouvez envoyer jusqu'à {}.",
-"Couldn't load places right now. Please try again.": "Impossible de charger les lieux pour le moment. Veuillez réessayer."
+"Couldn't load places right now. Please try again.": "Impossible de charger les lieux pour le moment. Veuillez réessayer.",
+"Apple only allows notifications in apps on the Home Screen. In Safari tap Share, then “Add to Home Screen”. Open Luda from the new icon and turn notifications on there.": "Apple n’autorise les notifications que pour les apps sur l’écran d’accueil. Dans Safari, touchez Partager, puis « Sur l’écran d’accueil ». Ouvrez Luda depuis la nouvelle icône et activez les notifications.",
+"Couldn’t reach this phone. Turn notifications off and on again": "Impossible de joindre ce téléphone. Désactivez puis réactivez les notifications",
+"Couldn’t turn on notifications. Please try again": "Impossible d’activer les notifications. Veuillez réessayer",
+"Everything also appears in your 🔔 inbox.": "Tout apparaît aussi dans votre boîte 🔔.",
+"Luda sends these from its server, so they arrive even when the app is closed. Everything also appears in your 🔔 inbox.": "Luda les envoie depuis son serveur : elles arrivent même quand l’app est fermée. Tout apparaît aussi dans votre boîte 🔔.",
+"Notifications are on": "Les notifications sont activées",
+"Notifications are on. Check your phone": "Les notifications sont activées. Regardez votre téléphone",
+"Send a test notification": "Envoyer une notification test",
+"Test sent. Check your phone": "Test envoyé. Regardez votre téléphone",
+"📱 On iPhone or iPad": "📱 Sur iPhone ou iPad"
 }

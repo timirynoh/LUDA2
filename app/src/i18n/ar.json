@@ -2916,5 +2916,15 @@
 "{} spend-only": "{} للإنفاق فقط",
 "You can buy up to ₺5,000 of lira with Instant per 24 hours. Try again later, or use P2P.": "يمكنك شراء حتى 5,000 ₺ عبر Instant كل 24 ساعة. حاول لاحقاً أو استخدم P2P.",
 "Lira bought with Instant can only be spent in Luda (bills, tickets, Market, Flash). You can send up to {}.": "الليرة المشتراة عبر Instant تُنفق داخل Luda فقط (الفواتير والتذاكر وMarket وFlash). يمكنك إرسال حتى {}.",
-"Couldn't load places right now. Please try again.": "تعذّر تحميل الأماكن الآن. يُرجى المحاولة مرة أخرى."
+"Couldn't load places right now. Please try again.": "تعذّر تحميل الأماكن الآن. يُرجى المحاولة مرة أخرى.",
+"Apple only allows notifications in apps on the Home Screen. In Safari tap Share, then “Add to Home Screen”. Open Luda from the new icon and turn notifications on there.": "تسمح Apple بالإشعارات فقط للتطبيقات الموجودة على الشاشة الرئيسية. في Safari اضغط مشاركة ثم «إضافة إلى الشاشة الرئيسية». افتح Luda من الأيقونة الجديدة وفعّل الإشعارات هناك.",
+"Couldn’t reach this phone. Turn notifications off and on again": "تعذّر الوصول إلى هذا الهاتف. أوقف الإشعارات ثم شغّلها مرة أخرى",
+"Couldn’t turn on notifications. Please try again": "تعذّر تشغيل الإشعارات. يُرجى المحاولة مرة أخرى",
+"Everything also appears in your 🔔 inbox.": "يظهر كل شيء أيضًا في صندوق 🔔 الوارد.",
+"Luda sends these from its server, so they arrive even when the app is closed. Everything also appears in your 🔔 inbox.": "يرسلها Luda من خادمه، لذا تصل حتى عندما يكون التطبيق مغلقًا. يظهر كل شيء أيضًا في صندوق 🔔 الوارد.",
+"Notifications are on": "الإشعارات مفعّلة",
+"Notifications are on. Check your phone": "الإشعارات مفعّلة. تحقّق من هاتفك",
+"Send a test notification": "إرسال إشعار تجريبي",
+"Test sent. Check your phone": "تم إرسال الاختبار. تحقّق من هاتفك",
+"📱 On iPhone or iPad": "📱 على iPhone أو iPad"
 }

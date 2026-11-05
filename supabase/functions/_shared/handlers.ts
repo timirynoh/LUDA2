@@ -2,6 +2,7 @@
 // Rules: the server owns every balance and price; money moves only through the SQL
 // functions (atomic, idempotent); deposits are confirmed with the provider before
 // crediting; spending needs the user's PIN; withdrawing and sending need KYC.
+import { newVapid, pushHostOk, sendPush, type PushMsg, type PushSub, type Vapid } from './webpush.ts'
 import { OVERPASS_MIRRORS, PLACE_CATS, PLACE_CITIES, overpassQuery, parseOverpass, type PlaceOut } from './places.ts'
 import { hashPin, randomHex, recover, refresh, setPassword, signIn, signUp, userFromToken, type AuthEnv } from './auth.ts'
 import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion } from './webauthn.ts'
@@ -19,6 +20,7 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv {
   APP_URL: string
   ALLOWED_ORIGINS?: string
   TICKET_QR_SECRET?: string
+  PUSH_ALLOW_TEST?: string
   SUPABASE_URL: string
   AUTH_KEY: string // key used to talk to Supabase Auth
   SELL_OPERATORS?: string
@@ -191,6 +193,7 @@ async function kycSync(p: Profile, env: Env, d: Deps): Promise<{ status: Profile
     }
     throw e
   }
+  await pushUser(env, d, p.user_id, { title: '🪪 Your ID is verified', body: 'Withdrawals, P2P, Market selling and Flash jobs are now unlocked', url: '/wallet', tag: 'kyc', cat: 'security' })
   return { status: 'verified' }
 }
 
@@ -361,6 +364,7 @@ export async function finalizeDeposit(reference: string, env: Env, d: Deps, sour
   }
   await d.db.depositPaid(reference, v.providerTxId)
   await d.db.log(reference, 'paid', { providerTxId: v.providerTxId })
+  if (p.user_id) await pushUser(env, d, p.user_id, { title: '💰 Top-up received', body: `${fmtMoney(p.credit_minor ?? p.amount_minor, p.credit_currency ?? p.currency)} added to your wallet`, url: '/wallet', tag: `dep:${reference}`, cat: 'money' })
   return { ...p, status: 'paid' }
 }
 
@@ -394,6 +398,9 @@ export async function settleWithdrawal(w: WithdrawalRow, env: Env, d: Deps): Pro
   if (t.status === 'processing' || t.status === w.status) return w.status
   await d.db.withdrawSettle(w.reference, t.status, t.transferCode, null)
   await d.db.log(w.reference, `withdraw_${t.status}`, { provider: w.provider ?? 'paystack' })
+  await pushUser(env, d, w.user_id, t.status === 'paid'
+    ? { title: '🏦 Withdrawal sent', body: `${fmtMoney(w.amount_minor, w.currency)} is on its way to your bank`, url: '/wallet', tag: `wdr:${w.reference}`, cat: 'money' }
+    : { title: '↩️ Withdrawal refunded', body: `${fmtMoney(w.amount_minor, w.currency)} is back in your wallet`, url: '/wallet', tag: `wdr:${w.reference}`, cat: 'money' })
   return t.status
 }
 
@@ -604,7 +611,7 @@ const BANNER_THEMES = ['mint', 'sunset', 'ocean', 'grape', 'gold', 'night']
 
 const routes: Record<string, Route> = {
   /* ---- public ---- */
-  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env), fxMargin: margin(env), ...featureFees(env) } }),
+  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env), fxMargin: margin(env), ...featureFees(env) }, push: (await vapid(d).catch(() => null))?.publicKey ?? null }),
 
   'GET username': async ({ d, url }) => {
     const u = (url.searchParams.get('u') ?? '').toLowerCase()
@@ -863,6 +870,7 @@ const routes: Record<string, Route> = {
         { user_id: to.user_id, currency: cur, amount_minor: amount, kind: 'receive', ref, meta: { from: p.username, note } },
       ])
     } catch (e) { moneyMsg(e) }
+    await pushUser(env, d, to.user_id, { title: `💸 You received ${fmtMoney(amount, cur)}`, body: `From @${p.username}${note ? ` · ${note}` : ''}`, url: '/wallet', tag: `recv:${ref}`, cat: 'money' })
     return { ok: true, to: to.username }
   },
 
@@ -1376,6 +1384,8 @@ const routes: Record<string, Route> = {
     const r = await d.db.fn<{ ok: boolean }>('luda_bill_settle', { p_bill: id, p_paid: paid, p_note: note || 'Paid by the Luda team', p_receipt: receipt })
     if (!r.ok) throw new Fail('This bill was already handled', 409)
     await d.db.log(id, paid ? 'admin_bill_paid' : 'admin_bill_refunded', { by: a.username, note })
+    const owner = await d.db.fn<string | null>('luda_bill_user', { p_bill: id }).catch(() => null)
+    if (owner) await pushUser(env, d, owner, paid ? { title: '🧾 Your bill is paid', body: 'The receipt is in Bills', url: '/bills', tag: `bill:${id}`, cat: 'money' } : { title: '↩️ Bill refunded', body: note, url: '/bills', tag: `bill:${id}`, cat: 'money' })
     return { ok: true }
   },
 
@@ -1932,40 +1942,40 @@ const routes: Record<string, Route> = {
   },
 
   /* ---------------- "To do" on Home: everything waiting for this user, worked out on the server ---------------- */
+  /* ---------------- phone notifications (Web Push) ---------------- */
+  'POST push-subscribe': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await limit(d, `pushsub:${p.user_id}`, 30, 3600)
+    const endpoint = String(body.endpoint ?? ''), keys = (body.keys ?? {}) as Record<string, unknown>
+    const p256dh = String(keys.p256dh ?? ''), auth = String(keys.auth ?? '')
+    if (endpoint.length > 1000 || !pushHostOk(endpoint, env.PUSH_ALLOW_TEST === '1')) throw new Fail("This browser can't receive notifications from Luda")
+    if (!/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) throw new Fail('Invalid subscription')
+    await d.db.fn('luda_push_save', { p_user: p.user_id, p_endpoint: endpoint, p_p256dh: p256dh, p_auth: auth, p_prefs: pushPrefs(body.prefs), p_ua: req.headers.get('user-agent') ?? '' })
+    // Learn what's already waiting so it doesn't all buzz at once; only new things are sent from now on.
+    const items = (await todoItems(p, env, d).catch(() => [])).filter((i) => i.level !== 'info')
+    await d.db.fn('luda_push_mark', { p_user: p.user_id, p_keys: { items: items.map((i) => i.key) } })
+    return { ok: true }
+  },
+  'POST push-prefs': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await d.db.fn('luda_push_prefs', { p_user: p.user_id, p_endpoint: String(body.endpoint ?? '').slice(0, 1000), p_prefs: pushPrefs(body.prefs) })
+    return { ok: true }
+  },
+  'POST push-unsubscribe': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    await d.db.fn('luda_push_remove', { p_user: p.user_id, p_endpoint: String(body.endpoint ?? '').slice(0, 1000) })
+    return { ok: true }
+  },
+  'POST push-test': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    await limit(d, `pushtest:${p.user_id}`, 10, 3600)
+    const sent = await pushUser(env, d, p.user_id, { title: '🔔 Luda notifications are on', body: "You'll get alerts here even when Luda is closed", url: '/', tag: 'test' })
+    return { sent }
+  },
+
   'GET todo': async ({ req, env, d }) => {
     const p = await me(req, env, d)
-    const t = await d.db.fn<Record<string, any>>('luda_todo', { p_user: p.user_id })
-    const sym: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€', GBP: '£', NGN: '₦' }
-    const amt = (minor: number, cur: string) => `${sym[cur] ?? ''}${(Number(minor) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
-    type Item = { key: string; emoji: string; title: string; sub?: string; to: string; level: 'urgent' | 'action' | 'info' }
-    const items: Item[] = []
-    if (p.frozen) items.push({ key: 'frozen', emoji: '🧊', title: 'Your account is on hold', sub: 'Money can\'t leave your wallet until it\'s unfrozen', to: '/security', level: 'urgent' })
-    if (p.pin_hash && !p.passcode_hash) items.push({ key: 'passcode', emoji: '🔐', title: 'New: set your 6-digit sign-in code', sub: 'Unlock Luda with 6 digits; your 4-digit PIN is now only for payments', to: '/security?a=passcode', level: 'urgent' })
-    if (!p.pin_hash) items.push({ key: 'pin', emoji: '🔢', title: 'Set your payment PIN', sub: 'You need it to move money', to: '/security', level: 'action' })
-    if (p.kyc_status === 'pending') items.push({ key: 'kyc-pending', emoji: '🪪', title: 'Your ID check is in progress', sub: 'We\'ll tell you as soon as it\'s done', to: '/wallet?a=kyc', level: 'info' })
-    else if (p.kyc_status !== 'verified') items.push({ key: 'kyc', emoji: '🪪', title: 'Verify your ID', sub: 'Unlocks withdrawals, P2P, Market selling, Flash jobs and cash prizes', to: '/wallet?a=kyc', level: 'action' })
-    if (smsEnabled(env) && !p.phone_verified_at) items.push({ key: 'phone', emoji: '📱', title: 'Verify your phone number', sub: 'Keeps your account safe', to: '/security', level: 'action' })
-    for (const o of t.p2p ?? []) {
-      const lira = amt(o.amount, o.asset), to = `/p2p/${o.id}`
-      if (o.status === 'waiting' && !o.payer) items.push({ key: `p2p:${o.id}:send`, emoji: '💸', title: `Send ${lira} to @${o.other}`, sub: 'Then tap "I\'ve sent it" and add the receipt', to, level: 'urgent' })
-      else if (o.status === 'waiting') items.push({ key: `p2p:${o.id}:wait`, emoji: '⏳', title: `Waiting for @${o.other} to send ${lira}`, sub: 'Your Naira is held safely by Luda', to, level: 'info' })
-      else if (o.status === 'sent' && o.payer) items.push({ key: `p2p:${o.id}:release`, emoji: '✅', title: `@${o.other} says they sent ${lira}`, sub: 'Check your own bank app, then release', to, level: 'urgent' })
-      else if (o.status === 'sent') items.push({ key: `p2p:${o.id}:sent`, emoji: '⏳', title: `Waiting for @${o.other} to release your Naira`, to, level: 'info' })
-      if (o.status === 'appeal' && o.askMe && o.askDue) items.push({ key: `p2p:${o.id}:ask:${o.askDue}`, emoji: '🛡️', title: 'The Luda team needs your reply', sub: Date.parse(o.askDue) > Date.now() ? `P2P with @${o.other} · reply before ${new Date(o.askDue).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Nicosia' })}` : `P2P with @${o.other} · the time is up, reply now`, to: `/p2p/${o.id}`, level: 'urgent' })
-      if (o.status === 'appeal' && !(o.askMe && o.askDue)) items.push({ key: `p2p:${o.id}:appeal:${o.stage}`, emoji: '⚖️', title: `P2P dispute with @${o.other}`, sub: o.stage === 'negotiation' ? 'Try to sort it out in the order chat' : 'The Luda team is reviewing it', to, level: o.stage === 'negotiation' ? 'action' : 'info' })
-    }
-    for (const o of t.p2p ?? []) if (o.remindedBy) items.push({ key: `p2p:${o.id}:remind:${o.remindedAt}`, emoji: '🔔', title: `@${o.remindedBy} is waiting for you`, sub: 'Open your P2P order', to: `/p2p/${o.id}`, level: 'urgent' })
-    for (const o of t.rate ?? []) items.push({ key: `p2p:${o.id}:rate`, emoji: '⭐', title: `Rate your trade with @${o.other}`, sub: 'Helps everyone trade safely', to: `/p2p/${o.id}`, level: 'info' })
-    for (const l of t.bought ?? []) items.push({ key: `buy:${l.id}`, emoji: '📦', title: `Got "${l.title}"?`, sub: `Confirm you received it so @${l.seller} gets paid`, to: '/market', level: 'urgent' })
-    for (const l of t.sold ?? []) items.push({ key: `sold:${l.id}`, emoji: '🛍️', title: `Hand over "${l.title}" to @${l.buyer}`, sub: `${amt(l.price, 'TRY')} is held until they confirm`, to: '/market', level: 'action' })
-    for (const j of t.flashPosted ?? []) items.push({ key: `flash:${j.id}`, emoji: '⚡', title: `@${j.helper} is doing "${j.title}"`, sub: 'Tap Job done when it\'s finished', to: '/flash', level: 'action' })
-    for (const j of t.flashHelping ?? []) items.push({ key: `help:${j.id}`, emoji: '💪🏿', title: `Do "${j.title}" for @${j.poster}`, sub: `${amt(j.reward, 'TRY')} when they tap Job done`, to: '/flash', level: 'info' })
-    for (const c of t.cases ?? []) items.push({ key: `case:${c.id}`, emoji: '💬', title: 'The Luda team replied to you', sub: String(c.subject ?? ''), to: '/help', level: 'urgent' })
-    for (const f of t.fees ?? []) items.push({ key: `fee:${f.id}:${f.due}`, emoji: '🎓', title: `${f.title}: ${amt(f.amount, f.currency)} due ${new Date(`${f.due}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`, sub: 'Mark it paid once it\'s done', to: '/uni?tab=fees', level: f.due <= cyprusDay() ? 'urgent' : 'action' })
-    if (Number(t.bills)) items.push({ key: 'bills', emoji: '🧾', title: Number(t.bills) === 1 ? 'The Luda team is paying your bill' : `The Luda team is paying ${t.bills} bills`, to: '/bills', level: 'info' })
-    if (Number(t.withdrawals)) items.push({ key: 'withdrawals', emoji: '🏦', title: 'Withdrawal on its way to your bank', to: '/wallet', level: 'info' })
-    const rank = { urgent: 0, action: 1, info: 2 }
-    return { items: items.sort((a, b) => rank[a.level] - rank[b.level]) }
+    return { items: await todoItems(p, env, d) }
   },
 
   /* ---------------- university calendars (staff enter official dates) + personal fee plans ---------------- */
@@ -2210,6 +2220,102 @@ const routes: Record<string, Route> = {
   },
 }
 
+/** The person's To do list (Home card + phone notifications). Built on the server from real state. */
+type TodoItem = { key: string; emoji: string; title: string; sub?: string; to: string; level: 'urgent' | 'action' | 'info' }
+async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
+  const t = await d.db.fn<Record<string, any>>('luda_todo', { p_user: p.user_id })
+  const sym: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€', GBP: '£', NGN: '₦' }
+  const amt = (minor: number, cur: string) => `${sym[cur] ?? ''}${(Number(minor) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+  const items: TodoItem[] = []
+  if (p.frozen) items.push({ key: 'frozen', emoji: '🧊', title: 'Your account is on hold', sub: 'Money can\'t leave your wallet until it\'s unfrozen', to: '/security', level: 'urgent' })
+  if (p.pin_hash && !p.passcode_hash) items.push({ key: 'passcode', emoji: '🔐', title: 'New: set your 6-digit sign-in code', sub: 'Unlock Luda with 6 digits; your 4-digit PIN is now only for payments', to: '/security?a=passcode', level: 'urgent' })
+  if (!p.pin_hash) items.push({ key: 'pin', emoji: '🔢', title: 'Set your payment PIN', sub: 'You need it to move money', to: '/security', level: 'action' })
+  if (p.kyc_status === 'pending') items.push({ key: 'kyc-pending', emoji: '🪪', title: 'Your ID check is in progress', sub: 'We\'ll tell you as soon as it\'s done', to: '/wallet?a=kyc', level: 'info' })
+  else if (p.kyc_status !== 'verified') items.push({ key: 'kyc', emoji: '🪪', title: 'Verify your ID', sub: 'Unlocks withdrawals, P2P, Market selling, Flash jobs and cash prizes', to: '/wallet?a=kyc', level: 'action' })
+  if (smsEnabled(env) && !p.phone_verified_at) items.push({ key: 'phone', emoji: '📱', title: 'Verify your phone number', sub: 'Keeps your account safe', to: '/security', level: 'action' })
+  for (const o of t.p2p ?? []) {
+    const lira = amt(o.amount, o.asset), to = `/p2p/${o.id}`
+    if (o.status === 'waiting' && !o.payer) items.push({ key: `p2p:${o.id}:send`, emoji: '💸', title: `Send ${lira} to @${o.other}`, sub: 'Then tap "I\'ve sent it" and add the receipt', to, level: 'urgent' })
+    else if (o.status === 'waiting') items.push({ key: `p2p:${o.id}:wait`, emoji: '⏳', title: `Waiting for @${o.other} to send ${lira}`, sub: 'Your Naira is held safely by Luda', to, level: 'info' })
+    else if (o.status === 'sent' && o.payer) items.push({ key: `p2p:${o.id}:release`, emoji: '✅', title: `@${o.other} says they sent ${lira}`, sub: 'Check your own bank app, then release', to, level: 'urgent' })
+    else if (o.status === 'sent') items.push({ key: `p2p:${o.id}:sent`, emoji: '⏳', title: `Waiting for @${o.other} to release your Naira`, to, level: 'info' })
+    if (o.status === 'appeal' && o.askMe && o.askDue) items.push({ key: `p2p:${o.id}:ask:${o.askDue}`, emoji: '🛡️', title: 'The Luda team needs your reply', sub: Date.parse(o.askDue) > Date.now() ? `P2P with @${o.other} · reply before ${new Date(o.askDue).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Nicosia' })}` : `P2P with @${o.other} · the time is up, reply now`, to: `/p2p/${o.id}`, level: 'urgent' })
+    if (o.status === 'appeal' && !(o.askMe && o.askDue)) items.push({ key: `p2p:${o.id}:appeal:${o.stage}`, emoji: '⚖️', title: `P2P dispute with @${o.other}`, sub: o.stage === 'negotiation' ? 'Try to sort it out in the order chat' : 'The Luda team is reviewing it', to, level: o.stage === 'negotiation' ? 'action' : 'info' })
+  }
+  for (const o of t.p2p ?? []) if (o.remindedBy) items.push({ key: `p2p:${o.id}:remind:${o.remindedAt}`, emoji: '🔔', title: `@${o.remindedBy} is waiting for you`, sub: 'Open your P2P order', to: `/p2p/${o.id}`, level: 'urgent' })
+  for (const o of t.rate ?? []) items.push({ key: `p2p:${o.id}:rate`, emoji: '⭐', title: `Rate your trade with @${o.other}`, sub: 'Helps everyone trade safely', to: `/p2p/${o.id}`, level: 'info' })
+  for (const l of t.bought ?? []) items.push({ key: `buy:${l.id}`, emoji: '📦', title: `Got "${l.title}"?`, sub: `Confirm you received it so @${l.seller} gets paid`, to: '/market', level: 'urgent' })
+  for (const l of t.sold ?? []) items.push({ key: `sold:${l.id}`, emoji: '🛍️', title: `Hand over "${l.title}" to @${l.buyer}`, sub: `${amt(l.price, 'TRY')} is held until they confirm`, to: '/market', level: 'action' })
+  for (const j of t.flashPosted ?? []) items.push({ key: `flash:${j.id}`, emoji: '⚡', title: `@${j.helper} is doing "${j.title}"`, sub: 'Tap Job done when it\'s finished', to: '/flash', level: 'action' })
+  for (const j of t.flashHelping ?? []) items.push({ key: `help:${j.id}`, emoji: '💪🏿', title: `Do "${j.title}" for @${j.poster}`, sub: `${amt(j.reward, 'TRY')} when they tap Job done`, to: '/flash', level: 'info' })
+  for (const c of t.cases ?? []) items.push({ key: `case:${c.id}`, emoji: '💬', title: 'The Luda team replied to you', sub: String(c.subject ?? ''), to: '/help', level: 'urgent' })
+  for (const f of t.fees ?? []) items.push({ key: `fee:${f.id}:${f.due}`, emoji: '🎓', title: `${f.title}: ${amt(f.amount, f.currency)} due ${new Date(`${f.due}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`, sub: 'Mark it paid once it\'s done', to: '/uni?tab=fees', level: f.due <= cyprusDay() ? 'urgent' : 'action' })
+  if (Number(t.bills)) items.push({ key: 'bills', emoji: '🧾', title: Number(t.bills) === 1 ? 'The Luda team is paying your bill' : `The Luda team is paying ${t.bills} bills`, to: '/bills', level: 'info' })
+  if (Number(t.withdrawals)) items.push({ key: 'withdrawals', emoji: '🏦', title: 'Withdrawal on its way to your bank', to: '/wallet', level: 'info' })
+  const rank = { urgent: 0, action: 1, info: 2 }
+  return items.sort((a, b) => rank[a.level] - rank[b.level])
+}
+
+/* ---------------- phone notifications: helpers ---------------- */
+const PUSH_CATS = ['money', 'chats', 'classes', 'rates', 'deals', 'news', 'security'] as const
+function pushPrefs(v: unknown) {
+  const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
+  return Object.fromEntries(PUSH_CATS.map((c) => [c, o[c] !== false]))
+}
+const fmtMoney = (minor: number, cur: string) => `${({ TRY: '₺', NGN: '₦', USD: '$', EUR: '€', GBP: '£' } as Record<string, string>)[cur] ?? `${cur} `}${(Number(minor) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+const pushCat = (to: string, key: string) => to.startsWith('/uni') ? 'classes' : to.startsWith('/help') ? 'chats' : /^(frozen|passcode|pin|kyc|phone)/.test(key) ? 'security' : 'money'
+
+let vapidCache: Vapid | null = null
+/** The server's VAPID key pair: made once, kept in app_keys (never in the app or the repo). */
+async function vapid(d: Deps): Promise<Vapid> {
+  if (vapidCache) return vapidCache
+  let v = await d.db.fn<Vapid | null>('luda_app_key', { p_name: 'vapid', p_value: null })
+  if (!v?.publicKey) v = await d.db.fn<Vapid>('luda_app_key', { p_name: 'vapid', p_value: await newVapid() })
+  return (vapidCache = v)
+}
+
+/** Sends a notification to every phone of this person (respecting their categories). Never throws. */
+export async function pushUser(env: Env, d: Deps, userId: string, msg: PushMsg & { cat?: string }): Promise<number> {
+  try {
+    const subs = await d.db.fn<(PushSub & { prefs: Record<string, boolean> })[]>('luda_push_subs', { p_user: userId })
+    if (!subs?.length) return 0
+    const v = await vapid(d), subject = /^https:\/\//.test(env.APP_URL ?? '') ? env.APP_URL.replace(/\/$/, '') : 'mailto:support@luda.app'
+    let n = 0
+    for (const s of subs) {
+      if (msg.cat && s.prefs?.[msg.cat] === false) continue
+      const r = await sendPush(s, { title: msg.title, body: msg.body, url: msg.url, tag: msg.tag }, v, subject, d.fetch)
+      await d.db.fn('luda_push_result', { p_endpoint: s.endpoint, p_ok: r === 'ok', p_gone: r === 'gone' }).catch(() => {})
+      if (r === 'ok') n++
+    }
+    return n
+  } catch { return 0 }
+}
+
+/** Sends new To do items (urgent/action) to everyone with notifications on: P2P steps, replies, deadlines… */
+export async function pushSweep(env: Env, d: Deps) {
+  const users = await d.db.fn<string[]>('luda_push_users', { p_limit: 500 }).catch(() => [] as string[])
+  for (const u of users ?? []) {
+    try {
+      const p = await d.db.profile(u)
+      if (!p) continue
+      const items = (await todoItems(p, env, d)).filter((i) => i.level !== 'info')
+      const r = await d.db.fn<{ fresh: string[]; first: boolean }>('luda_push_mark', { p_user: u, p_keys: { items: items.map((i) => i.key) } })
+      if (r.first) continue
+      for (const i of items.filter((x) => r.fresh.includes(x.key)).slice(0, 3))
+        await pushUser(env, d, u, { title: `${i.emoji} ${i.title}`, body: i.sub, url: i.to, tag: i.key, cat: pushCat(i.to, i.key) })
+    } catch { /* one person's problem never stops the others */ }
+  }
+}
+
+/** Runs the sweep after actions (so the other person hears about it right away), in the background when possible. */
+async function afterRequest(env: Env, d: Deps, name: string, method: string) {
+  const seconds = method === 'POST' && !name.startsWith('push-') ? 3 : name === 'me' || name === 'todo' ? 30 : 0
+  if (!seconds) return
+  const job = (async () => { if (await d.db.hit('pushsweep', 1, seconds).catch(() => false)) await pushSweep(env, d) })().catch(() => {})
+  const rt = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime
+  if (rt?.waitUntil) rt.waitUntil(job); else await job
+}
+
 export async function handleApi(req: Request, env: Env, d: Deps): Promise<Response> {
   const h = cors(req, env)
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: h })
@@ -2219,7 +2325,9 @@ export async function handleApi(req: Request, env: Env, d: Deps): Promise<Respon
   if (!route) return json({ error: 'Not found' }, 404, h)
   try {
     const body = req.method === 'POST' ? ((await req.json().catch(() => ({}))) as Body) : {}
-    return json((await route({ req, env, d, body, url })) ?? { ok: true }, 200, h)
+    const out = (await route({ req, env, d, body, url })) ?? { ok: true }
+    await afterRequest(env, d, name, req.method)
+    return json(out, 200, h)
   } catch (e) {
     if (e instanceof Fail) return json({ error: e.message }, e.status, h)
     console.error('api error', name, e)

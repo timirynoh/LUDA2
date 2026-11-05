@@ -336,6 +336,9 @@ function pushIfAllowed(s: State, emoji: string, title: string, to?: string) {
   try {
     if (!s.pushOn || !('Notification' in window) || Notification.permission !== 'granted') return
     if (!s.notifPrefs[categoryOf(to, emoji)]) return
-    new Notification(`${emoji} Luda`, { body: title, tag: `${Date.now()}`, icon: './icon-192.png' })
+    const opts = { body: title, tag: `${Date.now()}`, icon: '/icon-192.png', data: { url: to?.startsWith('/') ? to : '/' } }
+    // Phones (Android Chrome) only allow notifications through the service worker.
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) void navigator.serviceWorker.ready.then((r) => r.showNotification(`${emoji} Luda`, opts)).catch(() => {})
+    else new Notification(`${emoji} Luda`, opts)
   } catch { /* not supported here */ }
 }

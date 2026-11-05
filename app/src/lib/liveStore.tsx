@@ -1,5 +1,6 @@
 // Keeps the signed-in user's real wallet (from the server) in React state.
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { forgetPushForAccount } from './push'
 import { LIVE, api, clearRef, clearSession, getSession, liveConfig, pendingRef, type Me } from './live'
 import { useStore } from './store'
 import { toLocalTicket } from './liveTickets'
@@ -78,7 +79,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const wasIn = useRef(s.signedIn)
   useEffect(() => {
     if (!LIVE) return
-    if (wasIn.current && !s.signedIn && getSession()) { clearSession(); setMe(null) } // eslint-disable-line react-hooks/set-state-in-effect
+    if (wasIn.current && !s.signedIn && getSession()) { void forgetPushForAccount().finally(clearSession); setMe(null) } // eslint-disable-line react-hooks/set-state-in-effect
     wasIn.current = s.signedIn
     const out = () => set((p) => ({ ...p, signedIn: false }))
     const rw = () => void refreshRewards()

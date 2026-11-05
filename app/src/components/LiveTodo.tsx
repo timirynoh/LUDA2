@@ -2,6 +2,7 @@
 // server from real state (P2P orders, Market, Flash, support replies, fee plan, ID check…); the phone only shows it.
 // New items that need the user also arrive as a notification (inbox + phone), once each.
 import { ChevronRight, RefreshCw } from 'lucide-react'
+import { serverPushActive } from '../lib/push'
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, getSession, LIVE } from '../lib/live'
@@ -102,7 +103,8 @@ export function useTodoAlerts() {
       try { seen = JSON.parse(localStorage.getItem(key) || '[]') } catch { /* fresh */ }
       const fresh = items.filter((i) => i.level !== 'info' && !seen.includes(i.key))
       // The very first check on this phone just learns what's already there, so old items don't all buzz at once.
-      if (!(first && !localStorage.getItem(key))) for (const i of fresh.slice(0, 3)) notify(i.emoji, i.title, i.to)
+      // When the server sends phone notifications to this phone, it already alerted about these: don't double up.
+      if (!(first && !localStorage.getItem(key)) && !serverPushActive()) for (const i of fresh.slice(0, 3)) notify(i.emoji, i.title, i.to)
       first = false
       const keep = [...new Set([...items.map((i) => i.key), ...seen])].slice(0, 200)
       try { localStorage.setItem(key, JSON.stringify(keep)) } catch { /* private mode */ }
