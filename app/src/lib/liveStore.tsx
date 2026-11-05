@@ -70,7 +70,10 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     const onFocus = () => document.visibilityState === 'visible' && refresh()
     const id = setInterval(onFocus, 60_000)
     document.addEventListener('visibilitychange', onFocus)
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onFocus) }
+    // A notification arrived (or the inbox changed): refresh the 🔔 count right away.
+    const onPush = () => void refresh()
+    window.addEventListener('luda:inbox', onPush)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onFocus); window.removeEventListener('luda:inbox', onPush) }
   }, [s.signedIn, refresh])
 
   // Signing out locally ends the server session too; an expired session signs the app out.

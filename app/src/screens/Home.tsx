@@ -40,6 +40,7 @@ export default function Home() {
   const home = COUNTRIES.find((c) => c.code === s.country)!
   const city = CITIES.find((c) => c.id === s.city)!
   const { me, rewards } = useLive()
+  const bellCount = s.inbox.filter((n) => !n.read).length + (LIVE ? me?.profile.inboxUnread ?? 0 : 0)
   // Live: only quests the server really tracks (it marks them done from what you did).
   const quests = LIVE ? QUESTS.filter((q) => rewards?.questXp && q.id in rewards.questXp) : QUESTS
   // Live mode shows the real wallet (server); the demo shows its local balances.
@@ -64,7 +65,7 @@ export default function Home() {
         </div>
         <Link to="/search" data-tour="search" className="glass grid size-9 shrink-0 place-items-center rounded-2xl min-[380px]:size-10" aria-label="Search"><SearchIcon size={18} /></Link>
         <Link to="/inbox" data-tour="inbox" className="glass relative grid size-9 shrink-0 place-items-center rounded-2xl min-[380px]:size-10" aria-label="Notifications"><Bell size={18} />
-          {s.inbox.some((n) => !n.read) && <span className="absolute -end-1 -top-1 grid min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{s.inbox.filter((n) => !n.read).length}</span>}</Link>
+          {bellCount > 0 && <span className="absolute -end-1 -top-1 grid min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{bellCount > 99 ? '99+' : bellCount}</span>}</Link>
         <button onClick={() => set((p) => ({ ...p, theme: isLight ? 'dark' : 'light' }))} className="glass grid size-10 shrink-0 place-items-center rounded-2xl max-[379px]:hidden" aria-label="Toggle day / night">
           {isLight ? <Moon size={18} className="text-indigo-500" /> : <Sun size={18} className="text-gold-300" />}
         </button>

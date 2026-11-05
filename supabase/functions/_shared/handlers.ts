@@ -193,7 +193,7 @@ async function kycSync(p: Profile, env: Env, d: Deps): Promise<{ status: Profile
     }
     throw e
   }
-  await pushUser(env, d, p.user_id, { title: '🪪 Your ID is verified', body: 'Withdrawals, P2P, Market selling and Flash jobs are now unlocked', url: '/wallet', tag: 'kyc', cat: 'security' })
+  await notifyUser(env, d, p.user_id, { emoji: '🪪', title: 'Your ID is verified', body: 'Withdrawals, P2P, Market selling and Flash jobs are now unlocked', url: '/wallet', tag: 'kyc-verified', cat: 'security' })
   return { status: 'verified' }
 }
 
@@ -398,9 +398,8 @@ export async function settleWithdrawal(w: WithdrawalRow, env: Env, d: Deps): Pro
   if (t.status === 'processing' || t.status === w.status) return w.status
   await d.db.withdrawSettle(w.reference, t.status, t.transferCode, null)
   await d.db.log(w.reference, `withdraw_${t.status}`, { provider: w.provider ?? 'paystack' })
-  await pushUser(env, d, w.user_id, t.status === 'paid'
-    ? { title: '🏦 Withdrawal sent', body: `${fmtMoney(w.amount_minor, w.currency)} is on its way to your bank`, url: '/wallet', tag: `wdr:${w.reference}`, cat: 'money' }
-    : { title: '↩️ Withdrawal refunded', body: `${fmtMoney(w.amount_minor, w.currency)} is back in your wallet`, url: '/wallet', tag: `wdr:${w.reference}`, cat: 'money' })
+  if (t.status === 'paid') await notifyUser(env, d, w.user_id, { emoji: '🏦', title: `Withdrawal sent: ${fmtMoney(w.amount_minor, w.currency)}`, body: 'It’s on its way to your bank', url: '/wallet', tag: `wdr:${w.reference}`, cat: 'money' })
+  else await pushUser(env, d, w.user_id, { title: '↩️ Withdrawal refunded', body: `${fmtMoney(w.amount_minor, w.currency)} is back in your wallet`, url: '/wallet', tag: `wdr:${w.reference}`, cat: 'money' })
   return t.status
 }
 
@@ -665,6 +664,7 @@ const routes: Record<string, Route> = {
     try { session = await signIn(email, String(body.password ?? ''), authEnv(env), d.fetch) } catch (e) { throw new Fail(e instanceof Error ? e.message : 'Sign-in failed', 401) }
     const who = await d.db.profileByEmail(email).catch(() => null)
     if (who) await d.db.fn('luda_sign_in_log', { p_user: who.user_id, p_how: 'password', p_device: deviceOf(req) }).catch(() => {})
+    if (who) await notifyUser(env, d, who.user_id, { emoji: '🔐', title: `New sign-in on ${deviceOf(req)}`, body: 'Not you? Freeze your wallet in Security and change your password', url: '/security', tag: `signin:${Date.now()}`, cat: 'security' })
     return { session }
   },
 
@@ -711,7 +711,7 @@ const routes: Record<string, Route> = {
     const staffOf = await permsOf(p, env, d)
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
     return {
-      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null, university: p.university ?? null, hasPasscode: !!p.passcode_hash, termsVersion: Number(p.terms_version ?? 0), termsCurrent: Number((await d.db.fn<{ version?: number } | null>('luda_guide', { p_slug: 'terms' }).catch(() => null))?.version ?? 0) },
+      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null, university: p.university ?? null, hasPasscode: !!p.passcode_hash, inboxUnread: await d.db.fn<number>('luda_inbox_unread', { p_user: p.user_id }).catch(() => 0), termsVersion: Number(p.terms_version ?? 0), termsCurrent: Number((await d.db.fn<{ version?: number } | null>('luda_guide', { p_slug: 'terms' }).catch(() => null))?.version ?? 0) },
       // Every top-up attempt with its status (pending / paid / failed / mismatch), so the app can show all of them.
       deposits: deposits.map((x) => ({ reference: x.reference, provider: x.provider, status: x.status, chargeMinor: Number(x.amount_minor), currency: x.currency, feeMinor: Number(x.fee_minor ?? 0), creditMinor: Number(x.credit_minor ?? 0), creditCurrency: x.credit_currency ?? 'NGN', createdAt: x.created_at, paidAt: x.paid_at ?? null })),
       fx: await d.db.fn('luda_fx', { p_user: p.user_id }).catch(() => null),
@@ -1102,7 +1102,8 @@ const routes: Record<string, Route> = {
     await d.db.fn('luda_mark_handled', { p_kind: 'case', p_id: c.id, p_staff: a.username })
     await d.db.log(c.id, 'admin_case_reply', { by: a.username, status })
     if ((status === 'resolved' || status === 'rejected') && c.status !== status)
-      await pushUser(env, d, c.user_id, { title: status === 'resolved' ? '✅ Your case is solved' : '📁 Your case was closed', body: 'Tell us how we did, or reopen it if something is still wrong', url: `/help?rate=case:${c.id}`, tag: `case:${c.id}:closed`, cat: 'chats' })
+      await notifyUser(env, d, c.user_id, { emoji: status === 'resolved' ? '✅' : '📁', title: status === 'resolved' ? 'Your case is solved' : 'Your case was closed', body: 'Tell us how we did, or reopen it if something is still wrong', url: `/help?rate=case:${c.id}`, tag: `case:${c.id}:closed:${Date.now()}`, cat: 'chats' })
+    else if (message) await notifyUser(env, d, c.user_id, { emoji: '💬', title: 'The Luda team replied to you', body: c.subject, url: '/help', tag: `case:${c.id}:msg:${Date.now()}`, cat: 'chats', push: false })
     return { ok: true }
   },
 
@@ -1285,6 +1286,8 @@ const routes: Record<string, Route> = {
     await limit(d, `buy:${p.user_id}`, 20, 86400)
     const r = await d.db.fn<{ price_minor: number }>('luda_market_buy', { p_listing: id, p_buyer: p.user_id, p_fee_pct: featureFees(env).marketPct }).catch(featureErr)
     await d.db.log(id, 'market_buy', { buyer: p.username, price: r.price_minor })
+    const pt = await parties(d, 'market', id)
+    if (pt) await notifyUser(env, d, pt.seller, { emoji: '🛍️', title: `@${p.username} bought "${pt.title}"`, body: 'Hand it over; you’re paid when they confirm', url: '/market', tag: `market:${id}:buy:${Date.now()}`, cat: 'money', push: false })
     return { ok: true }
   },
 
@@ -1340,7 +1343,10 @@ const routes: Record<string, Route> = {
     const r = await d.db.fn<Record<string, Record<string, any>[]>>('luda_flash_list', { p_user: p.user_id, p_city: '' })
     if (r.helping.filter((j) => j.status === 'taken').length >= 3) throw new Fail('Finish your current jobs first (max 3 at a time)')
     await limit(d, `flash-take:${p.user_id}`, 10, 86400)
-    return { job: await d.db.fn('luda_flash_take', { p_job: uuid(body.id), p_helper: p.user_id }).catch(featureErr) }
+    const job = await d.db.fn('luda_flash_take', { p_job: uuid(body.id), p_helper: p.user_id }).catch(featureErr)
+    const pt = await parties(d, 'flash', String(body.id))
+    if (pt) await notifyUser(env, d, pt.poster, { emoji: '⚡', title: `@${p.username} is doing "${pt.title}"`, body: 'Tap Job done when it’s finished', url: '/flash', tag: `flash:${body.id}:take:${Date.now()}`, cat: 'money', push: false })
+    return { job }
   },
 
   'POST flash-drop': async ({ req, env, d, body }) => {
@@ -1390,7 +1396,8 @@ const routes: Record<string, Route> = {
     await d.db.log(id, paid ? 'admin_bill_paid' : 'admin_bill_refunded', { by: a.username, note })
     await d.db.fn('luda_mark_handled', { p_kind: 'bill', p_id: id, p_staff: a.username })
     const owner = await d.db.fn<string | null>('luda_bill_user', { p_bill: id }).catch(() => null)
-    if (owner) await pushUser(env, d, owner, paid ? { title: '🧾 Your bill is paid', body: 'The receipt is in Bills. Tell us how it went', url: `/bills?rate=bill:${id}`, tag: `bill:${id}`, cat: 'money' } : { title: '↩️ Bill refunded', body: note, url: '/bills', tag: `bill:${id}`, cat: 'money' })
+    if (owner && paid) await notifyUser(env, d, owner, { emoji: '🧾', title: 'Your bill is paid', body: 'The receipt is in Bills. Tell us how it went', url: `/bills?rate=bill:${id}`, tag: `bill:${id}`, cat: 'money' })
+    else if (owner) await pushUser(env, d, owner, { title: '↩️ Bill refunded', body: note, url: '/bills', tag: `bill:${id}`, cat: 'money' })
     return { ok: true }
   },
 
@@ -1573,6 +1580,8 @@ const routes: Record<string, Route> = {
     const o = await d.db.fn<Record<string, any>>('luda_p2p_order_create', { p_ad: uuid(body.adId), p_taker: p.user_id, p_try: amountTry, p_fee_pct: liraMinor > 0 ? feeTry / liraMinor : 0, p_method: method, p_try_to: tryTo, p_window_min: P2P_RULES.windowMin }).catch(p2pErr)
     await d.db.fn('luda_p2p_set_fee_try', { p_order: o.id, p_fee: feeTry }).catch(() => {})
     await d.db.log(String(o.id), 'p2p_order', { user: p.username, amountTry, ngn: o.amount_ngn, feeTry })
+    const pt = await parties(d, 'p2p', String(o.id))
+    if (pt) await notifyUser(env, d, pt.payer === p.user_id ? pt.sender : pt.payer, { emoji: '🤝', title: `New P2P order from @${p.username}`, body: `${fmtMoney(amountTry, pt.asset)} · open it to continue`, url: `/p2p/${o.id}`, tag: `p2p:${o.id}:new`, cat: 'money', push: false })
     return { order: { ...o, fee_try: feeTry } }
   },
   'GET p2p-orders': async ({ req, env, d }) => {
@@ -1592,6 +1601,8 @@ const routes: Record<string, Route> = {
     const files = await storeFiles(env, d, p.user_id, 'p2p', body.files)
     if (!files.length) throw new Fail('Attach the transfer receipt (screenshot or PDF)')
     await d.db.fn('luda_p2p_sent', { p_order: uuid(body.id), p_user: p.user_id, p_receipt: files }).catch(p2pErr)
+    const pt = await parties(d, 'p2p', String(body.id))
+    if (pt) await notifyUser(env, d, pt.payer, { emoji: '✅', title: `@${p.username} says they sent ${fmtMoney(pt.amount, pt.asset)}`, body: 'Check your own bank app, then release', url: `/p2p/${body.id}`, tag: `p2p:${body.id}:sent`, cat: 'money', push: false })
     return { ok: true }
   },
   'POST p2p-release': async ({ req, env, d, body }) => {
@@ -1604,6 +1615,8 @@ const routes: Record<string, Route> = {
   'POST p2p-cancel': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
     await d.db.fn('luda_p2p_cancel', { p_order: uuid(body.id), p_user: p.user_id }).catch(p2pErr)
+    const pt = await parties(d, 'p2p', String(body.id))
+    if (pt) await notifyUser(env, d, pt.payer === p.user_id ? pt.sender : pt.payer, { emoji: '✖️', title: `@${p.username} cancelled your P2P order`, url: `/p2p/${body.id}`, tag: `p2p:${body.id}:cancel`, cat: 'money' })
     return { ok: true }
   },
   'POST p2p-appeal': async ({ req, env, d, body }) => {
@@ -1611,6 +1624,8 @@ const routes: Record<string, Route> = {
     const reason = clean(body.reason, 300, 'what went wrong', 5)
     await d.db.fn('luda_p2p_appeal2', { p_order: uuid(body.id), p_user: p.user_id, p_reason: reason, p_wait_min: P2P_RULES.appealWaitMin }).catch(p2pErr)
     await d.db.log(String(body.id), 'p2p_appeal', { user: p.username, reason })
+    const pt = await parties(d, 'p2p', String(body.id))
+    if (pt) await notifyUser(env, d, pt.payer === p.user_id ? pt.sender : pt.payer, { emoji: '⚖️', title: `@${p.username} opened an appeal on your P2P order`, body: 'Reply in the order chat', url: `/p2p/${body.id}`, tag: `p2p:${body.id}:appeal`, cat: 'money', push: false })
     return { ok: true }
   },
   'POST p2p-video-start': async ({ req, env, d, body }) => {
@@ -1639,7 +1654,12 @@ const routes: Record<string, Route> = {
     if (!text && !files.length) throw new Fail('Write a message or attach a photo')
     // In an appeal people can send evidence to the Luda team only (Bybit-style): the other person doesn't see it.
     if (body.private) await d.db.fn('luda_p2p_msg_v', { p_order: uuid(body.id), p_user: p.user_id, p_body: text, p_files: files, p_vis: 'staff' }).catch(p2pErr)
-    else await d.db.fn('luda_p2p_msg', { p_order: uuid(body.id), p_user: p.user_id, p_body: text, p_files: files }).catch(p2pErr)
+    else {
+      await d.db.fn('luda_p2p_msg', { p_order: uuid(body.id), p_user: p.user_id, p_body: text, p_files: files }).catch(p2pErr)
+      const pt = await parties(d, 'p2p', String(body.id))
+      // One alert per minute per order, so a chat doesn't flood the inbox.
+      if (pt) await notifyUser(env, d, pt.payer === p.user_id ? pt.sender : pt.payer, { emoji: '💬', title: `New message from @${p.username}`, body: text ? text.slice(0, 80) : '📎 Photo', url: `/p2p/${body.id}`, tag: `p2p:${body.id}:msg:${Math.floor(Date.now() / 60000)}`, cat: 'chats' })
+    }
     return { ok: true }
   },
   'POST p2p-appeal-cancel': async ({ req, env, d, body }) => {
@@ -1666,6 +1686,8 @@ const routes: Record<string, Route> = {
       await d.db.fn('luda_p2p_staff_ask', { p_order: uuid(body.id), p_staff: `Luda team · ${a.username}`, p_body: text, p_who: who, p_minutes: minutes }).catch(p2pErr)
       await d.db.log(String(body.id), 'admin_p2p_ask', { by: a.username, who, minutes })
     } else await d.db.fn('luda_p2p_staff_msg', { p_order: uuid(body.id), p_staff: `Luda team · ${a.username}`, p_body: text }).catch(p2pErr)
+    const pt = await parties(d, 'p2p', String(body.id))
+    for (const u of pt ? [pt.payer, pt.sender] : []) await notifyUser(env, d, u, { emoji: '🛡️', title: 'Message from the Luda team about your P2P order', body: text.slice(0, 100), url: `/p2p/${body.id}`, tag: `p2p:${body.id}:staff:${Date.now()}`, cat: 'chats' })
     return { ok: true }
   },
   'POST admin-p2p-decide': async ({ req, env, d, body }) => {
@@ -1678,6 +1700,8 @@ const routes: Record<string, Route> = {
     if (!r.ok) throw new Fail('This order was already closed', 409)
     await d.db.fn('luda_p2p_staff_msg', { p_order: uuid(body.id), p_staff: `Luda team · ${a.username}`, p_body: `Decision: ${to === 'sender' ? 'Naira released to the sender' : 'Naira refunded to the payer'}. ${note}` })
     await d.db.log(String(body.id), 'admin_p2p_decide', { by: a.username, to, note })
+    const pt = await parties(d, 'p2p', String(body.id))
+    for (const u of pt ? [pt.payer, pt.sender] : []) await notifyUser(env, d, u, { emoji: '⚖️', title: 'The Luda team decided your P2P dispute', body: note.slice(0, 100), url: `/p2p/${body.id}`, tag: `p2p:${body.id}:decided`, cat: 'money' })
     return { ok: true }
   },
   'GET admin-p2p': async ({ req, env, d, url }) => {
@@ -1947,6 +1971,15 @@ const routes: Record<string, Route> = {
   },
 
   /* ---------------- "To do" on Home: everything waiting for this user, worked out on the server ---------------- */
+  /* ---------------- in-app notifications (v1.20.0): the 🔔 inbox lives on the server ---------------- */
+  'GET inbox': async ({ req, env, d }) => { const p = await me(req, env, d); return await d.db.fn('luda_inbox', { p_user: p.user_id, p_limit: 100 }) },
+  'POST inbox-read': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter((x: number) => Number.isSafeInteger(x) && x > 0).slice(0, 200) : null
+    await d.db.fn('luda_inbox_read', { p_user: p.user_id, p_ids: ids ? { items: ids } : null })
+    return { ok: true }
+  },
+
   /* ---------------- Help Center (v1.19.0): articles on the server, editable in Luda HQ ---------------- */
   'GET help': async ({ req, d }) => { await limit(d, `help-ip:${clientIp(req)}`, 300, 600); return { topics: HELP_TOPICS, articles: await d.db.fn('luda_help', {}) } },
   'POST help-vote': async ({ req, env, d, body }) => {
@@ -2370,6 +2403,15 @@ async function vapid(d: Deps): Promise<Vapid> {
   if (!v?.publicKey) v = await d.db.fn<Vapid>('luda_app_key', { p_name: 'vapid', p_value: await newVapid() })
   return (vapidCache = v)
 }
+
+/** Adds a line to the person's in-app 🔔 inbox (and, unless push is false, sends it to their phones). Never throws. */
+export async function notifyUser(env: Env, d: Deps, userId: string | null | undefined, n: { emoji: string; title: string; body?: string; url?: string; tag?: string; cat?: string; push?: boolean }) {
+  if (!userId) return
+  await d.db.fn('luda_inbox_add', { p_user: userId, p_emoji: n.emoji, p_title: n.title, p_body: n.body ?? null, p_url: n.url ?? null, p_tag: n.tag ?? null }).catch(() => {})
+  if (n.push !== false) await pushUser(env, d, userId, { title: `${n.emoji} ${n.title}`, body: n.body, url: n.url, tag: n.tag, cat: n.cat })
+}
+type Parties = Record<string, any>
+const parties = (d: Deps, kind: 'p2p' | 'market' | 'flash', id: string) => d.db.fn<Parties | null>('luda_parties', { p_kind: kind, p_id: id }).catch(() => null)
 
 /** Sends a notification to every phone of this person (respecting their categories). Never throws. */
 export async function pushUser(env: Env, d: Deps, userId: string, msg: PushMsg & { cat?: string }): Promise<number> {

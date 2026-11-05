@@ -17,6 +17,7 @@ export function registerWorker() {
   // A tapped notification asks the open app to go to its page.
   navigator.serviceWorker.addEventListener?.('message', (e: MessageEvent) => {
     if (e.data?.type === 'luda:open' && typeof e.data.url === 'string') window.dispatchEvent(new CustomEvent('luda:open', { detail: e.data.url }))
+    if (e.data?.type === 'luda:push') { window.dispatchEvent(new Event('luda:inbox')); window.dispatchEvent(new Event('luda:todo')) }
   })
 }
 

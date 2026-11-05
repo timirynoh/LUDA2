@@ -7,6 +7,8 @@ self.addEventListener('push', (e) => {
   let m = {}
   try { m = e.data ? e.data.json() : {} } catch { m = { title: e.data ? e.data.text() : '' } }
   const title = m.title || 'Luda'
+  // Tell an open Luda to refresh its 🔔 inbox.
+  self.clients.matchAll({ type: 'window' }).then((ws) => ws.forEach((w) => w.postMessage({ type: 'luda:push' }))).catch(() => {})
   e.waitUntil(self.registration.showNotification(title, {
     body: m.body || '',
     tag: m.tag || undefined,
