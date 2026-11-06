@@ -56,3 +56,26 @@ jobs:
           done
       - name: Print your webhook address
         run: echo "Webhook URL for Paystack and Flutterwave → https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/pay-webhook"
+      # v1.24.0 (owner's pick): after every release, call the live server like a phone would. If anything is broken the
+      # deploy turns red, so the owner hears about it before users do. Read-only: public routes only, nothing is changed.
+      - name: Check the live server works
+        run: |
+          base="https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/api"
+          check() { # name, path, jq test
+            for i in 1 2 3 4 5; do
+              body=$(curl -sS --max-time 20 -H "origin: https://luda-ct6.pages.dev" "$base/$2" || true)
+              if echo "$body" | jq -e "$3" > /dev/null 2>&1; then echo "✅ $1"; return 0; fi
+              sleep 10
+            done
+            echo "::error::Live check failed: $1 → $(echo "$body" | head -c 300)"; return 1
+          }
+          fail=0
+          check "Server config (payments, ID checks)" config '.providers | length > 0' || fail=1
+          check "Exchange rate" rate '.ngnPerTry > 0' || fail=1
+          check "Home banners" banners '.banners | type == "array"' || fail=1
+          check "Help Center articles" help '.topics | length > 0' || fail=1
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/me")
+          if [ "$code" = "401" ]; then echo "✅ Signed-in pages need a session"; else echo "::error::GET me without a session returned $code (expected 401)"; fail=1; fi
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/pay-webhook" -d '{}')
+          if [ "$code" != "000" ] && [ "$code" -lt 500 ]; then echo "✅ Webhook address answers ($code)"; else echo "::error::Webhook address returned $code"; fail=1; fi
+          exit $fail

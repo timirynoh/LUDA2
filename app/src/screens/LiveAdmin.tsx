@@ -152,6 +152,7 @@ function Overview({ o, go }: { o: Record<string, any> | null; go: (t: Tab) => vo
       {(o.escrowHeld ?? 0) > 0 && <button onClick={() => go('disputes')} className="flex items-center gap-3 rounded-2xl bg-fg/[0.04] p-3 text-start text-xs text-slate-400">
         <Gavel size={16} className="shrink-0" /><span className="flex-1"><b className="text-slate-200">{lira(o.escrowHeldMinor ?? 0)}</b> held for {o.escrowHeld} marketplace / Flash payment{o.escrowHeld === 1 ? '' : 's'}. Nothing to do unless someone opens a case.</span><ChevronRight size={16} /></button>}
       {warn.map((w) => <p key={w} className="flex items-start gap-2 rounded-2xl bg-rose-500/10 p-3 text-xs text-rose-200"><AlertTriangle size={15} className="shrink-0" /> {w}</p>)}
+      {o.balances && <HealthCard last={o.health ?? null} />}
       {o.didit?.on && <DiditCard u={o.didit} go={go} />}
 
       <p className="label">This week</p>
@@ -165,6 +166,35 @@ function Overview({ o, go }: { o: Record<string, any> | null; go: (t: Tab) => vo
         <Stat icon={ShieldCheck} tint={Object.keys(wh).length ? 'from-mint-400 to-teal-600' : 'from-rose-400 to-rose-600'} label="Webhooks" value={Object.values(wh).reduce((a: number, b) => a + Number(b), 0)} sub={Object.keys(wh).length ? Object.entries(wh).map(([k, v]) => `${k} ${v}`).join(' · ') : 'none received yet'} />
         </>}
       </div>
+    </div>
+  )
+}
+
+type HealthRun = { at: string; by: string; problems: { code: string; text: string; fix?: string }[]; info: { closed?: { checked: number; credited: number; closed: number }; pending1h?: number; webhooks?: Record<string, { paid: number; received: number; last: string | null }> } }
+
+/** Daily health check (v1.24.0): runs on the server once a day; problems also reach the owner as a phone alert. */
+function HealthCard({ last }: { last: HealthRun | null }) {
+  const [run, setRun] = useState<HealthRun | null>(last)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const now = async () => { setBusy(true); setErr(''); try { setRun((await api<{ health: HealthRun }>('POST', 'admin-health-run')).health) } catch (e) { setErr(errMsg(e)) } finally { setBusy(false) } }
+  const bad = run?.problems ?? []
+  const c = run?.info?.closed
+  return (
+    <div className={`card flex flex-col gap-2 py-3 ring-1 ${bad.length ? 'ring-rose-400/60' : 'ring-fg/10'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="flex items-center gap-2 text-sm font-semibold">🩺 Health check</p>
+        <button className="chip bg-fg/[0.08] py-1.5 text-xs" disabled={busy} onClick={() => void now()}>{busy ? 'Checking…' : 'Check now'}</button>
+      </div>
+      {!run ? <p className="text-xs text-slate-400">Runs once a day on its own. Tap “Check now” for the first run.</p> : <>
+        <p className="text-xs text-slate-400">Last check {when(run.at)}{run.by !== 'auto' ? ` by @${run.by}` : ' (automatic)'} · money adds up, payouts, top-ups, webhooks, ID-check credit.</p>
+        {bad.length === 0 ? <p className="flex items-center gap-2 text-sm text-mint-300"><Check size={16} /> Everything is working</p> : bad.map((p) => (
+          <div key={p.code} className="rounded-xl bg-rose-500/10 p-2.5 text-xs"><p className="font-semibold text-rose-200">⚠️ {p.text}</p>{p.fix && <p className="mt-1 break-words text-slate-300">{p.fix}</p>}</div>
+        ))}
+        {c && (c.credited > 0 || c.closed > 0) && <p className="text-[11px] text-slate-500">Old unpaid top-ups: {c.closed} closed as not completed{c.credited ? `, ${c.credited} were paid and are now credited` : ''}.</p>}
+        {run.info?.webhooks && <p className="text-[11px] text-slate-500">Webhooks (14 days): {Object.entries(run.info.webhooks).map(([k, w]) => `${k} ${w.received} received / ${w.paid} paid`).join(' · ')}</p>}
+      </>}
+      {err && <p className="text-xs text-rose-300">{err}</p>}
     </div>
   )
 }

@@ -448,6 +448,72 @@ export async function finalizeDeposit(reference: string, env: Env, d: Deps, sour
   return { ...p, status: 'paid' }
 }
 
+/* ------------------------------ daily health check ------------------------------ */
+
+/**
+ * Closes top-ups still "pending" 48 hours after the checkout. The provider has the last word: paid → credited
+ * (exactly once), not paid / not found → "failed" (the app shows "Not completed"). Network trouble → left for next time.
+ * A failed top-up is still re-verified if a late webhook arrives, so nothing paid can be lost.
+ */
+export async function closeStalePayments(env: Env, d: Deps) {
+  const refs = await d.db.fn<string[]>('luda_stale_payments', { p_hours: 48, p_limit: 20 }).catch(() => [] as string[])
+  const out = { checked: 0, credited: 0, closed: 0 }
+  for (const ref of refs) {
+    const p = await d.db.get(ref)
+    if (!p || p.status !== 'pending') continue
+    if (p.provider === 'paystack' ? !env.PAYSTACK_SECRET_KEY : !env.FLW_SECRET_KEY) continue
+    out.checked++
+    let v
+    try { v = await verifyPayment(p.provider, ref, env, d.fetch) } catch (e) {
+      // The provider has no such payment (the checkout was never opened or has expired): close it.
+      if (/ 404:| 400:|not found|no transaction/i.test(String((e as Error)?.message ?? e))) { await d.db.settle(ref, 'failed'); await d.db.log(ref, 'stale_closed', { reason: String((e as Error).message).slice(0, 160) }); out.closed++ }
+      continue
+    }
+    if (v.ok) { const r = await finalizeDeposit(ref, env, d, 'stale-check'); if (r?.status === 'paid') out.credited++; continue }
+    await d.db.settle(ref, 'failed', v.providerTxId || undefined)
+    await d.db.log(ref, 'stale_closed', { status: v.status })
+    out.closed++
+  }
+  return out
+}
+
+export interface HealthProblem { code: string; text: string; fix?: string }
+const PROVIDER_NAME: Record<string, string> = { paystack: 'Paystack', flutterwave: 'Flutterwave' }
+
+/** Runs every check the live check does, saves the result and returns it. Problems reach the owner as a To do + phone alert. */
+export async function runHealth(env: Env, d: Deps, by = 'auto') {
+  const closed = await closeStalePayments(env, d).catch(() => ({ checked: 0, credited: 0, closed: 0 }))
+  const c = await d.db.fn<Record<string, any>>('luda_health_checks', {})
+  const problems: HealthProblem[] = []
+  const n = (k: string) => Number(c[k] ?? 0)
+  if (n('ledger_mismatch')) problems.push({ code: 'ledger', text: `${n('ledger_mismatch')} wallet(s) don't match their ledger`, fix: 'Money must always add up. Contact your developer before doing anything else.' })
+  if (n('escrow_missing')) problems.push({ code: 'escrow', text: `${n('escrow_missing')} held payment(s) are missing their ledger entries`, fix: 'Contact your developer.' })
+  if (n('withdrawals_stuck')) problems.push({ code: 'payouts', text: `${n('withdrawals_stuck')} withdrawal(s) processing for over 30 minutes`, fix: 'Open Luda HQ → Payouts and check them with the provider.' })
+  if (n('deposits_mismatch')) problems.push({ code: 'mismatch', text: `${n('deposits_mismatch')} top-up(s) under review (amount didn't match)`, fix: 'Open Luda HQ → Top-ups and tap Re-check.' })
+  if (n('bad_webhooks_24h')) problems.push({ code: 'badhook', text: `${n('bad_webhooks_24h')} webhook(s) rejected in the last 24 hours`, fix: 'The secret key or Flutterwave secret hash in Supabase doesn\'t match the provider dashboard.' })
+  const hookUrl = `${env.SUPABASE_URL.replace(/\/$/, '')}/functions/v1/pay-webhook`
+  for (const [prov, w] of Object.entries((c.webhooks ?? {}) as Record<string, { paid: number; received: number }>)) {
+    const on = prov === 'paystack' ? !!env.PAYSTACK_SECRET_KEY : !!env.FLW_SECRET_KEY
+    if (on && Number(w.paid) > 0 && Number(w.received) === 0) problems.push({ code: `webhook-${prov}`,
+      text: `${PROVIDER_NAME[prov]} payments arrive but its webhooks don't (${w.paid} paid in 14 days, 0 webhooks)`,
+      fix: prov === 'flutterwave'
+        ? `In Flutterwave → Settings → Webhooks, set the URL to ${hookUrl}, put the same Secret hash as FLW_SECRET_HASH in Supabase, tick 'Receive webhook response in JSON' and charge/transfer events, then Save. Until then top-ups only arrive when the user reopens Luda.`
+        : `In Paystack → Settings → API Keys & Webhooks, set the Live Webhook URL to ${hookUrl} and Save.` })
+  }
+  const didit = diditEnabled(env) ? await diditUsage(env, d).catch(() => null) : null
+  if (didit?.outOfCredit) problems.push({ code: 'didit', text: 'Didit is out of credit: automatic ID checks are paused', fix: 'Top up in Didit → Billing or turn on auto-refill.' })
+  const info = { closed, pending1h: n('deposits_pending_1h'), webhooks: c.webhooks ?? {}, didit: didit ? { checksMonth: didit.checksMonth, usedUsd: didit.usedUsd, freeUsd: didit.freeUsd } : null }
+  const run = await d.db.fn<{ id: number; at: string; by: string; problems: HealthProblem[]; info: typeof info }>('luda_health_save', { p_by: by, p_problems: { items: problems }, p_info: info })
+  await d.db.log('health', 'health_run', { by, problems: problems.map((p) => p.code), closed })
+  return run
+}
+
+/** Starts a job without making the person wait (Supabase keeps it running after the reply). */
+function inBackground(job: Promise<unknown>) {
+  const rt = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime
+  if (rt?.waitUntil) rt.waitUntil(job.catch(() => {})); else return job.catch(() => {})
+}
+
 /* ----------------------------- withdrawals (out) ----------------------------- */
 
 /** Payout routes to try, in order, limited to providers whose key is set. */
@@ -793,6 +859,8 @@ const routes: Record<string, Route> = {
     if (env.PAYSTACK_SECRET_KEY || env.FLW_SECRET_KEY) for (const w of (await d.db.withdrawals(p.user_id, 5)).filter((x) => x.status === 'processing' && Date.parse(x.created_at) < Date.now() - 120e3)) {
       if (await d.db.hit(`wrecheck:${w.reference}`, 1, 120)) await settleWithdrawal(w, env, d).catch(() => {})
     }
+    // Daily health check (once a day, triggered by whoever opens Luda first; runs in the background).
+    if (await d.db.hit('health:daily', 1, 86400).catch(() => false)) await inBackground(runHealth(env, d, 'auto'))
     // Money owed to this user as a seller/helper that the buyer/poster never confirmed (after 7 / 3 days, no open case).
     if (await d.db.hit(`autorel:${p.user_id}`, 1, 600)) await d.db.fn('luda_auto_release', { p_user: p.user_id }).catch(() => {})
     const staffOf = await permsOf(p, env, d)
@@ -1179,7 +1247,15 @@ const routes: Record<string, Route> = {
       billsPending: bills.length, billsPendingMinor: bills.reduce((t, b) => t + Number(b.amount_minor), 0),
       escrowHeld: disputes.length, escrowHeldMinor: disputes.reduce((t, e) => t + Number(e.amount_minor), 0),
       didit: can(a.staff, 'kyc', 'view') ? await diditUsage(env, d).catch(() => null) : null,
+      health: can(a.staff, 'money', 'view') ? await d.db.fn('luda_health_last', {}).catch(() => null) : null,
     }
+  },
+
+  // Run the health check now (Luda HQ → Home → "Check now"). At most once a minute.
+  'POST admin-health-run': async ({ req, env, d }) => {
+    const a = await staff(req, env, d, 'money', 'view')
+    await limit(d, 'health:manual', 1, 60, 'A check just ran. Try again in a minute.')
+    return { health: await runHealth(env, d, a.username) }
   },
 
   'GET admin-users': async ({ req, env, d, url }) => {
@@ -2648,6 +2724,13 @@ async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
   for (const s of saved.filter((x) => x.due)) items.push({ key: `savedbill:${s.id}:${cyprusDay().slice(0, 7)}`, emoji: '🗓️', title: `Time to pay ${s.label || s.provider}`, sub: s.amount_minor ? `Last time ${amt(s.amount_minor, 'TRY')} · two taps to pay` : 'Two taps to pay from your Lira wallet', to: `/bills?pay=${s.id}`, level: 'action' })
   // Luda team: bills waiting to be paid (new ones, and ones close to the promised time).
   const sp = await permsOf(p, env, d).catch(() => null)
+  if (sp && can(sp, 'money', 'view')) {
+    const h = await d.db.fn<{ id: number; at: string; problems: HealthProblem[] } | null>('luda_health_last', {}).catch(() => null)
+    if (h && h.problems?.length && Date.parse(h.at) > Date.now() - 36 * 3600e3) {
+      const key = `health:${h.problems.map((x) => x.code).sort().join(',')}:${String(h.at).slice(0, 10)}`
+      items.push({ key, emoji: '🩺', title: h.problems.length === 1 ? `Luda health check: ${h.problems[0].text}` : `Luda health check: ${h.problems.length} things need you`, sub: h.problems[0].fix ? h.problems[0].fix.slice(0, 120) : 'Open Luda HQ to see them', to: '/admin', level: 'urgent' })
+    }
+  }
   if (sp && can(sp, 'kyc', 'edit')) {
     const ids = (await d.db.listCases('open', 200).catch(() => [])).filter((c) => c.reference === 'kyc-manual')
     for (const c of ids.slice(0, 5)) items.push({ key: `staffkyc:${c.id}`, emoji: '🪪', title: `ID to check: @${c.user?.username ?? 'user'}`, sub: 'Luda HQ → Cases', to: '/admin?tab=cases', level: 'action' })
