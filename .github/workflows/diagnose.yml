@@ -1,0 +1,68 @@
+# Read-only health check (also runs when this file changes) of the live payment database (run by hand from the Actions tab).
+# Prints the latest top-ups, their processing history and wallet totals, with no emails and shortened references.
+name: Check payments (read-only)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/cyprus-expat-app-mlnvuc]
+    paths: ['.github/workflows/diagnose.yml']
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Query
+        run: |
+          q() {
+            echo; echo "=== $1"
+            jq -n --arg q "$2" '{query: $q}' | curl -sS -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @- > /tmp/out.json || true
+            jq -c '.[]? // .' /tmp/out.json 2>/dev/null || cat /tmp/out.json
+            sleep 2 # stay under the Management API rate limit
+          }
+          echo; echo "=== Live server switches (public /api/config)"
+          curl -sS "https://$REF.supabase.co/functions/v1/api/config" | jq -c '{providers, foreign, payouts, kyc, didit, nin, google, sms}' || true
+          echo; echo "=== Live rate (public /api/rate)"
+          curl -sS "https://$REF.supabase.co/functions/v1/api/rate" || true
+          echo; echo "=== Secrets that are set (names only, values are never shown)"
+          curl -sS "https://api.supabase.com/v1/projects/$REF/secrets" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | jq -r '.[].name' | sort | tr '\n' ' ' || true
+          echo; sleep 2
+          echo; echo "=== Google sign-in setup (Supabase Auth; the client secret is never shown)"
+          curl -sS "https://api.supabase.com/v1/projects/$REF/config/auth" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            | jq -c '{google_on: .external_google_enabled, google_client_id_set: ((.external_google_client_id // "") | length > 0), google_client_id_ends: ((.external_google_client_id // "") | .[-27:]), google_secret_set: ((.external_google_secret // "") | length > 0), site_url, redirect_urls: .uri_allow_list, signups_open: (.disable_signup | not)}' || true
+          echo; echo "=== Google sign-in start (should redirect to accounts.google.com)"
+          curl -sS -o /dev/null -w '%{http_code} → %{redirect_url}\n' "https://$REF.supabase.co/auth/v1/authorize?provider=google&redirect_to=https%3A%2F%2Fluda-ct6.pages.dev%2F" | sed -E 's/(client_id=[^&]{0,12})[^&]*/\1…/' || true
+          sleep 2
+          q "Latest top-ups" "select '…'||right(reference,8) as ref, provider, status, amount_minor/100.0 as charged, currency, credit_minor/100.0 as credit, credit_currency, created_at, paid_at from payments order by created_at desc limit 10"
+          q "Processing history (latest 25 events)" "select '…'||right(reference,8) as ref, kind, at, left(coalesce(payload::text,''), 220) as detail from payment_events order by id desc limit 25"
+          q "Latest withdrawals" "select '…'||right(reference,8) as ref, provider, status, amount_minor/100.0 as amount, fee_minor/100.0 as fee, bank_name, '••'||right(account_number,4) as acct, transfer_code, note, created_at, updated_at from withdrawals order by created_at desc limit 10"
+          q "Withdrawal events (what Paystack / Flutterwave answered)" "select '…'||right(reference,8) as ref, kind, at, left(coalesce(payload::text,''), 300) as detail from payment_events where reference like 'wdr_%' or kind like 'withdraw%' order by id desc limit 30"
+          echo; echo "################ PROBLEMS (empty lists = all good) ################"
+          q "PROBLEM: top-ups under review (paid amount/currency did not match)" "select '…'||right(reference,8) as ref, provider, amount_minor/100.0 as expected, currency, created_at from payments where status = 'mismatch' order by created_at desc limit 20"
+          q "PROBLEM: top-ups still pending after 1 hour (self-healing re-checks them when the user opens the app)" "select '…'||right(reference,8) as ref, provider, amount_minor/100.0 as amount, created_at from payments where status = 'pending' and created_at < now() - interval '1 hour' order by created_at desc limit 20"
+          q "PROBLEM: withdrawals processing for over 30 minutes" "select '…'||right(reference,8) as ref, amount_minor/100.0 as amount, created_at from withdrawals where status = 'processing' and created_at < now() - interval '30 minutes'"
+          q "PROBLEM: rejected webhooks in the last 7 days (wrong secret hash / key?)" "select payload->>'from' as provider, count(*) as rejected, max(at) as last from payment_events where kind = 'webhook_bad_signature' and at > now() - interval '7 days' group by 1"
+          q "PROBLEM: money doesn't add up (wallets + held escrow + Luda fees must equal money in - money out; should be empty)" "with w as (select currency, sum(balance_minor) s from wallets group by 1), e as (select currency, coalesce(sum(amount_minor) filter (where status = 'held'), 0) held, coalesce(sum(fee_minor) filter (where status = 'released'), 0) fees from escrows group by 1), l as (select currency, sum(amount_minor) s from ledger group by 1) select l.currency, l.s as ledger_total, w.s as wallets, coalesce(e.held, 0) as held_in_escrow from l join w using (currency) left join e using (currency) where w.s <> l.s"
+          q "PROBLEM: escrows without their ledger entries (should be empty)" "select e.id, e.kind, e.status from escrows e where not exists (select 1 from ledger g where g.ref = e.id::text and g.kind = e.kind || '_pay') or (e.status = 'refunded' and not exists (select 1 from ledger g where g.ref = e.id::text and g.kind = e.kind || '_refund')) limit 20"
+          q "P2P orders" "select asset, status, appeal_stage, count(*) n from p2p_orders group by 1,2,3 order by 1,2"
+          q "Open P2P orders (who, how the lira is paid)" "select left(o.id::text,8) id, o.status, o.appeal_stage, o.method, o.try_to->>'kind' paid_by, o.try_to ? 'iban' has_iban, o.amount_try/100.0 lira, o.amount_ngn/100.0 naira, (select username from profiles where user_id=o.ngn_payer) naira_payer, (select count(*) from pay_methods m where m.user_id=o.ngn_payer and not m.removed) payer_accounts, (select username from profiles where user_id=o.try_sender) lira_sender, (select count(*) from pay_methods m where m.user_id=o.try_sender and not m.removed) sender_accounts, a.side ad_side, a.methods ad_methods, o.created_at from p2p_orders o join p2p_ads a on a.id=o.ad_id where o.status in ('waiting','sent','appeal') order by o.created_at desc limit 10"
+          q "Spend-only lira (bought with Instant, unspent)" "select (select username from profiles p where p.user_id=h.user_id) username, h.try_minor/100.0 bought_lira, h.ngn_cost_minor/100.0 naira_paid from fx_holdings h where h.try_minor > 0 order by h.try_minor desc limit 10"
+          q "Instant conversions last 7 days" "select currency, count(*) n, sum(amount_minor)/100.0 total from ledger where kind='convert' and at > now() - interval '7 days' group by 1"
+          q "ID checks that could not start (Didit: no_credit = top up Didit credit)" "select at, payload->>'reason' reason, payload->>'status' http, left(payload->>'said', 160) didit_said from payment_events where kind = 'kyc_start_failed' order by id desc limit 10"
+          q "Nearby directory (saved OpenStreetMap places)" "select city, cat, jsonb_array_length(places) n, fetched_at from places_cache order by city, cat"
+          q "Rewards this month" "select kind, count(*) n, sum(xp) xp, sum(points) points, sum(cash_minor)/100.0 cash_try from reward_events where created_at >= date_trunc('month', now()) group by 1 order by 1"
+          q "Rewards vs ledger" "select (select coalesce(sum(cash_minor),0) from reward_events) rewards_cash, (select coalesce(sum(amount_minor),0) from ledger where kind='reward') ledger_cash"
+          q "Owner account (for the first P2P ad)" "select username, kyc_status, kyc_name is not null as has_kyc_name, frozen from profiles where username = 'rynoh'"
+          q "PROBLEM: wallets that don't match their ledger (should never happen)" "select '…'||right(w.user_id::text,6) as user_, w.currency, w.balance_minor, coalesce(l.s,0) as ledger_sum from wallets w left join (select user_id, currency, sum(amount_minor) s from ledger group by 1,2) l using (user_id, currency) where w.balance_minor <> coalesce(l.s,0)"
+          echo; echo "################ HEALTH ################"
+          q "Webhooks received in the last 7 days (0 = webhook URL not set or not reaching Luda)" "select coalesce(payload->>'provider','?') as provider, count(*) as received, max(at) as last from payment_events where kind = 'webhook' and at > now() - interval '7 days' group by 1"
+          q "Latest Flash jobs (who can see them depends on city + status)" "select left(title,40) as title, city, status, reward_minor/100.0 as reward, luda_uname(poster) as poster, created_at from flash_jobs order by created_at desc limit 10"
+          q "Latest community posts" "select kind, left(title,40) as title, city, status, official, reports, luda_uname(user_id) as author, created_at, expires_at from board_posts order by created_at desc limit 10"
+          q "Groups" "select left(name,30) as name, status, (select count(*) from chat_members m where m.group_id=g.id) as members, (select count(*) from chat_messages c where c.group_id=g.id) as messages from chat_groups g order by created_at desc limit 10"
+          q "Recent sign-in events (last 2 days)" "select kind, count(*) as n, max(at) as last from payment_events where at > now() - interval '2 days' and (kind like '%login%' or kind like '%password%' or kind like '%recover%' or kind like '%signup%') group by 1 order by 1"
+          q "Wallet totals" "select currency, count(*) as wallets, sum(balance_minor)/100.0 as total from wallets group by currency"
+          q "Accounts" "select count(*) as profiles, count(*) filter (where pin_hash is not null) as with_pin from profiles"

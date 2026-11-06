@@ -1,0 +1,25 @@
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import { readFileSync } from 'node:fs'
+import { defineConfig, loadEnv } from 'vite'
+
+export default defineConfig(({ command, mode }) => {
+  const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env }
+  // A real-hosting build without the payment server address would silently publish the DEMO app over the
+  // live one (people then see demo money one day and real money the next). Refuse to build instead, so
+  // Cloudflare keeps serving the last good live version. Demo builds must say so: VITE_DEMO=1 or --mode embed.
+  if (command === 'build' && mode !== 'embed' && !env.VITE_PAY_API && env.VITE_DEMO !== '1') {
+    throw new Error('VITE_PAY_API is not set, so this would be a DEMO build. Set VITE_PAY_API (Cloudflare → Settings → Variables, for Production AND Preview), or set VITE_DEMO=1 to build the demo on purpose.')
+  }
+  const version = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version
+  const sha = (env.CF_PAGES_COMMIT_SHA || env.GITHUB_SHA || '').slice(0, 7)
+  return {
+    // Normal hosting serves the app from the domain root, so deep links like /pay/return
+    // or /chats/abc load their files correctly. The Claude artifact demo (embed mode)
+    // is served from an unknown folder, so it uses relative paths and a memory router.
+    base: mode === 'embed' ? './' : '/',
+    // version.json lets an open app notice that a newer version was published (Home shows 'Update Luda').
+    plugins: [react(), tailwindcss(), { name: 'luda-version', generateBundle() { this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version, sha }) }) } }],
+    define: { __VERSION__: JSON.stringify(version), __BUILD__: JSON.stringify(`${new Date().toISOString().slice(0, 16).replace('T', ' ')}${sha ? ' · ' + sha : ''}`) },
+  }
+})

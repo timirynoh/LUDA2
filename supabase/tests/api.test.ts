@@ -1,0 +1,588 @@
+// Full money journey against a real Postgres. Run: cd supabase && npm test
+import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
+import { before, test } from 'node:test'
+import { handleApi, handleWebhook, type Deps } from '../functions/_shared/handlers.ts'
+import { depositFee, convertOut } from '../functions/_shared/money.ts'
+import { priceTicket } from '../functions/_shared/pricing.ts'
+import { idMatchesName, accountMatchesName, normDate } from '../functions/_shared/kyc.ts'
+import { matchFlwBank } from '../functions/_shared/payouts.ts'
+import { ENV, fakeWorld, makeDb, sign } from './harness.ts'
+
+let d: Deps, world: ReturnType<typeof fakeWorld>['world'], q: Awaited<ReturnType<typeof makeDb>>['q']
+const NOW = new Date('2026-11-02T10:00:00Z')
+
+before(async () => {
+  const m = await makeDb(); q = m.q
+  const fw = fakeWorld(m.q); world = fw.world
+  d = { db: m.db, fetch: fw.f, now: () => new Date() }
+})
+
+let ipN = 0
+async function call(method: string, route: string, body?: unknown, token?: string, env = ENV, ip = `10.0.${Math.floor(++ipN / 250)}.${ipN % 250}`) {
+  const r = await handleApi(new Request(`https://proj.supabase.co/functions/v1/api/${route}`, {
+    method, body: body ? JSON.stringify(body) : undefined,
+    headers: { origin: 'https://luda.test', 'x-forwarded-for': ip, ...(token ? { authorization: `Bearer ${token}` } : {}) },
+  }), env, d)
+  return { status: r.status, j: (await r.json()) as any }
+}
+const hook = (raw: string, headers: Record<string, string>) => handleWebhook(new Request('https://x/pay-webhook', { method: 'POST', body: raw, headers }), ENV, d)
+const bal = async (t: string) => (await call('GET', 'me', undefined, t)).j.balances
+
+let ada = '', bola = ''
+
+test('pure rules: fees, conversion, prices, names, dates', () => {
+  assert.equal(depositFee(10_000_00, {}), 25381) // ₦10,000 → fee ≈ ₦253.81 so the full ₦10,000 lands
+  assert.equal(depositFee(1_000_00, {}), 1523) // under ₦2,500: no ₦100 flat
+  assert.equal(depositFee(500_000_00, {}), 2_000_00) // capped at ₦2,000
+  assert.equal(convertOut('NGN', 'TRY', 40_000_00, 40, 0.01), 990_00) // ₦40,000 → ₺990 after 1%
+  assert.equal(convertOut('TRY', 'NGN', 100_00, 40, 0.01), 3960_00)
+  assert.equal(priceTicket({ operatorId: 'virgo', return: true, pax: 2, from: 'Girne', to: 'Lefkoşa', date: '2026-11-03', time: '09:00', returnDate: '2026-11-03', returnTime: '18:00' }, NOW).amount, 900)
+  assert.throws(() => priceTicket({ operatorId: 'virgo', pax: 9, date: '2026-11-03', time: '09:00' }, NOW), /Passengers/)
+  assert.ok(idMatchesName({ firstName: 'ADA', middleName: 'CHIOMA', lastName: 'OKAFOR', dob: '' }, 'Ada Okafor'))
+  assert.ok(!idMatchesName({ firstName: 'ADA', middleName: '', lastName: 'OKAFOR', dob: '' }, 'Ada Obi'))
+  assert.ok(accountMatchesName('OKAFOR ADA CHIOMA', 'ADA CHIOMA OKAFOR')); assert.ok(!accountMatchesName('ADA STRANGER', 'ADA CHIOMA OKAFOR'))
+  assert.equal(normDate('15-Apr-2000'), '2000-04-15'); assert.equal(normDate('15/04/2000'), '2000-04-15')
+})
+
+test('sign up, sign in by email or username, profile is created', async () => {
+  let r = await call('POST', 'signup', { email: 'ada@x.com', username: 'ada', fullName: 'Ada Okafor', password: 'Lefkosa2026!' })
+  assert.equal(r.status, 200, JSON.stringify(r.j)); ada = r.j.session.access_token
+  r = await call('POST', 'signup', { email: 'ada2@x.com', username: 'ada', fullName: 'Ada Two', password: 'Lefkosa2026!' })
+  assert.match(r.j.error, /taken/)
+  r = await call('POST', 'signup', { email: 'b@x.com', username: 'bola', fullName: 'Bola', password: 'Lefkosa2026!' })
+  assert.match(r.j.error, /full name/)
+  bola = (await call('POST', 'signup', { email: 'b@x.com', username: 'bola', fullName: 'Bola Adeyemi', password: 'Lefkosa2026!' })).j.session.access_token
+  assert.equal((await call('POST', 'login', { id: '@ada', password: 'Lefkosa2026!' })).status, 200)
+  assert.equal((await call('POST', 'login', { id: 'ada@x.com', password: 'Lefkosa2026!' })).status, 200)
+  assert.equal((await call('POST', 'login', { id: 'ada', password: 'nope' })).status, 401)
+  assert.equal((await call('POST', 'login', { id: 'ghost', password: 'x' })).status, 401)
+  const me = (await call('GET', 'me', undefined, ada)).j
+  assert.equal(me.profile.username, 'ada'); assert.deepEqual(me.balances, { NGN: 0, TRY: 0 }); assert.equal(me.profile.kyc, 'none')
+  assert.equal((await call('GET', 'me', undefined, 'tok_fake')).status, 401)
+  assert.equal((await call('GET', 'me')).status, 401)
+})
+
+test('forgot password: reset link, then new password works', async () => {
+  assert.equal((await call('POST', 'recover', { email: 'ada@x.com' })).status, 200)
+  assert.ok(world.calls.includes('recover:ada@x.com:https://luda.test/reset'))
+  assert.equal((await call('POST', 'password', { access_token: 'tok_bad', password: 'NewPass2026!' })).status, 400)
+  assert.equal((await call('POST', 'password', { access_token: ada, password: 'NewPass2026!' })).status, 200)
+  const hold = (await q(`select money_hold_until from profiles where username='ada'`))[0].money_hold_until
+  assert.ok(new Date(hold).getTime() > Date.now() + 23 * 3600e3, 'money paused 24h after a password reset')
+  await q(`update profiles set money_hold_until = null where username='ada'`)
+  assert.equal((await call('POST', 'login', { id: 'ada', password: 'NewPass2026!' })).status, 200)
+  assert.equal((await call('POST', 'login', { id: 'ada', password: 'Lefkosa2026!' })).status, 401)
+})
+
+test('PIN: must be set, not guessable, change needs the old one', async () => {
+  assert.match((await call('POST', 'pin', { pin: '1234' }, ada)).j.error, /easy to guess/)
+  assert.equal((await call('POST', 'pin', { pin: '4826' }, ada)).status, 200)
+  assert.equal((await call('POST', 'pin', { pin: '9999' }, ada)).status, 400)
+  assert.equal((await call('POST', 'pin', { pin: '5937', oldPin: '0000' }, ada)).status, 401)
+  assert.equal((await call('POST', 'pin', { pin: '4826' }, bola)).status, 200)
+})
+
+test('deposit via Paystack: user pays the fee, wallet credited exactly once', async () => {
+  const r = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 10_000_00 }, ada)
+  assert.equal(r.status, 200, JSON.stringify(r.j)); assert.equal(r.j.feeMinor, 25381); assert.equal(r.j.chargeMinor, 10_253_81)
+  assert.equal(world.inits.get(r.j.reference), 10_253_81, 'provider asked for credit + fee')
+  assert.equal((await call('GET', `deposit?ref=${r.j.reference}`, undefined, ada)).j.status, 'pending')
+  world.charges.set(r.j.reference, { status: 'success' })
+  const raw = JSON.stringify({ event: 'charge.success', data: { reference: r.j.reference } })
+  assert.equal((await hook(raw, { 'x-paystack-signature': sign.paystack(raw) })).status, 200)
+  assert.equal((await hook(raw, { 'x-paystack-signature': sign.paystack(raw) })).status, 200) // retry
+  assert.equal((await call('GET', `deposit?ref=${r.j.reference}`, undefined, ada)).j.status, 'paid')
+  assert.equal((await bal(ada)).NGN, 10_000_00, 'exactly ₦10,000, once')
+  assert.equal((await call('GET', `deposit?ref=${r.j.reference}`, undefined, bola)).status, 404, "can't peek at someone else's payment")
+})
+
+test('deposit via Flutterwave + forged and underpaid deposits', async () => {
+  const r = await call('POST', 'deposit', { provider: 'flutterwave', amountMinor: 50_000_00 }, ada)
+  world.charges.set(r.j.reference, { status: 'success' })
+  const raw = JSON.stringify({ event: 'charge.completed', data: { tx_ref: r.j.reference } })
+  assert.equal((await hook(raw, { 'flutterwave-signature': 'AAAA' })).status, 401, 'forged')
+  assert.equal((await hook(raw, { 'verif-hash': 'wrong' })).status, 401, 'forged v3')
+  assert.equal((await hook(raw, { 'flutterwave-signature': sign.flutterwave(raw) })).status, 200)
+  assert.equal((await bal(ada)).NGN, 60_000_00)
+  const u = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 5_000_00 }, ada)
+  world.charges.set(u.j.reference, { status: 'success', amount: 100 })
+  assert.equal((await call('GET', `deposit?ref=${u.j.reference}`, undefined, ada)).j.status, 'mismatch')
+  assert.equal((await bal(ada)).NGN, 60_000_00, 'underpayment not credited')
+})
+
+test('deposit limits for unverified users', async () => {
+  const r = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 90_000_00 }, ada)
+  assert.match(r.j.error, /Daily top-up limit/)
+  assert.match((await call('POST', 'deposit', { provider: 'paystack', amountMinor: 50 }, ada)).j.error, /between/)
+  assert.match((await call('POST', 'deposit', { provider: 'paypal', amountMinor: 5_000_00 }, ada)).j.error, /not available/)
+})
+
+test('convert Naira → Lira with PIN; stale quote refused', async () => {
+  assert.equal((await call('POST', 'convert', { from: 'NGN', to: 'TRY', amountMinor: 40_000_00, pin: '0000' }, ada)).status, 401)
+  assert.equal((await call('POST', 'convert', { from: 'NGN', to: 'TRY', amountMinor: 40_000_00, pin: '4826', expectMinor: 2000_00 }, ada)).status, 409)
+  const r = await call('POST', 'convert', { from: 'NGN', to: 'TRY', amountMinor: 40_000_00, pin: '4826', expectMinor: 990_00 }, ada)
+  assert.equal(r.j.receivedMinor, 990_00)
+  assert.deepEqual(await bal(ada), { NGN: 20_000_00, TRY: 990_00 })
+  assert.match((await call('POST', 'convert', { from: 'NGN', to: 'TRY', amountMinor: 999_000_00, pin: '4826' }, ada)).j.error, /Not enough|₺5,000/)
+})
+
+test('bus ticket from the Lira wallet, and from Naira at today\'s rate', async () => {
+  const item = { operatorId: 'virgo', return: false, pax: 1, from: 'Girne', to: 'Lefkoşa', date: new Date().toISOString().slice(0, 10), time: '23:50' }
+  const t = await call('POST', 'ticket', { currency: 'TRY', item, pin: '4826' }, ada)
+  assert.equal(t.status, 200, JSON.stringify(t.j)); assert.equal(Number(t.j.ticket.paid_minor), 250_00); assert.equal(t.j.ticket.item.holder, 'Ada Okafor')
+  assert.equal((await bal(ada)).TRY, 740_00)
+  const n = await call('POST', 'ticket', { currency: 'NGN', item: { ...item, operatorId: 'kibhas', city: 'girne' }, pin: '4826' }, ada)
+  assert.equal(Number(n.j.ticket.paid_minor), Math.ceil(350 * 100 * 40 * 1.01)) // ₺350 at 40 + 1%
+  assert.match((await call('POST', 'ticket', { currency: 'TRY', item: { ...item, pax: 6, return: true, returnDate: item.date, returnTime: '23:55' }, pin: '4826' }, ada)).j.error, /Not enough/)
+  assert.match((await call('POST', 'ticket', { currency: 'TRY', item, pin: '4826' }, ada, { ...ENV, SELL_OPERATORS: 'girneliler' })).j.error, /coming soon/)
+  assert.equal((await call('GET', 'me', undefined, ada)).j.tickets.length, 2)
+})
+
+test('sending and withdrawing need KYC; Dojah check matches name + date of birth', async () => {
+  assert.equal((await call('POST', 'send', { to: 'bola', currency: 'TRY', amountMinor: 50_00, pin: '4826' }, ada)).status, 403)
+  assert.equal((await call('POST', 'withdraw', { amountMinor: 5_000_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)).status, 403)
+  assert.match((await call('POST', 'kyc', { type: 'nin', number: '12345678901', dob: '2001-04-16' }, ada)).j.error, /Date of birth/)
+  assert.match((await call('POST', 'kyc', { type: 'nin', number: '10987654321', dob: '2000-04-15' }, ada)).j.error, /doesn't match "Ada Okafor"/)
+  const ok = await call('POST', 'kyc', { type: 'nin', number: '12345678901', dob: '2001-04-15' }, ada)
+  assert.equal(ok.j.status, 'verified'); assert.equal(ok.j.name, 'ADA CHIOMA OKAFOR')
+  const row = (await q(`select kyc_id_last4 from profiles where username='ada'`))[0]
+  assert.equal(row.kyc_id_last4, '8901', 'only the last 4 digits are stored')
+  assert.match((await call('POST', 'kyc', { type: 'nin', number: '10987654321', dob: '2000-04-15' }, bola)).j.error ?? 'verified', /verified|match/)
+})
+
+test('send money between users', async () => {
+  const look = await call('GET', 'user?u=@bola', undefined, ada); assert.equal(look.j.fullName, 'Bola Adeyemi')
+  assert.match((await call('POST', 'send', { to: 'ada', currency: 'TRY', amountMinor: 50_00, pin: '4826' }, ada)).j.error, /yourself/)
+  assert.equal((await call('POST', 'send', { to: 'ghost', currency: 'TRY', amountMinor: 50_00, pin: '4826' }, ada)).status, 404)
+  // lira bought with Instant is spend-only (v1.15.0): sending it is refused; earned lira can be sent
+  assert.match((await call('POST', 'send', { to: 'bola', currency: 'TRY', amountMinor: 100_00, pin: '4826' }, ada)).j.error, /only be spent in Luda/)
+  await q(`select luda_post($1::jsonb)`, [JSON.stringify([{ user_id: (await q(`select user_id from profiles where username='ada'`))[0].user_id, currency: 'TRY', amount_minor: 100_00, kind: 'reward', ref: 'earned-for-send' }])])
+  const r = await call('POST', 'send', { to: 'bola', currency: 'TRY', amountMinor: 100_00, pin: '4826', note: 'for the bus <script>' }, ada)
+  assert.equal(r.status, 200, JSON.stringify(r.j))
+  assert.equal((await bal(ada)).TRY, 740_00); assert.equal((await bal(bola)).TRY, 100_00)
+  const h = (await call('GET', 'me', undefined, bola)).j.history[0]
+  assert.equal(h.kind, 'receive'); assert.equal(h.meta.from, 'ada'); assert.ok(!h.meta.note.includes('<'))
+})
+
+test('withdraw to own bank account only; failed payout refunds once; success settles', async () => {
+  assert.equal((await call('GET', 'banks', undefined, ada)).j.banks[0].name, 'Access Bank')
+  const res = await call('POST', 'resolve', { account: '0123456789', bankCode: '058' }, ada)
+  assert.equal(res.j.accountName, 'OKAFOR ADA CHIOMA'); assert.equal(res.j.matches, true)
+  assert.match((await call('POST', 'withdraw', { amountMinor: 5_000_00, account: '0999999999', bankCode: '058', pin: '4826' }, ada)).j.error, /own account/)
+  const before = (await bal(ada)).NGN, tryBefore = (await bal(ada)).TRY
+  assert.ok(tryBefore >= 3_00, 'this account has lira, so the ₺3 fee comes from the Lira wallet')
+  const w = await call('POST', 'withdraw', { amountMinor: 5_000_00, account: '0123456789', bankCode: '058', bankName: 'GTBank', pin: '4826' }, ada)
+  assert.equal(w.j.status, 'processing'); assert.equal(w.j.feeCurrency, 'TRY'); assert.equal(w.j.feeMinor, 3_00)
+  assert.equal((await bal(ada)).NGN, before - 5_000_00, 'amount held'); assert.equal((await bal(ada)).TRY, tryBefore - 3_00, '₺3 fee from the Lira wallet')
+  world.transfers.set(w.j.reference, 'failed')
+  const raw = JSON.stringify({ event: 'transfer.failed', data: { reference: w.j.reference } })
+  await hook(raw, { 'x-paystack-signature': sign.paystack(raw) }); await hook(raw, { 'x-paystack-signature': sign.paystack(raw) })
+  assert.equal((await bal(ada)).NGN, before, 'refunded once'); assert.equal((await bal(ada)).TRY, tryBefore, 'lira fee refunded too')
+  // no lira in the wallet → the same ₺3 is taken in Naira at today's rate
+  const tryNow = (await bal(ada)).TRY
+  await q(`select luda_post($1::jsonb)`, [JSON.stringify([{ user_id: (await q(`select user_id from profiles where username='ada'`))[0].user_id, currency: 'TRY', amount_minor: -tryNow, kind: 'adjustment', ref: 'empty-try' }])])
+  const w2 = await call('POST', 'withdraw', { amountMinor: 2_000_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
+  assert.equal(w2.j.feeCurrency, 'NGN'); assert.equal(w2.j.feeTry, 3_00)
+  const feeNgn = w2.j.feeMinor
+  assert.ok(feeNgn > 0 && feeNgn < 300_00, 'about ₺3 in Naira')
+  world.transfers.set(w2.j.reference, 'success')
+  assert.equal((await call('GET', `withdrawal?ref=${w2.j.reference}`, undefined, ada)).j.status, 'paid')
+  assert.equal((await bal(ada)).NGN, before - 2_000_00 - feeNgn)
+  await q(`select luda_post($1::jsonb)`, [JSON.stringify([{ user_id: (await q(`select user_id from profiles where username='ada'`))[0].user_id, currency: 'TRY', amount_minor: tryNow, kind: 'adjustment', ref: 'refill-try' }])])
+  assert.match((await call('POST', 'withdraw', { amountMinor: 9_000_000_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)).j.error, /limit|Not enough/)
+  const me = (await call('GET', 'me', undefined, ada)).j
+  assert.ok(me.withdrawals.every((x: any) => x.account_number.startsWith('••••') && !x.recipient_code), 'account numbers masked')
+})
+
+test('top up in Ghana cedi via Flutterwave → Lira wallet (fee on top)', async () => {
+  const before = (await bal(ada)).TRY
+  assert.match((await call('POST', 'deposit', { provider: 'paystack', currency: 'GHS', amountMinor: 100_00 }, ada)).j.error, /Flutterwave/)
+  assert.match((await call('POST', 'deposit', { provider: 'flutterwave', currency: 'CDF', amountMinor: 100_00 }, ada)).j.error, /not available/)
+  assert.match((await call('POST', 'deposit', { provider: 'flutterwave', currency: 'GHS', amountMinor: 10_00 }, ada)).j.error, /Minimum/)
+  const r = await call('POST', 'deposit', { provider: 'flutterwave', currency: 'GHS', amountMinor: 100_00 }, ada)
+  assert.equal(r.status, 200, JSON.stringify(r.j))
+  assert.equal(r.j.creditCurrency, 'TRY'); assert.equal(r.j.creditMinor, 247_50) // GH₵100 at 0.4/₺ = ₺250, minus 1% margin
+  assert.equal(r.j.feeMinor, 3_96); assert.equal(world.inits.get(r.j.reference), 103_96, 'Flutterwave charged GH₵103.96')
+  world.charges.set(r.j.reference, { status: 'success', currency: 'GHS' })
+  assert.equal((await call('GET', `deposit?ref=${r.j.reference}`, undefined, ada)).j.status, 'paid')
+  assert.equal((await bal(ada)).TRY, before + 247_50)
+  const cfg = (await call('GET', 'config')).j; assert.deepEqual(cfg.foreign, ['USD', 'GHS', 'KES', 'UGX', 'ZMW', 'XAF'])
+  assert.deepEqual((await call('GET', 'config', undefined, undefined, { ...ENV, FOREIGN_CURRENCIES: 'ghs, usd' })).j.foreign, ['USD', 'GHS'])
+})
+
+test('PIN locks after 5 wrong tries; frozen accounts cannot spend', async () => {
+  for (let i = 0; i < 5; i++) await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, pin: '0000' }, bola)
+  assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, pin: '4826' }, bola)).status, 429)
+  await q(`update profiles set pin_locked_until = null, frozen = true where username = 'bola'`)
+  assert.match((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, pin: '4826' }, bola)).j.error, /on hold/)
+})
+
+test('no duplicate emails or usernames; live availability check', async () => {
+  const av = (await call('GET', 'available?username=ADA&email=Ada@X.com')).j
+  assert.deepEqual(av, { username: false, email: false })
+  assert.deepEqual((await call('GET', 'available?username=fresh_name&email=new@x.com')).j, { username: true, email: true })
+  assert.equal((await call('GET', 'available?username=a!&email=nope')).j.username, null, 'invalid → no answer')
+  const r = await call('POST', 'signup', { email: 'ADA@x.com', username: 'someone_new', fullName: 'Ada Clone', password: 'Lefkosa2026!' })
+  assert.equal(r.status, 409); assert.match(r.j.error, /email already exists/)
+  const u = await call('POST', 'signup', { email: 'other@x.com', username: 'bola', fullName: 'Other Person', password: 'Lefkosa2026!' })
+  assert.equal(u.status, 409); assert.match(u.j.error, /username is already taken/)
+})
+
+test('Continue with Google: switched on, profile made from Google name', async () => {
+  assert.equal((await call('GET', 'config')).j.google, true)
+  const id = randomUUID(); world.users.set(id, { id, email: 'ama.owusu@gmail.com', password: '', meta: { name: 'Ama Owusu', full_name: 'Ama Owusu' } })
+  await q(`insert into auth.users values ($1,$2)`, [id, 'ama.owusu@gmail.com'])
+  const me = (await call('GET', 'me', undefined, 'tok_' + id)).j.profile
+  assert.equal(me.fullName, 'Ama Owusu'); assert.equal(me.username, 'ama.owusu'); assert.equal(me.hasPin, false)
+})
+
+test('fingerprint: register with PIN, approve payments, refuse replays and fakes', async () => {
+  const { subtle } = globalThis.crypto
+  const enc = (u: ArrayBuffer | Uint8Array) => Buffer.from(u as ArrayBuffer).toString('base64url')
+  const kp = await subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
+  const spki = enc(await subtle.exportKey('spki', kp.publicKey)), credId = enc(Buffer.from('ada-phone-credential-0001'))
+  const cdj = (type: string, challenge: string, origin = 'https://luda.test') => enc(Buffer.from(JSON.stringify({ type, challenge, origin })))
+  const toDer = (raw: Uint8Array) => {
+    const int = (b: Uint8Array) => { let i = 0; while (i < b.length - 1 && b[i] === 0) i++; let v = b.slice(i); if (v[0] & 0x80) v = Uint8Array.from([0, ...v]); return [0x02, v.length, ...v] }
+    const body = [...int(raw.slice(0, 32)), ...int(raw.slice(32))]; return Uint8Array.from([0x30, body.length, ...body])
+  }
+  let counter = 0
+  async function approve(opts: { origin?: string; flags?: number; id?: string } = {}) {
+    const { challenge } = (await call('GET', 'bio', undefined, ada)).j
+    const rp = new Uint8Array(await subtle.digest('SHA-256', Buffer.from('luda.test')))
+    counter++
+    const ad = Uint8Array.from([...rp, opts.flags ?? 0x05, 0, 0, 0, counter])
+    const clientDataJSON = cdj('webauthn.get', challenge, opts.origin)
+    const data = Buffer.concat([ad, Buffer.from(await subtle.digest('SHA-256', Buffer.from(clientDataJSON, 'base64url')))])
+    const sig = toDer(new Uint8Array(await subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, kp.privateKey, data)))
+    return { id: opts.id ?? credId, clientDataJSON, authenticatorData: enc(ad), signature: enc(sig) }
+  }
+  // register: needs a fresh challenge + the PIN
+  let g = (await call('GET', 'bio', undefined, ada)).j
+  assert.equal(g.rpId, 'luda.test')
+  assert.equal((await call('POST', 'bio', { pin: '0000', id: credId, publicKey: spki, alg: -7, clientDataJSON: cdj('webauthn.create', g.challenge) }, ada)).status, 401)
+  g = (await call('GET', 'bio', undefined, ada)).j
+  const reg = await call('POST', 'bio', { pin: '4826', id: credId, publicKey: spki, alg: -7, clientDataJSON: cdj('webauthn.create', g.challenge), device: 'Pixel' }, ada)
+  assert.equal(reg.status, 200, JSON.stringify(reg.j))
+  assert.equal((await call('GET', 'bio', undefined, ada)).j.keys.length, 1)
+  // approve a conversion with the fingerprint (no PIN)
+  const before = await bal(ada)
+  const ok = await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: await approve() }, ada)
+  assert.equal(ok.status, 200, JSON.stringify(ok.j)); assert.equal((await bal(ada)).TRY, before.TRY - 10_00)
+  // the same approval can't be used twice (challenge is single-use)
+  const a1 = await approve(); await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: a1 }, ada)
+  assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: a1 }, ada)).status, 401, 'replay refused')
+  // fakes
+  assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: await approve({ origin: 'https://evil.example' }) }, ada)).status, 401, 'other website')
+  assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: await approve({ flags: 0x01 }) }, ada)).status, 401, 'no fingerprint (user not verified)')
+  assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: await approve({ id: 'unknown-key-xxxxxxxx' }) }, ada)).status, 401, 'unregistered key')
+  assert.equal((await call('POST', 'convert', { from: 'TRY', to: 'NGN', amountMinor: 10_00, bio: await approve() }, bola)).status, 401, "someone else's account")
+  // remove
+  await call('POST', 'bio-remove', { id: credId }, ada)
+  assert.equal((await call('GET', 'bio', undefined, ada)).j.keys.length, 0)
+})
+
+test('phone numbers: SMS-verified, one account per number', async () => {
+  assert.equal((await call('GET', 'config')).j.sms, true)
+  assert.match((await call('POST', 'phone-start', { phone: '12' }, ada)).j.error, /country code/)
+  const st = await call('POST', 'phone-start', { phone: '0533 812 44 55' }, ada)
+  assert.equal(st.j.phone, '+905338124455', JSON.stringify(st.j)); assert.ok(world.calls.includes('sms:+905338124455'))
+  assert.match((await call('POST', 'phone-check', { phone: '+905338124455', code: '000000' }, ada)).j.error, /wrong or expired/)
+  assert.equal((await call('POST', 'phone-check', { phone: '+905338124455', code: '123456' }, ada)).status, 200)
+  const me = (await call('GET', 'me', undefined, ada)).j.profile
+  assert.equal(me.phoneVerified, true); assert.equal(me.phone, '+905•••455', 'number masked')
+  const dup = await call('POST', 'phone-start', { phone: '+90 533 812 4455' }, bola)
+  assert.equal(dup.status, 409); assert.match(dup.j.error, /already used by another Luda account/)
+  assert.equal((await call('POST', 'phone-check', { phone: '+905338124455', code: '123456' }, bola)).status, 409, 'even with a valid code')
+})
+
+test('security: password guessing, sign-up spam and post-reset cash-out are blocked', async () => {
+  for (let i = 0; i < 8; i++) assert.equal((await call('POST', 'login', { id: 'victim_user', password: 'guess' + i })).status, 401)
+  const r = await call('POST', 'login', { id: 'victim_user', password: 'guess9' })
+  assert.equal(r.status, 429); assert.match(r.j.error, /Too many sign-in attempts/)
+  for (let i = 0; i < 5; i++) await call('POST', 'signup', { email: `spam${i}@x.com`, username: `spam_${i}`, fullName: 'Spam Bot', password: 'Lefkosa2026!' }, undefined, ENV, '6.6.6.6')
+  assert.equal((await call('POST', 'signup', { email: 'spam9@x.com', username: 'spam_9', fullName: 'Spam Bot', password: 'Lefkosa2026!' }, undefined, ENV, '6.6.6.6')).status, 429)
+  await q(`update profiles set money_hold_until = now() + interval '1 day' where username='ada'`)
+  const s1 = await call('POST', 'send', { to: 'bola', currency: 'TRY', amountMinor: 10_00, pin: '4826' }, ada)
+  assert.equal(s1.status, 403); assert.match(s1.j.error, /paused/)
+  await q(`update profiles set money_hold_until = null where username='ada'`)
+})
+
+test('freeze my wallet: instant on, PIN to unfreeze, team freezes stay', async () => {
+  assert.equal((await call('POST', 'freeze', {}, ada)).j.frozen, true)
+  assert.match((await call('POST', 'send', { to: 'bola', currency: 'TRY', amountMinor: 10_00, pin: '4826' }, ada)).j.error ?? '', /on hold/)
+  assert.equal((await call('POST', 'freeze', { freeze: false, pin: '0000' }, ada)).status, 401)
+  assert.equal((await call('POST', 'freeze', { freeze: false, pin: '4826' }, ada)).j.frozen, false)
+  await q(`update profiles set frozen = true, frozen_by = 'admin' where username = 'ada'`)
+  assert.equal((await call('POST', 'freeze', { freeze: false, pin: '4826' }, ada)).status, 403, 'only the team lifts a team freeze')
+  await q(`update profiles set frozen = false, frozen_by = null where username = 'ada'`)
+})
+
+test('change password while signed in needs the current one', async () => {
+  assert.equal((await call('POST', 'change-password', { oldPassword: 'wrong-one', newPassword: 'Another2026!' }, ada)).status, 401)
+  assert.equal((await call('POST', 'change-password', { oldPassword: 'NewPass2026!', newPassword: 'Another2026!' }, ada)).status, 200)
+  assert.equal((await call('POST', 'login', { id: 'ada@x.com', password: 'Another2026!' })).status, 200)
+})
+
+test('top-up credited even if the user never came back and no webhook arrived (self-healing)', async () => {
+  const before = (await bal(ada)).NGN
+  const r = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 1_000_00 }, ada)
+  world.charges.set(r.j.reference, { status: 'success' }) // paid on Paystack; browser closed; webhook missing
+  assert.equal((await bal(ada)).NGN, before + 1_000_00, 'credited just by opening the app')
+  assert.equal((await bal(ada)).NGN, before + 1_000_00, 'and only once')
+  const deps = (await call('GET', 'me', undefined, ada)).j.deposits
+  const mine = deps.find((x: any) => x.reference === r.j.reference)
+  assert.equal(mine.status, 'paid'); assert.equal(mine.provider, 'paystack'); assert.ok(mine.createdAt && mine.paidAt)
+  assert.ok(deps.some((x: any) => x.status === 'mismatch'), 'failed / under-review top-ups are listed too')
+})
+
+test('customer paid Paystack fee on top (amount > asked): still credited as quoted', async () => {
+  const before = (await bal(ada)).NGN
+  const r = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 1_000_00 }, ada)
+  world.charges.set(r.j.reference, { status: 'success', amount: r.j.chargeMinor + 15_00, requested: r.j.chargeMinor } as any)
+  assert.equal((await call('GET', `deposit?ref=${r.j.reference}`, undefined, ada)).j.status, 'paid')
+  assert.equal((await bal(ada)).NGN, before + 1_000_00)
+})
+
+test('stuck top-ups heal: an old "mismatch" or "failed" that the provider confirms is credited once', async () => {
+  const before = (await bal(ada)).NGN
+  // like the owner's real case: marked mismatch by the old exact-amount rule, Paystack says success
+  const r = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 1_000_00 }, ada)
+  await q(`update payments set status='mismatch' where reference=$1`, [r.j.reference])
+  world.charges.set(r.j.reference, { status: 'success', amount: r.j.chargeMinor + 15_47, requested: r.j.chargeMinor } as any)
+  assert.equal((await bal(ada)).NGN, before + 1_000_00, 'credited automatically on opening the app')
+  // a real underpayment stays under review
+  const u = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 1_000_00 }, ada)
+  world.charges.set(u.j.reference, { status: 'success', amount: 500 })
+  await call('GET', `deposit?ref=${u.j.reference}`, undefined, ada); await bal(ada)
+  assert.equal((await q(`select status from payments where reference=$1`, [u.j.reference]))[0].status, 'mismatch')
+  // failed, then the customer retried on the same checkout and paid → webhook credits it
+  const f = await call('POST', 'deposit', { provider: 'flutterwave', amountMinor: 1_000_00 }, ada)
+  world.charges.set(f.j.reference, { status: 'failed' }); await call('GET', `deposit?ref=${f.j.reference}`, undefined, ada)
+  world.charges.set(f.j.reference, { status: 'success' })
+  const raw = JSON.stringify({ event: 'charge.completed', data: { tx_ref: f.j.reference } })
+  await hook(raw, { 'verif-hash': 'flwhash' }); await hook(raw, { 'verif-hash': 'flwhash' })
+  assert.equal((await bal(ada)).NGN, before + 2_000_00, 'late success credited, once')
+})
+
+test('rejected webhooks are recorded so a wrong secret hash can be spotted', async () => {
+  await hook(JSON.stringify({ event: 'charge.completed', data: { tx_ref: 'x' } }), { 'verif-hash': 'old-wrong-hash' })
+  const ev = await q(`select payload from payment_events where kind='webhook_bad_signature' order by id desc limit 1`)
+  assert.equal(ev[0].payload.from, 'flutterwave')
+})
+
+test('withdrawal stuck "processing" (webhook missed) settles when the user opens the app', async () => {
+  const before = (await bal(ada)).NGN
+  world.transferReply = 'pending'
+  const w = await call('POST', 'withdraw', { amountMinor: 1_000_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
+  assert.equal(w.j.status, 'processing', JSON.stringify(w.j))
+  await q(`update withdrawals set created_at = now() - interval '5 minutes' where reference=$1`, [w.j.reference])
+  world.transfers.set(w.j.reference, 'failed')
+  assert.equal((await bal(ada)).NGN, before, 'failed payout refunded automatically')
+})
+
+test('Didit ID check: document + selfie for any nationality, verified from Didit itself', async () => {
+  const kofi = (await call('POST', 'signup', { email: 'kofi@x.com', username: 'kofi', fullName: 'Kofi Mensah', password: 'Lefkosa2026!' })).j.session.access_token
+  assert.equal((await call('GET', 'config')).j.didit, true)
+  const st = await call('POST', 'kyc-start', {}, kofi)
+  assert.match(st.j.url, /verify\.didit\.me/); assert.ok(world.calls.some((c) => c.startsWith('didit-start:')))
+  const sid = (await q(`select kyc_session_id from profiles where username='kofi'`))[0].kyc_session_id
+  // browser says "approved" but Didit hasn't decided → still not verified
+  assert.equal((await call('GET', 'kyc-status', undefined, kofi)).j.status, 'none')
+  world.didit.set(sid, { status: 'In Review' })
+  assert.equal((await call('GET', 'kyc-status', undefined, kofi)).j.status, 'pending')
+  world.didit.set(sid, { status: 'Approved', id_verifications: [{ first_name: 'Kofi', last_name: 'Mensah', full_name: 'KOFI ASANTE MENSAH', date_of_birth: '2002-03-04', document_type: 'Passport', document_number: 'G1234567', issuing_state: 'GHA' }] })
+  const ok = await call('GET', 'kyc-status', undefined, kofi)
+  assert.equal(ok.j.status, 'verified'); assert.equal(ok.j.name, 'KOFI ASANTE MENSAH')
+  const row = (await q(`select kyc_id_last4, kyc_doc_hash, kyc_country from profiles where username='kofi'`))[0]
+  assert.equal(row.kyc_id_last4, '4567'); assert.equal(row.kyc_doc_hash.length, 64); assert.equal(row.kyc_country, 'GHA')
+  assert.equal((await call('GET', 'me', undefined, kofi)).j.profile.kyc, 'verified')
+
+  // the same passport on a second account is refused
+  const fake = (await call('POST', 'signup', { email: 'kofi2@x.com', username: 'kofi2', fullName: 'Kofi Mensah', password: 'Lefkosa2026!' })).j.session.access_token
+  await call('POST', 'kyc-start', {}, fake)
+  const sid2 = (await q(`select kyc_session_id from profiles where username='kofi2'`))[0].kyc_session_id
+  world.didit.set(sid2, world.didit.get(sid)!)
+  const dup = await call('GET', 'kyc-status', undefined, fake)
+  assert.equal(dup.j.status, 'failed'); assert.match(dup.j.message, /already verified on another Luda account/)
+
+  // a document in someone else's name is refused
+  const ama = (await call('POST', 'signup', { email: 'ama2@x.com', username: 'ama_two', fullName: 'Ama Boateng', password: 'Lefkosa2026!' })).j.session.access_token
+  await call('POST', 'kyc-start', {}, ama)
+  const sid3 = (await q(`select kyc_session_id from profiles where username='ama_two'`))[0].kyc_session_id
+  world.didit.set(sid3, { status: 'Approved', id_verifications: [{ full_name: 'JOHN DOE', document_type: 'ID', document_number: 'X1', issuing_state: 'GHA' }] })
+  assert.match((await call('GET', 'kyc-status', undefined, ama)).j.message, /doesn't match your Luda name/)
+
+  // declined, then the webhook path (signed) re-asks Didit
+  await call('POST', 'kyc-start', {}, ama)
+  const sid4 = (await q(`select kyc_session_id from profiles where username='ama_two'`))[0].kyc_session_id
+  world.didit.set(sid4, { status: 'Approved', id_verifications: [{ full_name: 'AMA BOATENG', document_type: 'ID', document_number: 'GHA-777', issuing_state: 'GHA' }] })
+  const raw = JSON.stringify({ session_id: sid4, status: 'Approved', webhook_type: 'status.updated' })
+  const { createHmac } = await import('node:crypto')
+  assert.equal((await hook(raw, { 'x-signature': 'forged' })).status, 401)
+  assert.equal((await hook(raw, { 'x-signature': createHmac('sha256', 'didit_secret').update(raw).digest('hex') })).status, 200)
+  assert.equal((await call('GET', 'me', undefined, ama)).j.profile.kyc, 'verified')
+})
+
+test('Paystack "customer pays the fee": Luda adds no fee of its own (no double fee)', async () => {
+  const env2 = { ...ENV, PAYSTACK_CUSTOMER_PAYS_FEE: undefined } // owner's default
+  const r = await call('POST', 'deposit', { provider: 'paystack', amountMinor: 1_000_00 }, ada, env2)
+  assert.equal(r.j.feeMinor, 0); assert.equal(r.j.chargeMinor, 1_000_00); assert.equal(r.j.providerAddsFee, true); assert.ok(r.j.estFeeMinor > 0)
+  assert.equal(world.inits.get(r.j.reference), 1_000_00, 'Paystack is asked for ₦1,000; it adds its own fee')
+  const before = (await bal(ada)).NGN
+  world.charges.set(r.j.reference, { status: 'success', amount: 1_016_00, requested: 1_000_00 } as any) // Paystack added ₦16
+  assert.equal((await call('GET', `deposit?ref=${r.j.reference}`, undefined, ada, env2)).j.status, 'paid')
+  assert.equal((await bal(ada)).NGN, before + 1_000_00)
+  const fresh = (await call('POST', 'signup', { email: 'fee@x.com', username: 'fee_user', fullName: 'Fee Tester', password: 'Lefkosa2026!' })).j.session.access_token
+  const f = await call('POST', 'deposit', { provider: 'flutterwave', amountMinor: 1_000_00 }, fresh, env2)
+  assert.ok(f.j.feeMinor > 0, JSON.stringify(f.j) + ' Flutterwave: Luda still adds the fee unless FLW_CUSTOMER_PAYS_FEE is set')
+})
+
+test('owner admin page: hidden from others, every change needs the PIN and is audited', async () => {
+  const AENV = { ...ENV, ADMIN_EMAILS: 'b@x.com' } // bola is the admin
+  assert.equal((await call('GET', 'admin-overview', undefined, ada, AENV)).status, 404, 'not an admin → looks like nothing is there')
+  assert.equal((await call('GET', 'me', undefined, bola, AENV)).j.profile.isAdmin, true)
+  const ov = (await call('GET', 'admin-overview', undefined, bola, AENV)).j
+  assert.ok(ov.users >= 2 && ov.balances.NGN > 0 && ov.problems && 'webhooks7d' in ov, JSON.stringify(ov))
+  const found = (await call('GET', 'admin-users?q=okafor', undefined, bola, AENV)).j.users
+  assert.equal(found[0].username, 'ada'); assert.ok(!('pin_hash' in found[0]))
+  const adaId = found[0].userId
+  const det = (await call('GET', `admin-user?id=${adaId}`, undefined, bola, AENV)).j
+  assert.ok(det.history.length > 0 && det.deposits.length > 0)
+  assert.ok((await call('GET', 'admin-deposits?status=paid', undefined, bola, AENV)).j.deposits.length > 0)
+  // changes need the admin's PIN
+  assert.equal((await call('POST', 'admin-action', { action: 'freeze', userId: adaId }, bola, AENV)).status, 401)
+  const before = (await bal(ada)).NGN
+  assert.match((await call('POST', 'admin-action', { action: 'adjust', userId: adaId, currency: 'NGN', amountMinor: 500_00, pin: '4826' }, bola, AENV)).j.error, /reason/)
+  assert.equal((await call('POST', 'admin-action', { action: 'adjust', userId: adaId, currency: 'NGN', amountMinor: 500_00, reason: 'Refund for duplicate charge', pin: '4826' }, bola, AENV)).status, 200)
+  assert.equal((await bal(ada)).NGN, before + 500_00)
+  const bolaId = (await call('GET', 'admin-users?q=bola', undefined, bola, AENV)).j.users[0].userId
+  assert.match((await call('POST', 'admin-action', { action: 'adjust', userId: bolaId, currency: 'NGN', amountMinor: 1_00, reason: 'x', pin: '4826' }, bola, AENV)).j.error, /own balance/)
+  // freeze / unfreeze
+  await call('POST', 'admin-action', { action: 'freeze', userId: adaId, reason: 'checking', pin: '4826' }, bola, AENV)
+  assert.equal((await call('GET', 'me', undefined, ada, AENV)).j.profile.frozenBy, 'admin')
+  assert.equal((await call('POST', 'freeze', { freeze: false, pin: '4826' }, ada, AENV)).status, 403, 'user cannot lift a team freeze')
+  await call('POST', 'admin-action', { action: 'unfreeze', userId: adaId, pin: '4826' }, bola, AENV)
+  // ticket refund, once
+  const t = (await call('GET', 'me', undefined, ada, AENV)).j.tickets.find((x: any) => x.status === 'valid')
+  const tb = (await bal(ada))[t.paid_currency]
+  assert.equal((await call('POST', 'admin-action', { action: 'ticket-refund', userId: adaId, ticketId: t.id, pin: '4826' }, bola, AENV)).status, 200)
+  assert.equal((await bal(ada))[t.paid_currency], tb + Number(t.paid_minor))
+  assert.equal((await call('POST', 'admin-action', { action: 'ticket-refund', userId: adaId, ticketId: t.id, pin: '4826' }, bola, AENV)).status, 400)
+  // manual KYC
+  assert.equal((await call('POST', 'admin-action', { action: 'kyc-reset', userId: adaId, pin: '4826' }, bola, AENV)).status, 200)
+  assert.equal((await call('POST', 'admin-action', { action: 'kyc-approve', userId: adaId, legalName: 'Ada Chioma Okafor', reason: 'Checked passport on video call', pin: '4826' }, bola, AENV)).status, 200)
+  assert.equal((await call('GET', 'me', undefined, ada, AENV)).j.profile.kyc, 'verified')
+  // audit trail
+  const log = await q(`select kind, payload->>'by' as by from payment_events where kind like 'admin_%' order by id`)
+  assert.ok(log.some((x: any) => x.kind === 'admin_adjust' && x.by === 'bola') && log.some((x: any) => x.kind === 'admin_freeze'))
+})
+
+test('appeals / support cases: photos, replies, and the team verifies the ID by hand', async () => {
+  const AENV = { ...ENV, ADMIN_EMAILS: 'b@x.com' }
+  const zara = (await call('POST', 'signup', { email: 'zara@x.com', username: 'zara', fullName: 'Zara Musa', password: 'Lefkosa2026!' })).j.session.access_token
+  const jpg = { name: 'front.jpg', type: 'image/jpeg', data: Buffer.from([0xff, 0xd8, 0xff, 1, 2, 3]).toString('base64') }
+  assert.match((await call('POST', 'case-create', { category: 'kyc', subject: 'Upload not working', message: 'The ID page does not open', files: [{ type: 'application/x-msdownload', data: 'AA==' }] }, zara)).j.error, /Only photos/)
+  assert.match((await call('POST', 'case-create', { category: 'kyc', subject: 'x', message: 'y' }, zara)).j.error, /short title/)
+  const c = await call('POST', 'case-create', { category: 'kyc', subject: "Can't verify my ID", message: 'The selfie step crashes on my phone. Photos attached.', files: [jpg, { ...jpg, name: 'selfie.jpg' }] }, zara)
+  assert.equal(c.status, 200, JSON.stringify(c.j))
+  assert.equal([...world.files.keys()].filter((k) => k.includes(c.j.id)).length, 2, 'stored privately under user/case')
+  const mine = (await call('GET', 'cases', undefined, zara)).j.cases
+  assert.equal(mine[0].status, 'open'); assert.equal(mine[0].messages[0].files.length, 2); assert.match(mine[0].messages[0].files[0].url, /token=/)
+  assert.equal((await call('POST', 'case-reply', { caseId: c.j.id, message: 'hello' }, ada)).status, 404, "can't touch someone else's case")
+  // the team
+  assert.equal((await call('GET', 'admin-cases', undefined, zara, AENV)).status, 404)
+  const list = (await call('GET', 'admin-cases', undefined, bola, AENV)).j.cases
+  assert.ok(list.some((x: any) => x.id === c.j.id && x.user.username === 'zara'))
+  assert.equal((await call('GET', 'admin-overview', undefined, bola, AENV)).j.openCases >= 1, true)
+  const det = (await call('GET', `admin-case?id=${c.j.id}`, undefined, bola, AENV)).j
+  assert.equal(det.user.username, 'zara'); assert.equal(det.messages[0].files.length, 2)
+  await call('POST', 'admin-case-reply', { caseId: c.j.id, message: 'Please send the back of your ID too.' }, bola, AENV)
+  assert.equal((await call('GET', 'cases', undefined, zara)).j.cases[0].status, 'waiting_user')
+  await call('POST', 'case-reply', { caseId: c.j.id, message: 'Here it is', files: [{ ...jpg, name: 'back.jpg' }] }, zara)
+  assert.equal((await call('GET', 'cases', undefined, zara)).j.cases[0].status, 'open', 'user reply re-opens it')
+  // manual verification from the case (PIN, legal name, document) — and the same document can't be reused
+  const zid = det.user.userId
+  assert.match((await call('POST', 'admin-action', { action: 'kyc-approve', userId: zid, caseId: c.j.id, legalName: 'Zara Musa', reason: 'Checked photos', docType: 'Passport', docNumber: 'G1234567', country: 'GHA', pin: '4826' }, bola, AENV)).j.error, /already verified on another/)
+  assert.equal((await call('POST', 'admin-action', { action: 'kyc-approve', userId: zid, caseId: c.j.id, legalName: 'Zara Amina Musa', reason: 'Checked passport photos + video call', docType: 'Passport', docNumber: 'A09876543', country: 'NGA', dob: '2003-05-06', pin: '4826' }, bola, AENV)).status, 200)
+  const after = (await call('GET', 'cases', undefined, zara)).j.cases[0]
+  assert.equal(after.status, 'resolved'); assert.match(after.messages[after.messages.length - 1].body, /verified by the Luda team/)
+  assert.equal((await call('GET', 'me', undefined, zara)).j.profile.kyc, 'verified')
+  // reject path
+  const c2 = await call('POST', 'case-create', { category: 'kyc', subject: 'Second try', message: 'Please check again' }, ada)
+  const adaId = (await call('GET', 'admin-users?q=okafor', undefined, bola, AENV)).j.users[0].userId
+  assert.match((await call('POST', 'admin-action', { action: 'kyc-reject', userId: adaId, caseId: c2.j.id, pin: '4826' }, bola, AENV)).j.error, /why/)
+  await call('POST', 'admin-action', { action: 'kyc-reject', userId: adaId, caseId: c2.j.id, reason: 'photo too blurry', pin: '4826' }, bola, AENV)
+  assert.equal((await call('GET', 'cases', undefined, ada)).j.cases[0].status, 'waiting_user')
+  // at most 3 open cases
+  for (let i = 0; i < 2; i++) await call('POST', 'case-create', { category: 'other', subject: `Question ${i}`, message: 'Some question here' }, ada)
+  assert.match((await call('POST', 'case-create', { category: 'other', subject: 'Question 9', message: 'Some question here' }, ada)).j.error, /3 open cases/)
+})
+
+test('Paystack refuses a payout (starter business): money goes straight back, stuck ones heal', async () => {
+  await q(`update profiles set kyc_status='verified', kyc_name='ADA CHIOMA OKAFOR', frozen=false, money_hold_until=null where username='ada'`)
+  const before = (await bal(ada)).NGN
+  world.transferReply = 'starter'; world.flwReply = 'ip' // both routes refuse
+  const w = await call('POST', 'withdraw', { amountMinor: 1_000_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
+  assert.equal(w.j.status, 'failed', JSON.stringify(w.j)); assert.match(w.j.message, /paused/)
+  assert.match((await q(`select note from withdrawals where reference=$1`, [w.j.reference]))[0].note, /starter business.*Whitelisting/)
+  world.flwReply = 'NEW'
+  assert.equal((await bal(ada)).NGN, before, 'amount + fee refunded immediately')
+  // a withdrawal stuck in "processing" from before the fix (Paystack never created it) heals on app open
+  world.transferReply = 'pending'
+  const ada_id = (await q(`select user_id from profiles where username='ada'`))[0].user_id
+  await q(`select luda_withdraw($1,'wdr_oldstuck000000000000001',100000,5000,'50211','Kuda Bank','0123456789','OKAFOR ADA CHIOMA','RCP_x')`, [ada_id])
+  await q(`update withdrawals set created_at = now() - interval '20 minutes' where reference='wdr_oldstuck000000000000001'`)
+  assert.equal((await bal(ada)).NGN, before, 'refunded once the user opens the app')
+  assert.equal((await q(`select status from withdrawals where reference='wdr_oldstuck000000000000001'`))[0].status, 'failed')
+})
+
+test('Paystack refuses → Flutterwave pays out instead; ₦300 minimum; Kuda maps to Flutterwave\'s own code', async () => {
+  await q(`update profiles set kyc_status='verified', kyc_name='ADA CHIOMA OKAFOR', frozen=false, money_hold_until=null where username='ada'`)
+  await q(`delete from rate_hits`).catch(() => {})
+  const before = (await bal(ada)).NGN, tryBefore = (await bal(ada)).TRY
+  world.transferReply = 'starter'; world.flwReply = 'NEW'
+  assert.match((await call('POST', 'withdraw', { amountMinor: 299_00, account: '0123456789', bankCode: '50211', pin: '4826' }, ada)).j.error, /Minimum withdrawal is ₦300/)
+  const w = await call('POST', 'withdraw', { amountMinor: 300_00, account: '0123456789', bankCode: '50211', pin: '4826' }, ada)
+  assert.equal(w.j.status, 'processing', JSON.stringify(w.j))
+  assert.equal((await bal(ada)).NGN, before - 300_00, '₦300 held'); assert.equal((await bal(ada)).TRY, tryBefore - 3_00, '₺3 fee')
+  const row = (await q(`select provider, transfer_code, bank_name from withdrawals where reference=$1`, [w.j.reference]))[0]
+  assert.equal(row.provider, 'flutterwave'); assert.ok(row.transfer_code); assert.equal(row.bank_name, 'Kuda Bank')
+  const t = world.flwTransfers.get(row.transfer_code)!
+  assert.equal(t.account_bank, '090267', 'Kuda uses Flutterwave\'s code, not Paystack\'s 50211'); assert.equal(t.amount, 300)
+  // Flutterwave reports failure by webhook → refunded once (re-checked with Flutterwave, not trusted from the body)
+  t.status = 'FAILED'
+  const raw = JSON.stringify({ event: 'transfer.completed', 'event.type': 'Transfer', data: { id: t.id, reference: w.j.reference, status: 'FAILED' } })
+  assert.equal((await hook(raw, { 'verif-hash': 'flwhash' })).status, 200); await hook(raw, { 'verif-hash': 'flwhash' })
+  assert.equal((await bal(ada)).NGN, before, 'refunded once, including the fee')
+  // success
+  const w2 = await call('POST', 'withdraw', { amountMinor: 300_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
+  const r2 = (await q(`select transfer_code from withdrawals where reference=$1`, [w2.j.reference]))[0]
+  assert.equal(world.flwTransfers.get(r2.transfer_code)!.account_bank, '058')
+  world.flwTransfers.get(r2.transfer_code)!.status = 'SUCCESSFUL'
+  assert.equal((await call('GET', `withdrawal?ref=${w2.j.reference}`, undefined, ada)).j.status, 'paid')
+  assert.equal((await bal(ada)).NGN, before - 300_00)
+  // Flutterwave down (unknown outcome): money stays held, nothing refunded
+  world.flwReply = 'down'
+  const w3 = await call('POST', 'withdraw', { amountMinor: 300_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
+  assert.equal(w3.j.status, 'processing'); assert.equal((await bal(ada)).NGN, before - 600_00)
+  // Paystack works again → Paystack is used first
+  world.transferReply = 'pending'; world.flwReply = 'NEW'
+  const w4 = await call('POST', 'withdraw', { amountMinor: 300_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
+  assert.equal((await q(`select provider from withdrawals where reference=$1`, [w4.j.reference]))[0].provider, 'paystack')
+})
+
+test('Flutterwave bank matching never picks a different bank', async () => {
+  const list = [{ code: '058', name: 'GTBank Plc' }, { code: '090267', name: 'Kuda Microfinance Bank' }, { code: '50211', name: 'Some Other Bank' }, { code: '044', name: 'Access Bank' }, { code: '063', name: 'Access Bank (Diamond)' }]
+  assert.equal(matchFlwBank('058', 'Guaranty Trust Bank', list), '058')
+  assert.equal(matchFlwBank('50211', 'Kuda Bank', list), '090267')
+  assert.equal(matchFlwBank('044', 'Access Bank', list), '044')
+  assert.equal(matchFlwBank('51318', 'Moniepoint MFB', list), null)
+})
+
+test('books balance: every wallet equals the sum of its ledger', async () => {
+  const bad = await q(`select w.user_id from wallets w left join (select user_id, currency, sum(amount_minor) s from ledger group by 1,2) l using (user_id, currency) where w.balance_minor <> coalesce(l.s, 0)`)
+  assert.equal(bad.length, 0)
+  assert.equal((await call('GET', 'nope')).status, 404)
+})

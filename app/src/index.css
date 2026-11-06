@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+/* Tablets (portrait & landscape iPad etc.): app goes wider and grids gain columns.
+   Phones: full width. Desktop (≥1024px): shown inside a phone frame. */
+@custom-variant tab (@media (min-width: 640px) and (max-width: 1023px));
+@custom-variant desk (@media (min-width: 1024px));
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-ink-950: #07090f;
+  --color-ink-900: #0c1019;
+  --color-ink-800: #131926;
+  --color-ink-700: #1c2434;
+  --color-ink-600: #2a3447;
+  --color-mint-300: #6ee7b7;
+  --color-mint-400: #34d399;
+  --color-mint-500: #10b981;
+  --color-gold-300: #fcd34d;
+  --color-gold-400: #fbbf24;
+  --color-gold-200: #fde68a;
+  --color-gold-100: #fef3c7;
+  --color-mint-200: #a7f3d0;
+  --color-fg: #ffffff;
+}
+
+/* ---------- Day (light) theme: same components, re-tinted surfaces & text ---------- */
+html { color-scheme: dark; }
+html.light {
+  color-scheme: light;
+  --color-ink-900: #ffffff;
+  --color-ink-800: #f1f4f9;
+  --color-ink-700: #e6eaf1;
+  --color-ink-600: #d6dce6;
+  --color-fg: #0b1220;
+  --color-slate-100: #0f172a;
+  --color-slate-200: #1e293b;
+  --color-slate-300: #334155;
+  --color-slate-400: #556274;
+  --color-slate-500: #6b7686;
+  --color-slate-600: #98a2b3;
+  --color-mint-200: #047857;
+  --color-mint-300: #059669;
+  --color-gold-100: #92400e;
+  --color-gold-200: #b45309;
+  --color-gold-300: #d97706;
+  --color-fuchsia-200: #a21caf;
+  --color-fuchsia-300: #c026d3;
+  --color-sky-100: #075985;
+  --color-sky-200: #0369a1;
+  --color-sky-300: #0284c7;
+  --color-rose-200: #be123c;
+  --color-rose-300: #e11d48;
+  --color-orange-300: #ea580c;
+  --color-violet-300: #7c3aed;
+  /* pale tints used on see-through cards (owner: the Luda team's purple message was unreadable in Day mode) */
+  --color-violet-100: #4c1d95;
+  --color-violet-200: #5b21b6;
+  --color-mint-100: #065f46;
+  --color-rose-100: #9f1239;
+  --color-pink-200: #be185d;
+  --color-fuchsia-100: #86198f;
+  --color-emerald-200: #047857;
+  --color-cyan-300: #0891b2;
+}
+html.light body {
+  background-color: #f3f5f9;
+  background-image:
+    radial-gradient(60rem 40rem at 10% -10%, rgba(16,185,129,.10), transparent 60%),
+    radial-gradient(50rem 40rem at 110% 10%, rgba(251,191,36,.10), transparent 60%);
+}
+html.light .glass { box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.10); }
+
+html, body, #root { height: 100%; }
+body {
+  @apply bg-ink-950 text-slate-100 antialiased;
+  background-image:
+    radial-gradient(60rem 40rem at 10% -10%, rgba(16,185,129,.12), transparent 60%),
+    radial-gradient(50rem 40rem at 110% 10%, rgba(251,191,36,.08), transparent 60%);
+  background-attachment: fixed;
+}
+::-webkit-scrollbar { width: 0; height: 0; }
+
+@utility glass {
+  @apply bg-fg/[0.04] border border-fg/[0.07] backdrop-blur-xl;
+}
+@utility card { @apply glass rounded-3xl p-4; }
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 font-semibold transition active:scale-[.97] disabled:opacity-40 disabled:pointer-events-none;
+}
+@utility btn-primary { @apply btn bg-gradient-to-r from-mint-400 to-emerald-500 text-ink-950 shadow-lg shadow-emerald-500/20; }
+@utility btn-gold { @apply btn bg-gradient-to-r from-gold-300 to-amber-500 text-ink-950 shadow-lg shadow-amber-500/20; }
+@utility btn-ghost { @apply btn glass text-slate-100 hover:bg-fg/[0.08]; }
+@utility input {
+  @apply w-full rounded-2xl bg-ink-800/80 border border-fg/[0.08] px-4 py-3 text-slate-100 placeholder:text-slate-500 outline-none focus:border-mint-400/60 focus:ring-4 focus:ring-mint-400/10 transition;
+}
+@utility chip { @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold; }
+@utility label { @apply text-xs font-semibold uppercase tracking-wider text-slate-400; }
+@utility text-gradient { @apply bg-gradient-to-r from-mint-300 via-emerald-300 to-gold-300 bg-clip-text text-transparent; }
+
+
+/* App width used by every full-width layer (page, bottom nav, sheets, overlays). */
+@utility max-w-app {
+  max-width: 28rem;
+  @media (min-width: 640px) and (max-width: 1023px) { max-width: 46rem; }
+}
+
+/* iPhone notch / home bar */
+@utility pt-safe { padding-top: max(1.5rem, env(safe-area-inset-top)); }
+@utility pb-safe { padding-bottom: max(2rem, env(safe-area-inset-bottom)); }
+
+/* iOS zooms into inputs smaller than 16px: keep them at 16px on touch devices. */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px !important; }
+}
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { overflow-x: hidden; overscroll-behavior-y: none; }
+img, svg, video { max-width: 100%; }
+
+/* Phone feel: no pull-to-refresh on the page (Luda has its own refresh buttons), no accidental text
+   selection or grey tap flashes. Only typing fields stay selectable. */
+html { overscroll-behavior-y: none; }
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+/* Owner (v1.9.0): nothing on screen can be selected or long-pressed to copy; only a clear Copy button copies. */
+input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+img { -webkit-user-drag: none; }
