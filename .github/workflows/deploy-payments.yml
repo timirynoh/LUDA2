@@ -76,6 +76,7 @@ jobs:
           check "Help Center articles" help '.topics | length > 0' || fail=1
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/me")
           if [ "$code" = "401" ]; then echo "✅ Signed-in pages need a session"; else echo "::error::GET me without a session returned $code (expected 401)"; fail=1; fi
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/pay-webhook" -d '{}')
+          # GET only: a POST without a signature would be logged as a rejected webhook and set off the health alarm.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/pay-webhook")
           if [ "$code" != "000" ] && [ "$code" -lt 500 ]; then echo "✅ Webhook address answers ($code)"; else echo "::error::Webhook address returned $code"; fail=1; fi
           exit $fail
