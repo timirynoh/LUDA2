@@ -2,7 +2,7 @@
 import { InfoTip } from './LiveGuides'
 import { BadgeCheck, ExternalLink, Fingerprint, Loader2, Lock, Search, ShieldCheck } from 'lucide-react'
 import { bioApprove, bioSaved } from '../lib/bio'
-import { NewCaseSheet } from './LiveSupport'
+import { ManualKycSheet } from './ManualKyc'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { HoldButton } from './Confirm'
 import { BankBadge, popularity } from './BankBadge'
@@ -99,8 +99,9 @@ function DiditKyc({ ninAvailable, onUseNin }: { ninAvailable: boolean; onUseNin:
       {me?.profile.kyc === 'failed' && <p className="rounded-xl bg-rose-500/10 p-3 text-xs text-rose-300">Your last check wasn't approved. Use a valid, unexpired document and good light, then try again.</p>}
       {stuck && <p className="rounded-xl bg-gold-400/10 p-3 text-xs text-gold-100">Your last check didn't finish. If it is approved later, you'll see it here. Otherwise try again or contact the Luda team.</p>}
       {left <= 0 && <p className="rounded-xl bg-gold-400/10 p-3 text-xs text-gold-100">You've used today's 2 ID checks. Try again tomorrow, or send your ID to the Luda team below.</p>}
-      {appeal && <NewCaseSheet category="kyc" subject="I can't complete the ID check" onClose={() => setAppeal(false)} />}
+      {appeal && <ManualKycSheet onClose={() => setAppeal(false)} />}
       {err && <p className="text-sm text-rose-300">{err}</p>}
+      {(err || left <= 0) && <button className="btn-primary py-4" onClick={() => setAppeal(true)}><ShieldCheck size={18} /> Send your ID to the Luda team (free)</button>}
       <button className="btn-primary py-4" disabled={busy || left <= 0} onClick={start}>{busy ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />} Verify my identity</button>
       <p className="-mt-1 text-center text-[11px] text-slate-500">{left > 0 ? `${left} of 2 tries left today` : 'No tries left today'}</p>
       <p className="flex items-start gap-1.5 text-[11px] text-slate-500"><Lock size={12} className="mt-0.5 shrink-0" /> Done on Didit's secure page. Luda keeps only your verified name, date of birth, country and the last 4 characters of your document number.</p>

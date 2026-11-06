@@ -251,6 +251,23 @@ function billDetails(v: unknown): Record<string, string> {
   }
   return out
 }
+const MANUAL_DOCS = ['Passport', 'National ID', 'Residence permit', "Driver's licence"]
+/** Today's 4-digit code for the manual ID selfie (same all day for this person, different for everyone else). */
+async function manualCode(env: Env, userId: string) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.SERVICE_KEY || env.APP_URL), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const day = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10)
+  const b = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`kyc-manual:${userId}:${day}`)))
+  return String((((b[0] << 16) | (b[1] << 8) | b[2]) % 9000) + 1000)
+}
+/** Didit credit: how many checks were started this month, what that costs, and whether Didit refused for lack of credit. */
+async function diditUsage(env: Env, d: Deps) {
+  const u = await d.db.fn<{ started_month: number; no_credit_24h: number; last_no_credit: string | null; manual_open: number }>('luda_kyc_usage', {})
+  const price = Number(env.DIDIT_CHECK_USD) || 0.3, free = Number(env.DIDIT_FREE_USD) || 10
+  const used = Math.round(Number(u.started_month) * price * 100) / 100
+  return { on: diditEnabled(env), checksMonth: Number(u.started_month), priceUsd: price, freeUsd: free, usedUsd: used, freeChecks: Math.floor(free / price),
+    outOfCredit: Number(u.no_credit_24h) > 0, lastNoCredit: u.last_no_credit, low: used >= free * 0.8, manualOpen: Number(u.manual_open) }
+}
+
 /** Saved-bill fields from the app (no payment): what it is, the number, details, a name and the reminder day (0 = off). */
 function savedBillArgs(body: Body) {
   const biller = String(body.biller ?? '')
@@ -998,9 +1015,45 @@ const routes: Record<string, Route> = {
         ? 'Automatic ID checks are paused for a moment. Please tap “Send your ID to the Luda team” below and we’ll verify you by hand.'
         : 'Could not start the ID check. Try again in a minute, or send your ID to the Luda team below.', 503)
     })
+    await d.db.log(p.user_id, 'kyc_started', { session: s.sessionId }).catch(() => {}) // counts Didit usage for the HQ credit warning
     const today = new Date().toISOString().slice(0, 10)
     await d.db.updateProfile(p.user_id, { kyc_session_id: s.sessionId, kyc_started_at: new Date().toISOString(), kyc_tries: (p.kyc_tries_day === today ? p.kyc_tries : 0) + 1, kyc_tries_day: today, ...(p.kyc_status === 'failed' || p.kyc_status === 'pending' ? { kyc_status: 'none' } : {}) } as Partial<Profile>)
     return { url: s.url, triesLeft: left - 1 }
+  },
+
+  // Free manual ID check (v1.23.0): document photo(s) + a selfie holding today's code, checked by the Luda team.
+  'GET kyc-manual': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    const open = (await d.db.userCases(p.user_id, 20)).find((c) => c.reference === 'kyc-manual' && (c.status === 'open' || c.status === 'waiting_user'))
+    return { code: await manualCode(env, p.user_id), open: open ? { id: open.id, status: open.status } : null, verified: p.kyc_status === 'verified' }
+  },
+  'POST kyc-manual': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    if (p.kyc_status === 'verified') throw new Fail('Your ID is already verified', 409)
+    const open = (await d.db.userCases(p.user_id, 20)).find((c) => c.reference === 'kyc-manual' && (c.status === 'open' || c.status === 'waiting_user'))
+    if (open) throw new Fail('Your ID is already with the Luda team. You can add photos or reply in Help → My requests.', 409)
+    const legal = cleanText(body.legalName, 80).replace(/\s+/g, ' ')
+    if (nameTokens(legal).length < 2) throw new Fail('Enter your full name exactly as on the document')
+    const docType = MANUAL_DOCS.includes(String(body.docType)) ? String(body.docType) : ''
+    if (!docType) throw new Fail('Pick the type of document')
+    const docNumber = cleanText(body.docNumber, 40).replace(/\s+/g, '').toUpperCase()
+    if (!/^[A-Z0-9-]{4,30}$/.test(docNumber)) throw new Fail('Enter the document number as printed')
+    const country = cleanText(body.country, 40)
+    if (country.length < 2) throw new Fail('Enter the country that issued the document')
+    const dob = normDate(String(body.dob ?? ''))
+    if (!dob) throw new Fail('Enter your date of birth')
+    const files = Array.isArray(body.files) ? body.files : []
+    if (files.length < 2 || files.length > 3) throw new Fail('Add a photo of your document and a selfie holding the code')
+    await limit(d, `kycman:${p.user_id}`, 3, 86400, 'You can send your ID to the team 3 times a day. Try again tomorrow.')
+    const code = await manualCode(env, p.user_id)
+    const nameMatch = accountMatchesName(legal, p.full_name)
+    const meta = { legalName: legal, docType, docNumber, country, dob, code, nameMatch }
+    const c = await d.db.createCase({ user_id: p.user_id, category: 'kyc', subject: 'ID check by the Luda team', reference: 'kyc-manual', meta } as Parameters<Db['createCase']>[0])
+    const paths = await storeFiles(env, d, p.user_id, c.id, files)
+    await d.db.addCaseMessage({ case_id: c.id, author: 'user', author_name: p.full_name, files: paths,
+      body: `Please verify my ID.\nName on the document: ${legal}\nDocument: ${docType} ${docNumber} (${country})\nDate of birth: ${dob}\nCode in my selfie: ${code}\nPhotos: document${paths.length === 3 ? ' (front and back)' : ''} and selfie holding the code.` })
+    await d.db.log(p.user_id, 'kyc_manual_sent', { case: c.id, nameMatch })
+    return { id: c.id }
   },
 
   'GET kyc-status': async ({ req, env, d }) => {
@@ -1125,6 +1178,7 @@ const routes: Record<string, Route> = {
       admin: a.username, owner: a.staff.owner, perms: a.staff.perms, openCases: cases.length,
       billsPending: bills.length, billsPendingMinor: bills.reduce((t, b) => t + Number(b.amount_minor), 0),
       escrowHeld: disputes.length, escrowHeldMinor: disputes.reduce((t, e) => t + Number(e.amount_minor), 0),
+      didit: can(a.staff, 'kyc', 'view') ? await diditUsage(env, d).catch(() => null) : null,
     }
   },
 
@@ -2562,6 +2616,7 @@ async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
   if (p.pin_hash && !p.passcode_hash) items.push({ key: 'passcode', emoji: '🔐', title: 'New: set your 6-digit sign-in code', sub: 'Unlock Luda with 6 digits; your 4-digit PIN is now only for payments', to: '/security?a=passcode', level: 'urgent' })
   if (!p.pin_hash) items.push({ key: 'pin', emoji: '🔢', title: 'Set your payment PIN', sub: 'You need it to move money', to: '/security', level: 'action' })
   if (p.kyc_status === 'pending') items.push({ key: 'kyc-pending', emoji: '🪪', title: 'Your ID check is in progress', sub: 'We\'ll tell you as soon as it\'s done', to: '/wallet?a=kyc', level: 'info' })
+  else if (p.kyc_status !== 'verified' && (await d.db.userCases(p.user_id, 20).catch(() => [])).some((c) => c.reference === 'kyc-manual' && (c.status === 'open' || c.status === 'waiting_user'))) items.push({ key: 'kyc-manual', emoji: '🪪', title: 'Your ID is with the Luda team', sub: 'We\'ll tell you as soon as it\'s checked', to: '/help', level: 'info' })
   else if (p.kyc_status !== 'verified') items.push({ key: 'kyc', emoji: '🪪', title: 'Verify your ID', sub: 'Unlocks withdrawals, P2P, Market selling, Flash jobs and cash prizes', to: '/wallet?a=kyc', level: 'action' })
   if (smsEnabled(env) && !p.phone_verified_at) items.push({ key: 'phone', emoji: '📱', title: 'Verify your phone number', sub: 'Keeps your account safe', to: '/security', level: 'action' })
   for (const o of t.p2p ?? []) {
@@ -2593,6 +2648,15 @@ async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
   for (const s of saved.filter((x) => x.due)) items.push({ key: `savedbill:${s.id}:${cyprusDay().slice(0, 7)}`, emoji: '🗓️', title: `Time to pay ${s.label || s.provider}`, sub: s.amount_minor ? `Last time ${amt(s.amount_minor, 'TRY')} · two taps to pay` : 'Two taps to pay from your Lira wallet', to: `/bills?pay=${s.id}`, level: 'action' })
   // Luda team: bills waiting to be paid (new ones, and ones close to the promised time).
   const sp = await permsOf(p, env, d).catch(() => null)
+  if (sp && can(sp, 'kyc', 'edit')) {
+    const ids = (await d.db.listCases('open', 200).catch(() => [])).filter((c) => c.reference === 'kyc-manual')
+    for (const c of ids.slice(0, 5)) items.push({ key: `staffkyc:${c.id}`, emoji: '🪪', title: `ID to check: @${c.user?.username ?? 'user'}`, sub: 'Luda HQ → Cases', to: '/admin?tab=cases', level: 'action' })
+  }
+  if (sp && can(sp, 'kyc', 'full') && diditEnabled(env)) {
+    const u = await diditUsage(env, d).catch(() => null)
+    if (u?.outOfCredit) items.push({ key: `didit-out:${cyprusDay()}`, emoji: '⛔', title: 'Didit is out of credit: automatic ID checks are paused', sub: 'Top up in Didit → Billing. Students can still send their ID to the team.', to: '/admin', level: 'urgent' })
+    else if (u?.low) items.push({ key: `didit-low:${cyprusDay().slice(0, 7)}`, emoji: '🪫', title: `Didit credit running low: about ${u.checksMonth} checks used this month`, sub: `≈ $${u.usedUsd.toFixed(2)} of the $${u.freeUsd} monthly credit. Top up or turn on auto-refill.`, to: '/admin', level: 'action' })
+  }
   if (sp && can(sp, 'bills', 'edit')) {
     const q = await d.db.fn<Record<string, any>[]>('luda_admin_bills', { p_status: 'pending' }).catch(() => [])
     const free = q.filter((b) => b.auto?.status !== 'processing' && (!b.claimed_by || Date.parse(b.claimed_at) < Date.now() - 45 * 60e3))

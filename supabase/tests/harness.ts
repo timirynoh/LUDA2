@@ -65,7 +65,7 @@ export async function makeDb() {
     },
     async setWithdrawal(ref, patch) { const k = Object.keys(patch); if (k.length) await q(`update withdrawals set ${k.map((x, i) => `${x}=$${i + 2}`).join(',')}, updated_at=now() where reference=$1`, [ref, ...k.map((x) => (patch as any)[x])]) },
     async withdrawSettle(ref, st, tc, note) { await money(() => q(`select luda_withdraw_settle($1,$2,$3,$4)`, [ref, st, tc ?? null, note ?? null])) },
-    async createCase(c) { return (await q(`insert into cases (user_id,category,subject,reference) values ($1,$2,$3,$4) returning *`, [c.user_id, c.category, c.subject, c.reference]))[0] },
+    async createCase(c) { return (await q(`insert into cases (user_id,category,subject,reference,meta) values ($1,$2,$3,$4,$5::jsonb) returning *`, [c.user_id, c.category, c.subject, c.reference, (c as { meta?: unknown }).meta ? JSON.stringify((c as { meta?: unknown }).meta) : null]))[0] },
     async getCase(id) { const r = (await q(`select c.*, json_build_object('username',p.username,'full_name',p.full_name,'email',p.email,'kyc_status',p.kyc_status) as user from cases c join profiles p using (user_id) where c.id::text=$1`, [id]))[0]; return r ?? null },
     async updateCase(id, patch) { const k = Object.keys(patch); await q(`update cases set ${k.map((x, i) => `${x}=$${i + 2}`).join(',')}, updated_at=now() where id=$1`, [id, ...k.map((x) => (patch as any)[x])]) },
     async userCases(u, n) { return q(`select * from cases where user_id=$1 order by updated_at desc limit ${n}`, [u]) },

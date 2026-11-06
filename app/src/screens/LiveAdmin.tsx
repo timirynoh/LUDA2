@@ -152,6 +152,7 @@ function Overview({ o, go }: { o: Record<string, any> | null; go: (t: Tab) => vo
       {(o.escrowHeld ?? 0) > 0 && <button onClick={() => go('disputes')} className="flex items-center gap-3 rounded-2xl bg-fg/[0.04] p-3 text-start text-xs text-slate-400">
         <Gavel size={16} className="shrink-0" /><span className="flex-1"><b className="text-slate-200">{lira(o.escrowHeldMinor ?? 0)}</b> held for {o.escrowHeld} marketplace / Flash payment{o.escrowHeld === 1 ? '' : 's'}. Nothing to do unless someone opens a case.</span><ChevronRight size={16} /></button>}
       {warn.map((w) => <p key={w} className="flex items-start gap-2 rounded-2xl bg-rose-500/10 p-3 text-xs text-rose-200"><AlertTriangle size={15} className="shrink-0" /> {w}</p>)}
+      {o.didit?.on && <DiditCard u={o.didit} go={go} />}
 
       <p className="label">This week</p>
       <div className="grid grid-cols-2 gap-2.5 tab:grid-cols-3">
@@ -164,6 +165,24 @@ function Overview({ o, go }: { o: Record<string, any> | null; go: (t: Tab) => vo
         <Stat icon={ShieldCheck} tint={Object.keys(wh).length ? 'from-mint-400 to-teal-600' : 'from-rose-400 to-rose-600'} label="Webhooks" value={Object.values(wh).reduce((a: number, b) => a + Number(b), 0)} sub={Object.keys(wh).length ? Object.entries(wh).map(([k, v]) => `${k} ${v}`).join(' · ') : 'none received yet'} />
         </>}
       </div>
+    </div>
+  )
+}
+
+/** Didit ID-check credit: checks started this month vs the $10 monthly credit, and an alert when Didit refused for lack of credit. */
+function DiditCard({ u, go }: { u: { checksMonth: number; priceUsd: number; freeUsd: number; usedUsd: number; freeChecks: number; outOfCredit: boolean; lastNoCredit: string | null; low: boolean; manualOpen: number }; go: (t: Tab) => void }) {
+  const pct = Math.min(100, Math.round((u.usedUsd / u.freeUsd) * 100))
+  const tone = u.outOfCredit ? 'ring-rose-400/60' : u.low ? 'ring-gold-400/60' : 'ring-fg/10'
+  return (
+    <div className={`card flex flex-col gap-2 py-3 ring-1 ${tone}`}>
+      <div className="flex items-center justify-between"><p className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck size={16} className="text-mint-300" /> ID checks (Didit)</p>
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${u.outOfCredit ? 'bg-rose-500/15 text-rose-300' : u.low ? 'bg-gold-400/15 text-gold-300' : 'bg-mint-400/15 text-mint-300'}`}>{u.outOfCredit ? 'OUT OF CREDIT' : u.low ? 'RUNNING LOW' : 'OK'}</span></div>
+      <div className="h-2 overflow-hidden rounded-full bg-fg/10"><div className={`h-full rounded-full ${u.outOfCredit ? 'bg-rose-400' : u.low ? 'bg-gold-400' : 'bg-mint-400'}`} style={{ width: `${Math.max(3, pct)}%` }} /></div>
+      <p className="text-xs text-slate-400">{u.checksMonth} checks started this month ≈ <b className="text-slate-200">${u.usedUsd.toFixed(2)}</b> of the ${u.freeUsd} monthly credit (about {u.freeChecks} checks at ${u.priceUsd.toFixed(2)} each). This is Luda's own count; Didit → Billing shows the exact balance.</p>
+      {u.outOfCredit && <p className="rounded-xl bg-rose-500/10 p-2.5 text-xs text-rose-200">Didit refused a check for lack of credit{u.lastNoCredit ? ` at ${new Date(u.lastNoCredit).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}. Automatic ID checks are paused: top up in Didit → Billing (or turn on auto-refill). Meanwhile students can send their ID to the team.</p>}
+      {u.low && !u.outOfCredit && <p className="rounded-xl bg-gold-400/10 p-2.5 text-xs text-gold-100">Most of this month's credit is used. Top up or turn on auto-refill in Didit → Billing so checks don't stop.</p>}
+      {u.manualOpen > 0 && <button className="flex items-center justify-between rounded-xl bg-fg/[0.05] px-3 py-2 text-xs" onClick={() => go('cases')}><span>🪪 <b>{u.manualOpen}</b> ID{u.manualOpen === 1 ? '' : 's'} sent to the team, waiting for a check</span><ChevronRight size={14} /></button>}
+      <a href="https://business.didit.me" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 self-start text-xs text-mint-300 underline"><ExternalLink size={12} /> Open Didit Billing</a>
     </div>
   )
 }
@@ -669,6 +688,10 @@ function AdminCaseSheet({ id, onClose }: { id: string; onClose: () => void }) {
   const [act, setAct] = useState<Act | null>(null)
   const [kyc, setKyc] = useState({ legal: '', docType: 'Passport', docNumber: '', country: '', dob: '', reason: '' })
   const c = data?.case, u = data?.user
+  // Manual ID check sent from the app: the details the person typed fill the form (staff still compare them with the photos).
+  const meta = c?.meta as { legalName: string; docType: string; docNumber: string; country: string; dob: string; code: string; nameMatch: boolean } | null | undefined
+  const [filled, setFilled] = useState(false)
+  if (meta && !filled) { setFilled(true); setKyc((k) => ({ ...k, legal: meta.legalName, docType: meta.docType, docNumber: meta.docNumber, country: meta.country, dob: meta.dob })) }
   const send = async (status?: string) => {
     setBusy(true); setMsg('')
     try { await api('POST', 'admin-case-reply', { caseId: id, message: reply, status }); setReply(''); await load(); setMsg(status ? `Marked ${status.replace('_', ' ')}` : 'Reply sent') } catch (e) { setMsg(errMsg(e)) } finally { setBusy(false) }
@@ -699,7 +722,11 @@ function AdminCaseSheet({ id, onClose }: { id: string; onClose: () => void }) {
           {u && u.kyc !== 'verified' && (
             <div className="flex flex-col gap-2 rounded-2xl border border-mint-400/30 bg-mint-400/[0.06] p-3">
               <p className="flex items-center gap-2 text-sm font-bold"><ShieldCheck size={16} className="text-mint-300" /> Verify ID manually</p>
-              <p className="text-[11px] text-slate-400">Check the photos above (document readable, not expired, selfie matches). For extra safety, do a short video call. Then copy the details from the document.</p>
+              {meta ? <div className="flex flex-col gap-1 rounded-xl bg-fg/[0.05] p-2.5 text-xs">
+                <p>Selfie must show the code <b className="font-mono text-base text-gold-200">{meta.code}</b> written on paper, with the document.</p>
+                <p className={meta.nameMatch ? 'text-mint-300' : 'text-gold-200'}>{meta.nameMatch ? `✓ Name matches the Luda account (${u?.fullName})` : `⚠️ Name differs from the Luda account (${u?.fullName}): check carefully`}</p>
+                <p className="text-slate-400">The form below is filled with what they typed. Compare every field with the photo before approving.</p>
+              </div> : <p className="text-[11px] text-slate-400">Check the photos above (document readable, not expired, selfie matches). For extra safety, do a short video call. Then copy the details from the document.</p>}
               <input className="input py-2 text-sm" placeholder="Legal name exactly as on the document" value={kyc.legal} onChange={(e) => setKyc({ ...kyc, legal: e.target.value })} />
               <div className="grid grid-cols-2 gap-2">
                 <select className="input py-2 text-sm" value={kyc.docType} onChange={(e) => setKyc({ ...kyc, docType: e.target.value })} aria-label="Document type">{['Passport', 'National ID', 'Residence permit', "Driver's licence"].map((x) => <option key={x}>{x}</option>)}</select>

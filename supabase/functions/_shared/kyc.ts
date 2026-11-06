@@ -53,7 +53,7 @@ export function accountMatchesName(accountName: string, legalName: string) {
 // Hosted flow: we create a session, the user photographs their ID and takes a live selfie on
 // Didit's page, then we ask Didit for the decision ourselves (never trusting the browser).
 
-export interface DiditEnv { DIDIT_API_KEY?: string; DIDIT_WORKFLOW_ID?: string; DIDIT_WEBHOOK_SECRET?: string; DIDIT_BASE_URL?: string }
+export interface DiditEnv { DIDIT_API_KEY?: string; DIDIT_WORKFLOW_ID?: string; DIDIT_WEBHOOK_SECRET?: string; DIDIT_BASE_URL?: string; DIDIT_CHECK_USD?: string; DIDIT_FREE_USD?: string }
 export const diditEnabled = (e: DiditEnv) => !!(e.DIDIT_API_KEY && e.DIDIT_WORKFLOW_ID)
 const diditBase = (e: DiditEnv) => (e.DIDIT_BASE_URL || 'https://verification.didit.me').replace(/\/$/, '')
 
