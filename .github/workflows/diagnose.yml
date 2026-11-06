@@ -31,6 +31,12 @@ jobs:
           echo; echo "=== Secrets that are set (names only, values are never shown)"
           curl -sS "https://api.supabase.com/v1/projects/$REF/secrets" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | jq -r '.[].name' | sort | tr '\n' ' ' || true
           echo; sleep 2
+          echo; echo "=== Google sign-in setup (Supabase Auth; the client secret is never shown)"
+          curl -sS "https://api.supabase.com/v1/projects/$REF/config/auth" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            | jq -c '{google_on: .external_google_enabled, google_client_id_set: ((.external_google_client_id // "") | length > 0), google_client_id_ends: ((.external_google_client_id // "") | .[-27:]), google_secret_set: ((.external_google_secret // "") | length > 0), site_url, redirect_urls: .uri_allow_list, signups_open: (.disable_signup | not)}' || true
+          echo; echo "=== Google sign-in start (should redirect to accounts.google.com)"
+          curl -sS -o /dev/null -w '%{http_code} → %{redirect_url}\n' "https://$REF.supabase.co/auth/v1/authorize?provider=google&redirect_to=https%3A%2F%2Fluda-ct6.pages.dev%2F" | sed -E 's/(client_id=[^&]{0,12})[^&]*/\1…/' || true
+          sleep 2
           q "Latest top-ups" "select '…'||right(reference,8) as ref, provider, status, amount_minor/100.0 as charged, currency, credit_minor/100.0 as credit, credit_currency, created_at, paid_at from payments order by created_at desc limit 10"
           q "Processing history (latest 25 events)" "select '…'||right(reference,8) as ref, kind, at, left(coalesce(payload::text,''), 220) as detail from payment_events order by id desc limit 25"
           q "Latest withdrawals" "select '…'||right(reference,8) as ref, provider, status, amount_minor/100.0 as amount, fee_minor/100.0 as fee, bank_name, '••'||right(account_number,4) as acct, transfer_code, note, created_at, updated_at from withdrawals order by created_at desc limit 10"
