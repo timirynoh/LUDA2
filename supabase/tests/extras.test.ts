@@ -27,7 +27,7 @@ before(async () => {
   const m = await makeDb(); q = m.q
   d = { db: m.db, fetch: fakeWorld(m.q).f, now: () => new Date() }
   await signup('boss', 'Owner Person')
-  await signup('ada', 'Ada Okafor', { terms: 1 }); await signup('kemal', 'Kemal Yilmaz'); await signup('driver', 'Bus Driver')
+  await signup('ada', 'Ada Okafor', { terms: (await q(`select version from guides where slug='terms'`))[0].version }); await signup('kemal', 'Kemal Yilmaz'); await signup('driver', 'Bus Driver')
   await q(`update profiles set kyc_status='verified', kyc_name=upper(full_name) where username in ('ada','kemal')`)
 })
 
@@ -36,19 +36,20 @@ test('guides and terms come from the server; accepting terms is recorded; a new 
   assert.match(g.title, /proof/); assert.ok(g.steps.length >= 6); assert.ok(g.steps.some((x: any) => /Play Store/.test(x.title)))
   assert.ok((await call('GET', 'guides?kind=tip')).j.guides.length >= 5)
   let me = (await call('GET', 'me', undefined, T.ada)).j.profile
-  assert.equal(me.termsVersion, 1, 'accepted at sign-up'); assert.equal(me.termsCurrent, 1)
+  const V = me.termsCurrent as number // grows when a migration updates the terms
+  assert.equal(me.termsVersion, V, 'accepted at sign-up'); assert.ok(V >= 1)
   assert.equal((await call('GET', 'me', undefined, T.kemal)).j.profile.termsVersion, 0)
-  assert.equal((await call('POST', 'terms-accept', { version: 1 }, T.kemal)).status, 200)
+  assert.equal((await call('POST', 'terms-accept', { version: V }, T.kemal)).status, 200)
   // editing the terms: content:edit can't; owner can, and can ask everyone to accept again
   await call('POST', 'admin-staff-set', { email: 'driver@x.com', roles: { content: 'edit', tickets: 'edit' }, pin: '4826' }, T.boss)
   assert.equal((await call('POST', 'admin-guide-save', { slug: 'terms', title: 'Luda Terms', intro: 'x', steps: [{ title: 'a', body: 'b' }], bump: true }, T.driver)).status, 403)
   assert.equal((await call('POST', 'admin-guide-save', { slug: 'p2p-proof', title: 'How to record proof', intro: 'Video only', steps: [{ title: 'Start', body: 'Record' }] }, T.driver)).status, 200)
   assert.equal((await call('POST', 'admin-guide-save', { slug: 'terms', title: 'Luda Terms', intro: 'Updated', steps: [{ title: '1', body: 'Rules' }], bump: true }, T.boss)).status, 200)
   me = (await call('GET', 'me', undefined, T.ada)).j.profile
-  assert.equal(me.termsCurrent, 2); assert.equal(me.termsVersion, 1, 'must accept again')
-  assert.equal((await call('POST', 'terms-accept', { version: 1 }, T.ada)).status, 409, 'old version refused')
-  await call('POST', 'terms-accept', { version: 2 }, T.ada)
-  assert.equal((await call('GET', 'me', undefined, T.ada)).j.profile.termsVersion, 2)
+  assert.equal(me.termsCurrent, V + 1); assert.equal(me.termsVersion, V, 'must accept again')
+  assert.equal((await call('POST', 'terms-accept', { version: V }, T.ada)).status, 409, 'old version refused')
+  await call('POST', 'terms-accept', { version: V + 1 }, T.ada)
+  assert.equal((await call('GET', 'me', undefined, T.ada)).j.profile.termsVersion, V + 1)
 })
 
 test('P2P: Luda-team-only evidence, reviews after completion, remind, block', async () => {

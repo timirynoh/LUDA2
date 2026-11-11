@@ -79,7 +79,7 @@ export async function diditStart(userId: string, callback: string, env: DiditEnv
   return { sessionId: String(j.session_id), url: String(j.url) }
 }
 
-export interface DiditResult { status: 'approved' | 'declined' | 'pending' | 'not_started'; name: string; firstName: string; lastName: string; dob: string; docType: string; docNumber: string; country: string; raw: string }
+export interface DiditResult { status: 'approved' | 'declined' | 'pending' | 'not_started'; name: string; firstName: string; lastName: string; dob: string; docType: string; docNumber: string; country: string; raw: string; duplicate: boolean; duplicateUsers: string[] }
 
 export async function diditDecision(sessionId: string, env: DiditEnv, f: Fetch = fetch): Promise<DiditResult> {
   const r = await f(`${diditBase(env)}/v3/session/${encodeURIComponent(sessionId)}/decision/`, { headers: { 'x-api-key': env.DIDIT_API_KEY! }, signal: AbortSignal.timeout(20000) })
@@ -94,7 +94,22 @@ export async function diditDecision(sessionId: string, env: DiditEnv, f: Fetch =
     name: String(id.full_name || [firstName, lastName].filter(Boolean).join(' ')), firstName, lastName,
     dob: normDate(String(id.date_of_birth ?? '')), docType: String(id.document_type ?? 'document'), docNumber: String(id.document_number ?? id.personal_number ?? ''),
     country: String(id.issuing_state ?? id.issuing_state_name ?? id.nationality ?? ''), raw,
+    ...duplicateFace(j),
   }
+}
+
+/** One person, one account: Didit's face search (liveness + document selfie) flags a face that is already approved on
+ *  another account of ours with a DUPLICATED_FACE warning; the matches carry that account's vendor_data (our user id). */
+export function duplicateFace(j: Record<string, any>): { duplicate: boolean; duplicateUsers: string[] } {
+  const users = new Set<string>()
+  let duplicate = /"risk"\s*:\s*"(POSSIBLE_)?(FRONT_CAMERA_)?DUPLICATED_FACE/i.test(JSON.stringify(j ?? {}))
+  const take = (m: any) => { const v = String(m?.vendor_data ?? m?.user_vendor_data ?? ''); if (v) users.add(v) }
+  for (const l of Array.isArray(j?.liveness_checks) ? j.liveness_checks : j?.liveness ? [j.liveness] : []) for (const m of l?.matches ?? []) take(m)
+  for (const v of Array.isArray(j?.id_verifications) ? j.id_verifications : j?.id_verification ? [j.id_verification] : []) for (const m of v?.document_selfie_face_matches ?? []) take(m)
+  const own = String(j?.vendor_data ?? '')
+  users.delete(own)
+  if (users.size) duplicate = true
+  return { duplicate, duplicateUsers: [...users].slice(0, 5) }
 }
 
 /** Didit signs webhooks with HMAC-SHA256 (hex) of the raw body (X-Signature). */

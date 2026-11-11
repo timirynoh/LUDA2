@@ -34,6 +34,20 @@ async function refreshSession(): Promise<boolean> {
 /** Public (no sign-in) GET, for guides and terms on the sign-in screen. */
 export const publicGet = <T,>(route: string) => raw<T>('GET', route, undefined, false)
 
+/** A random id for this phone (phone-only on purpose; the server stores only a hash of it, to spot one person using
+ *  several accounts — owner's rule: one Luda account per person). Not personal data and never shown. */
+function deviceId() {
+  try {
+    let v = localStorage.getItem('luda.device')
+    if (!v || !/^[A-Za-z0-9_-]{16,64}$/.test(v)) {
+      const b = crypto.getRandomValues(new Uint8Array(16))
+      v = 'd_' + [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
+      localStorage.setItem('luda.device', v)
+    }
+    return v
+  } catch { return '' }
+}
+
 async function raw<T>(method: string, route: string, body?: unknown, auth = true): Promise<T> {
   if (!BASE) throw new ApiError('Live mode is not set up', 0)
   const s = auth ? getSession() : null
@@ -41,7 +55,7 @@ async function raw<T>(method: string, route: string, body?: unknown, auth = true
   try {
     r = await fetch(`${BASE}/api/${route}`, {
       method, body: body ? JSON.stringify(body) : undefined,
-      headers: { 'content-type': 'application/json', ...(ANON ? { apikey: ANON } : {}), ...(s ? { authorization: `Bearer ${s.access_token}` } : {}) },
+      headers: { 'content-type': 'application/json', ...(ANON ? { apikey: ANON } : {}), ...(s ? { authorization: `Bearer ${s.access_token}`, 'x-luda-device': deviceId() } : {}) },
     })
   } catch { throw new ApiError("Can't reach Luda. Check your internet connection.", 0) }
   const j = await r.json().catch(() => ({}))

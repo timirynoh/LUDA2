@@ -61,7 +61,7 @@ export function cors(req: Request, env: Env) {
   const allowed = [env.APP_URL, ...(env.ALLOWED_ORIGINS ?? '').split(',')].map((s) => s.trim().replace(/\/$/, '')).filter(Boolean)
   return {
     'access-control-allow-origin': allowed.includes(origin) ? origin : allowed[0] ?? '',
-    'access-control-allow-headers': 'authorization, apikey, content-type',
+    'access-control-allow-headers': 'authorization, apikey, content-type, x-luda-device',
     'access-control-allow-methods': 'GET, POST, OPTIONS',
     vary: 'origin',
   }
@@ -169,12 +169,19 @@ function noHold(p: Profile, d: Deps) {
  * Approved → verified, with the legal name from the document (used to match withdrawal bank accounts).
  * The document's name must match the Luda name, and one document can verify only one account.
  */
+const DUPLICATE_FACE_MSG = 'This face is already verified on another Luda account. Each person can have only one Luda account. If this is a mistake, contact the Luda team.'
 async function kycSync(p: Profile, env: Env, d: Deps): Promise<{ status: Profile['kyc_status']; message?: string }> {
   if (p.kyc_status === 'verified' || !p.kyc_session_id || !diditEnabled(env)) return { status: p.kyc_status }
   const r = await diditDecision(p.kyc_session_id, env, d.fetch)
   await d.db.log(p.kyc_session_id, 'kyc_decision', { status: r.raw })
   if (r.status === 'pending') { if (p.kyc_status !== 'pending') await d.db.updateProfile(p.user_id, { kyc_status: 'pending' }); return { status: 'pending' } }
   if (r.status === 'not_started') return { status: p.kyc_status }
+  if (r.duplicate) {
+    // One person, one account: a face already verified on another Luda account is never approved here.
+    await d.db.log(p.user_id, 'kyc_duplicate_face', { session: p.kyc_session_id, others: r.duplicateUsers, status: r.raw })
+    await d.db.updateProfile(p.user_id, { kyc_status: 'failed' })
+    return { status: 'failed', message: DUPLICATE_FACE_MSG }
+  }
   if (r.status === 'declined') { await d.db.updateProfile(p.user_id, { kyc_status: 'failed' }); return { status: 'failed', message: 'Your ID check was not approved. Try again with a clear photo of a valid document.' } }
   const legal = (r.name || `${r.firstName} ${r.lastName}`).trim().toUpperCase()
   const mine = new Set(nameTokens(p.full_name))
@@ -191,8 +198,9 @@ async function kycSync(p: Profile, env: Env, d: Deps): Promise<{ status: Profile
     } as Partial<Profile>)
   } catch (e) {
     if (e instanceof MoneyError && e.message === 'conflict') {
+      await d.db.log(p.user_id, 'kyc_doc_conflict', { hash, via: 'didit' })
       await d.db.updateProfile(p.user_id, { kyc_status: 'failed' })
-      return { status: 'failed', message: 'This ID document is already verified on another Luda account. Contact support if this is a mistake.' }
+      return { status: 'failed', message: 'This ID document is already verified on another Luda account. Each person can have only one Luda account. If this is a mistake, contact the Luda team.' }
     }
     throw e
   }
@@ -429,6 +437,14 @@ async function p2pSigned(env: Env, d: Deps, o: Record<string, any>) {
 
 const needKyc = (p: Profile, what: string) => { if (p.kyc_status !== 'verified') throw new Fail(`Verify your identity to ${what}`, 403) }
 
+/** Hashes only (never the raw IP or phone id): HMAC with a server key, so they can't be reversed or matched elsewhere. */
+async function signalsOf(req: Request, env: Env) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(`signals:${env.SERVICE_KEY || env.APP_URL || 'luda'}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const h = async (v: string) => [...new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(v)))].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('')
+  const ip = clientIp(req), devId = (req.headers.get('x-luda-device') ?? '').trim()
+  return { net: ip && ip !== 'unknown' ? await h(`net:${ip}`) : '', dev: /^[A-Za-z0-9_-]{16,64}$/.test(devId) ? await h(`dev:${devId}`) : '' }
+}
+
 /** Loads (or, on first use, creates) the signed-in user's profile. */
 async function me(req: Request, env: Env, d: Deps): Promise<Profile> {
   const token = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
@@ -437,7 +453,11 @@ async function me(req: Request, env: Env, d: Deps): Promise<Profile> {
   const p = await d.db.profile(u.id)
   if (p) {
     // Presence: 'Online / Active 5 min ago' for other people, from real use (written at most once a minute).
-    if (!p.last_seen || Date.now() - Date.parse(p.last_seen) > 60_000) await d.db.fn('luda_seen', { p_user: p.user_id }).catch(() => {})
+    // Also one-account signals (hashed phone id + hashed network) for the Luda HQ duplicate finder.
+    if (!p.last_seen || Date.now() - Date.parse(p.last_seen) > 60_000) {
+      const { net, dev } = await signalsOf(req, env)
+      await d.db.fn('luda_seen2', { p_user: p.user_id, p_net: net, p_dev: dev }).catch(() => d.db.fn('luda_seen', { p_user: p.user_id }).catch(() => {}))
+    }
     return p
   }
   const meta = u.user_metadata ?? {}
@@ -1304,6 +1324,19 @@ const routes: Record<string, Route> = {
     return { users: list.map(adminProfile) }
   },
 
+  // One account per person: pairs of accounts that look like the same person (Users → Possible duplicates).
+  'GET admin-duplicates': async ({ req, env, d }) => {
+    await staff(req, env, d, 'users', 'view')
+    return await d.db.fn('luda_admin_duplicates', {})
+  },
+  'POST admin-duplicate-dismiss': async ({ req, env, d, body }) => {
+    const p = await staff(req, env, d, 'users', 'edit')
+    const a = String(body.a ?? ''), b = String(body.b ?? '')
+    if (!UUID.test(a) || !UUID.test(b) || a === b) throw new Fail('Pick two accounts')
+    await d.db.fn('luda_dup_dismiss', { p_a: a, p_b: b, p_by: p.username })
+    await d.db.log(a, 'admin_dup_dismiss', { a, b, by: p.username })
+    return { ok: true }
+  },
   'GET admin-user': async ({ req, env, d, url }) => {
     await staff(req, env, d, 'users', 'view')
     const u = await d.db.profile(url.searchParams.get('id') ?? '')
@@ -1435,7 +1468,7 @@ const routes: Record<string, Route> = {
             ...(docNumber ? { kyc_id_last4: docNumber.slice(-4), kyc_doc_hash: hash, kyc_country: country || null } : {}), ...(body.dob ? { kyc_dob: normDate(String(body.dob)) || null } : {}),
           } as Partial<Profile>)
         } catch (e) {
-          if (e instanceof MoneyError && e.message === 'conflict') throw new Fail('This document is already verified on another Luda account')
+          if (e instanceof MoneyError && e.message === 'conflict') { await d.db.log(u.user_id, 'kyc_doc_conflict', { hash, via: 'staff' }); throw new Fail('This document is already verified on another Luda account (one account per person: see Users → Possible duplicates)') }
           throw e
         }
         await caseNote('✅ Your identity has been verified by the Luda team. Withdrawals and sending money are now unlocked.', 'resolved')

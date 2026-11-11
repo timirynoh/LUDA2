@@ -537,6 +537,60 @@ function P2PEvidence({ id }: { id: string }) {
 /* --------------------------------- lists --------------------------------- */
 
 function UsersTab({ onOpen }: { onOpen: (id: string) => void }) {
+  const [view, setView] = useState<'all' | 'dups'>('all')
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex gap-2">
+        {([['all', 'All users'], ['dups', '👥 Possible duplicates']] as const).map(([v, l]) => (
+          <button key={v} onClick={() => setView(v)} className={`chip ${view === v ? 'bg-mint-400/20 text-mint-200 ring-1 ring-mint-400/40' : ''}`}>{l}</button>
+        ))}
+      </div>
+      {view === 'all' ? <UserList onOpen={onOpen} /> : <Duplicates onOpen={onOpen} />}
+    </div>
+  )
+}
+
+const WHY: Record<string, [string, boolean]> = {
+  face: ['🙂 Same face (ID check)', true], document: ['🪪 Same ID document', true], id_name_dob: ['📅 Same legal name + birth date', true],
+  device: ['📱 Same phone', true], name: ['🔤 Same full name', false], network: ['🏠 Same home network', false],
+}
+type DupUser = { userId: string; username: string; fullName: string; kyc: string; frozen: boolean; createdAt: string; lastSeen: string | null }
+
+const DupPerson = ({ u, onOpen }: { u: DupUser; onOpen: (id: string) => void }) => (
+  <button onClick={() => onOpen(u.userId)} className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-fg/5 p-2 text-start">
+    <Avatar name={u.fullName} />
+    <div className="min-w-0"><p className="truncate text-sm font-semibold">@{u.username}</p><p className="truncate text-[11px] text-slate-500">{u.fullName}</p>
+      <p className="text-[11px] text-slate-500">joined {when(u.createdAt)}{u.frozen ? ' · 🧊 frozen' : ''}</p><Badge s={u.kyc} /></div>
+  </button>
+)
+
+/** One account per person (owner's rule): pairs of accounts that look like the same person, strongest first. */
+function Duplicates({ onOpen }: { onOpen: (id: string) => void }) {
+  const { data, err, load } = useLoad<{ pairs: { a: DupUser; b: DupUser; why: string[]; strong: number; at: string }[] }>('admin-duplicates')
+  const [busy, setBusy] = useState('')
+  const [msg, setMsg] = useState('')
+  const dismiss = async (a: string, b: string) => {
+    setBusy(a + b); setMsg('')
+    try { await api('POST', 'admin-duplicate-dismiss', { a, b }); await load() } catch (e) { setMsg(errMsg(e)) } finally { setBusy('') }
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs text-slate-400">One Luda account per person. These pairs look like the same person. Open each account to check, then freeze the extra one (rewards from it can be taken back with a balance adjustment). Same face and same document are already blocked at the ID check.</p>
+      {err && <p className="text-sm text-rose-300">{err}</p>}
+      {msg && <p className="text-sm text-rose-300">{msg}</p>}
+      {data?.pairs.length === 0 && <p className="text-sm text-slate-500">No possible duplicates right now. 🎉</p>}
+      {data?.pairs.map((p) => (
+        <div key={p.a.userId + p.b.userId} className={`glass flex flex-col gap-2 rounded-2xl p-3 ${p.strong ? 'ring-1 ring-amber-400/40' : ''}`}>
+          <div className="flex flex-wrap gap-1">{p.why.map((w) => <span key={w} className={`rounded-full px-2 py-0.5 text-[11px] ${WHY[w]?.[1] ? 'bg-amber-400/15 text-amber-200' : 'bg-fg/10 text-slate-300'}`}>{WHY[w]?.[0] ?? w}</span>)}</div>
+          <div className="flex gap-2"><DupPerson u={p.a} onOpen={onOpen} /><DupPerson u={p.b} onOpen={onOpen} /></div>
+          <button disabled={!!busy} onClick={() => dismiss(p.a.userId, p.b.userId)} className="self-end text-xs text-slate-400 underline">{busy === p.a.userId + p.b.userId ? 'Saving…' : 'Not the same person'}</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function UserList({ onOpen }: { onOpen: (id: string) => void }) {
   const [q, setQ] = useState('')
   const [term, setTerm] = useState('')
   useEffect(() => { const t = setTimeout(() => setTerm(q), 350); return () => clearTimeout(t) }, [q])
