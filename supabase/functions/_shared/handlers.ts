@@ -2734,9 +2734,13 @@ const routes: Record<string, Route> = {
     const p = await me(req, env, d)
     const code = String(body.code ?? '')
     if (!/^\d{6}$/.test(code) || weakCode(code)) throw new Fail('Choose a 6-digit code that is not easy to guess (no 123456, 111111 or repeats)')
-    // Changing an existing code needs the old one; setting it the first time needs the payment PIN (proves it's you).
+    // Changing an existing code needs the old one. Setting it the first time needs the account password (owner: the
+    // app never opens with the payment PIN), or the payment PIN for accounts made with Google (they have no password).
     if (p.passcode_hash) await verifyPasscode(p, body.oldCode, d)
-    else if (p.pin_hash) await verifyPin(p, body.pin, d)
+    else if (body.password) {
+      await limit(d, `passcode-pw:${p.user_id}`, 5, 900, 'Too many tries. Wait 15 minutes and try again.')
+      try { await signIn(p.email, String(body.password).slice(0, 200), authEnv(env), d.fetch) } catch { throw new Fail('Wrong password', 401) }
+    } else if (p.pin_hash) await verifyPin(p, body.pin, d)
     const salt = randomHex(16)
     await d.db.updateProfile(p.user_id, { passcode_salt: salt, passcode_hash: await hashPin(code, salt), passcode_fails: 0, passcode_locked_until: null })
     await d.db.log(p.user_id, 'passcode_set', { first: !p.passcode_hash })

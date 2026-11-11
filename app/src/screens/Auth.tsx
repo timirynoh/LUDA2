@@ -3,7 +3,7 @@ import { PasscodeSetup } from '../components/Passcode'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AtSign, Check, ChevronLeft, Eye, EyeOff, Fingerprint, Globe, Lock, Mail, User } from 'lucide-react'
 import { bioOn, bioUnlock } from '../lib/bio'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { LogoMark, Wordmark } from '../components/Logo'
 import { PinPad, Sheet } from '../components/ui'
 import { checkLogin, EMAIL_RE, makeAccount, passwordStrength, USERNAME_RE } from '../lib/auth'
@@ -428,16 +428,32 @@ function DemoForgot({ onClose }: { onClose: () => void }) {
 export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   const { s, set } = useStore()
   const [err, setErr] = useState('')
-  // Live: open Luda with the 6-digit sign-in code. Accounts that don't have one yet type the 4-digit PIN one last
-  // time and create it right away (owner: 'seamless update for existing users').
-  const [hasCode, setHasCode] = useState<boolean | null>(LIVE ? null : false)
-  const [setupPin, setSetupPin] = useState<string | null>(null)
-  useEffect(() => { if (LIVE) api<{ profile: { hasPasscode?: boolean } }>('GET', 'me').then((m) => setHasCode(!!m.profile.hasPasscode)).catch(() => setHasCode(false)) }, [])
+  // Live: Luda ALWAYS opens with the 6-digit sign-in code, never the 4-digit payment PIN (owner, 2026-11-11).
+  // Whether this account has a code is remembered on the phone (a cached copy), so a slow or failed network call
+  // never drops the lock screen back to the PIN. Accounts without a code create one here, with their password.
+  const codeKey = `luda.hasCode.${s.account?.username ?? ''}`
+  const cached = (() => { try { return localStorage.getItem(codeKey) } catch { return null } })()
+  const [hasCode, setHasCode] = useState<boolean | null>(LIVE ? (cached === '1' ? true : null) : false)
+  const [offline, setOffline] = useState(false)
+  const [setup, setSetup] = useState(false)
+  const loadCode = useCallback(async () => {
+    setOffline(false)
+    for (let i = 0; i < 3; i++) {
+      try {
+        const m = await api<{ profile: { hasPasscode?: boolean } }>('GET', 'me')
+        const has = !!m.profile.hasPasscode
+        try { localStorage.setItem(codeKey, has ? '1' : '0') } catch { /* ignore */ }
+        return setHasCode(has)
+      } catch { await new Promise((r) => setTimeout(r, 800 * (i + 1))) }
+    }
+    if (cached !== '1') setOffline(true)
+  }, [codeKey, cached])
+  useEffect(() => { if (LIVE) void loadCode() }, [loadCode]) // eslint-disable-line react-hooks/set-state-in-effect
   const [fails, setFails] = useState(0)
   const [bioErr, setBioErr] = useState('')
   const unlockWithBio = async () => {
     setBioErr('')
-    try { if (await bioUnlock()) { set((p) => ({ ...p, logins: [loginEntry('Fingerprint unlock'), ...p.logins].slice(0, 20) })); if (LIVE) void api('POST', 'sign-in-log', { how: 'fingerprint' }).catch(() => {}); onUnlock() } } catch (e) { setBioErr(e instanceof Error ? e.message : 'Try your PIN') }
+    try { if (await bioUnlock()) { set((p) => ({ ...p, logins: [loginEntry('Fingerprint unlock'), ...p.logins].slice(0, 20) })); if (LIVE) void api('POST', 'sign-in-log', { how: 'fingerprint' }).catch(() => {}); onUnlock() } } catch (e) { setBioErr(e instanceof Error ? e.message : 'Fingerprint didn\'t work') }
   }
   // Offer the fingerprint straight away when it's set up on this phone.
   useEffect(() => { if (bioOn()) void unlockWithBio() }, []) // eslint-disable-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
@@ -445,8 +461,7 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
     if (LIVE) {
       // Live: the code / PIN is checked by the server only (it locks after 5 wrong tries); the phone keeps no copy.
       try {
-        if (hasCode) { await api('POST', 'passcode-check', { code: pin }); set((p) => ({ ...p, logins: [loginEntry('Code unlock'), ...p.logins].slice(0, 20) })); return onUnlock() }
-        await api('POST', 'pin-check', { pin }); return setSetupPin(pin)
+        await api('POST', 'passcode-check', { code: pin }); set((p) => ({ ...p, logins: [loginEntry('Code unlock'), ...p.logins].slice(0, 20) })); return onUnlock()
       }
       catch (e) {
         const m = e instanceof Error ? e.message : 'Try again'
@@ -469,12 +484,18 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
       {s.avatar ? <img src={s.avatar} alt="" className="size-20 rounded-full object-cover ring-4 ring-mint-400/30" /> : <LogoMark size={64} />}
       <p className="mt-6 text-slate-400">{greet},</p>
       <p className="text-3xl font-extrabold">{s.name} 👋🏾</p>
-      {setupPin ? <div className="mt-6 w-full"><p className="mb-3 rounded-2xl bg-mint-400/10 p-3 text-center text-xs text-mint-200">New: Luda now opens with a 6-digit code. Your 4-digit PIN is only for payments.</p><PasscodeSetup pin={setupPin} onDone={onUnlock} /></div> : <>
-      <p className="mt-2 mb-10 text-sm text-slate-400">{LIVE ? (hasCode === null ? 'One moment…' : hasCode ? 'Enter your 6-digit code to open Luda' : 'Enter your 4-digit PIN to open Luda') : 'Enter your PIN to open Luda'}</p>
+      {LIVE && hasCode === false ? (setup
+        ? <div className="mt-6 w-full"><PasscodeSetup onDone={() => { try { localStorage.setItem(codeKey, '1') } catch { /* ignore */ } onUnlock() }} /></div>
+        : <div className="mt-6 flex w-full max-w-sm flex-col items-center gap-3 text-center">
+            <p className="rounded-2xl bg-mint-400/10 p-3 text-sm text-mint-100">Luda now opens with a 6-digit code. Your 4-digit PIN is only for approving payments.</p>
+            <button className="btn-primary w-full" onClick={() => setSetup(true)}>Create my 6-digit code</button>
+          </div>) : <>
+      <p className="mt-2 mb-10 text-sm text-slate-400">{LIVE ? (offline ? 'Can\'t reach Luda. Check your internet connection.' : hasCode === null ? 'One moment…' : 'Enter your 6-digit code to open Luda') : 'Enter your PIN to open Luda'}</p>
+      {LIVE && offline && hasCode === null && <button className="chip bg-fg/10" onClick={() => void loadCode()}>Try again</button>}
       {hasCode !== null && <PinPad key={hasCode ? 'code' : 'pin'} length={hasCode ? 6 : 4} error={err} onDone={tryPin} />}</>}
       {bioOn() && <button className="mt-5 flex items-center gap-2 rounded-2xl bg-mint-400/10 px-4 py-3 text-sm font-semibold text-mint-300" onClick={unlockWithBio}><Fingerprint size={20} /> Unlock with fingerprint / Face ID</button>}
-      {bioErr && <p className="mt-2 text-xs text-slate-500">{bioErr}</p>}
-      <button className="mt-auto pt-8 text-sm text-slate-400" onClick={() => set((p) => ({ ...p, signedIn: false }))}>{hasCode ? 'Forgot your code?' : 'Forgot PIN?'} <span className="text-mint-300">Sign in with password</span></button>
+      {bioErr && <p className="mt-2 text-center text-xs text-slate-500"><span>{bioErr}</span><br /><span>{LIVE ? 'Type your 6-digit Luda code above instead.' : 'Use your PIN instead.'}</span></p>}
+      <button className="mt-auto pt-8 text-sm text-slate-400" onClick={() => set((p) => ({ ...p, signedIn: false }))}>{LIVE ? 'Forgot your code?' : 'Forgot PIN?'} <span className="text-mint-300">Sign in with password</span></button>
       <p className="mt-2 text-xs text-slate-600">Not {s.name}? <button className="underline" onClick={() => set((p) => ({ ...p, signedIn: false }))}>Switch account</button></p>
     </motion.div>
   )

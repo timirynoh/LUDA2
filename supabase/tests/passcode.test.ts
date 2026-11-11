@@ -67,3 +67,14 @@ test('presence: the server records when people were last active; ads, orders and
   const ad = (await call('GET', 'p2p?want=buy', undefined, T.ada)).j.ads.find((a: any) => a.maker === 'kemal')
   assert.ok(ad.lastSeen, 'ads carry the trader\'s last activity')
 })
+
+test('the first sign-in code can be created with the account password (the app never opens with the payment PIN)', async () => {
+  const u = (await call('POST', 'signup', { email: 'pw1@x.com', username: 'pwone', fullName: 'Pw One', password: 'Lefkosa2026!' })).j.session.access_token
+  await call('POST', 'pin', { pin: '4826' }, u)
+  assert.equal((await call('POST', 'passcode', { code: '583920', password: 'wrong-one' }, u)).status, 401)
+  assert.equal((await call('POST', 'passcode', { code: '583920' }, u)).status, 401, 'needs the password or the PIN')
+  assert.equal((await call('POST', 'passcode', { code: '583920', password: 'Lefkosa2026!' }, u)).status, 200)
+  assert.equal((await call('POST', 'passcode-check', { code: '583920' }, u)).status, 200)
+  // changing it later still needs the old code, not the password
+  assert.equal((await call('POST', 'passcode', { code: '692041', password: 'Lefkosa2026!' }, u)).status, 401)
+})

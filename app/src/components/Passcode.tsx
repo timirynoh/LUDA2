@@ -11,9 +11,13 @@ export function PasscodeSetup({ pin: knownPin, change, onDone }: { pin?: string;
   const { refresh } = useLive()
   const [step, setStep] = useState<'proof' | 'new' | 'again'>(knownPin ? 'new' : 'proof')
   const [proof, setProof] = useState(knownPin ?? '')
+  // First code: prove it's you with the account PASSWORD (owner: the app never opens with the payment PIN).
+  // Accounts made with Google have no password, so they can use the payment PIN instead.
+  const [usePin, setUsePin] = useState(!!knownPin)
+  const [pw, setPw] = useState('')
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
-  const title = step === 'proof' ? (change ? 'Enter your current 6-digit code' : 'Enter your 4-digit payment PIN') : step === 'new' ? 'Create your 6-digit sign-in code' : 'Type the same 6 digits again'
+  const title = step === 'proof' ? (change ? 'Enter your current 6-digit code' : usePin ? 'Enter your 4-digit payment PIN' : 'Enter your Luda password') : step === 'new' ? 'Create your 6-digit sign-in code' : 'Type the same 6 digits again'
   const done = async (v: string) => {
     setErr('')
     if (step === 'proof') { setProof(v); return setStep('new') }
@@ -23,7 +27,7 @@ export function PasscodeSetup({ pin: knownPin, change, onDone }: { pin?: string;
     }
     if (v !== code) { setStep('new'); return setErr('The two codes were different. Start again.') }
     try {
-      await api('POST', 'passcode', change ? { code: v, oldCode: proof } : { code: v, pin: proof })
+      await api('POST', 'passcode', change ? { code: v, oldCode: proof } : usePin ? { code: v, pin: proof } : { code: v, password: proof })
       await refresh(); onDone()
     } catch (e) {
       const m = e instanceof Error ? e.message : 'Try again'
@@ -33,8 +37,15 @@ export function PasscodeSetup({ pin: knownPin, change, onDone }: { pin?: string;
   return (
     <div className="flex flex-col items-center gap-4 pb-4">
       <p className="text-center text-lg font-bold">{title}</p>
-      <p className="text-center text-xs text-slate-400">{step === 'proof' ? (change ? 'To change it, first type the code you use now.' : 'To prove it\'s you.') : 'You\'ll type these 6 digits to open Luda. Your 4-digit PIN stays for approving payments.'}</p>
-      <PinPad key={step} length={step === 'proof' && !change ? 4 : 6} error={err} onDone={(v) => void done(v)} />
+      <p className="text-center text-xs text-slate-400">{step === 'proof' ? (change ? 'To change it, first type the code you use now.' : 'One time only, to prove it\'s you. After this, Luda opens with your 6-digit code.') : 'You\'ll type these 6 digits to open Luda. Your 4-digit PIN stays for approving payments.'}</p>
+      {step === 'proof' && !change && !usePin ? (
+        <form className="flex w-full max-w-xs flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (pw) void done(pw) }}>
+          <input className="input" type="password" autoComplete="current-password" placeholder="Password" value={pw} onChange={(e) => setPw(e.target.value)} />
+          {err && <p className="text-center text-xs text-rose-300">{err}</p>}
+          <button className="btn-primary" disabled={!pw}>Continue</button>
+          <button type="button" className="text-xs text-slate-400 underline" onClick={() => { setErr(''); setUsePin(true) }}>Signed up with Google? Use your payment PIN</button>
+        </form>
+      ) : <PinPad key={step + (usePin ? 'p' : '')} length={step === 'proof' && !change ? 4 : 6} error={err} onDone={(v) => void done(v)} />}
     </div>
   )
 }
