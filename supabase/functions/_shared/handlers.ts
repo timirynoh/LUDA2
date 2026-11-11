@@ -251,7 +251,38 @@ function billDetails(v: unknown): Record<string, string> {
   }
   return out
 }
-const MANUAL_DOCS = ['Passport', 'National ID', 'Residence permit', "Driver's licence"]
+/* Personal data that follows the account (v1.25.0). Each section is cleaned and size-capped here; the phone only shows it. */
+const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {})
+const strs = (v: unknown, n: number, len = 80) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').map((x) => cleanText(x, len)).filter(Boolean).slice(0, n) : [])
+const bools = (v: unknown) => Object.fromEntries(Object.entries(obj(v)).filter(([k, x]) => /^[a-zA-Z]{1,24}$/.test(k) && typeof x === 'boolean').slice(0, 30))
+const list = (v: unknown, n: number) => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object').slice(0, n) : [])
+const USER_DATA: Record<string, { max: number; clean: (v: unknown) => unknown }> = {
+  profile: { max: 2_000, clean: (v) => {
+    const o = obj(v), name = cleanText(o.name, 40), bio = cleanText(o.bio, 160)
+    for (const t of [name, bio]) { const bad = t ? textProblem(t) : null; if (bad) throw new Fail(bad) }
+    return { name, bio, city: cleanText(o.city, 30), country: cleanText(o.country, 4).toUpperCase() }
+  } },
+  avatar: { max: 160_000, clean: (v) => {
+    const url = String(obj(v).url ?? '')
+    if (url && !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(url)) throw new Fail('The photo must be a JPEG, PNG or WebP image')
+    return { url }
+  } },
+  settings: { max: 6_000, clean: (v) => {
+    const o = obj(v), r = obj(o.remind)
+    return { shortcuts: strs(o.shortcuts, 12, 20).filter((x) => x !== 'admin'), sections: bools(o.sections), notifPrefs: bools(o.notifPrefs),
+      remind: { on: r.on === true, minutes: Math.min(120, Math.max(0, Math.round(Number(r.minutes) || 15))) } }
+  } },
+  study: { max: 40_000, clean: (v) => ({ classes: list(obj(v).classes, 80) }) },
+  residency: { max: 4_000, clean: (v) => { const o = obj(v); return { docs: strs(o.docs, 40, 40), permitExpiry: cleanText(o.permitExpiry, 10) } } },
+  saved: { max: 24_000, clean: (v) => {
+    const o = obj(v)
+    return { savedHomes: strs(o.savedHomes, 100, 60), newsSaved: strs(o.newsSaved, 200, 60), newsLiked: strs(o.newsLiked, 300, 60), savedPromos: strs(o.savedPromos, 100, 60),
+      rsvps: strs(o.rsvps, 100, 60), applications: list(o.applications, 60), viewings: list(o.viewings, 40) }
+  } },
+  onboard: { max: 2_000, clean: (v) => { const o = obj(v); return { toured: o.toured === true, welcomeDone: strs(o.welcomeDone, 30, 30) } } },
+}
+
+const MANUAL_DOCS =['Passport', 'National ID', 'Residence permit', "Driver's licence"]
 /** Today's 4-digit code for the manual ID selfie (same all day for this person, different for everyone else). */
 async function manualCode(env: Env, userId: string) {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.SERVICE_KEY || env.APP_URL), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
@@ -2322,6 +2353,23 @@ const routes: Record<string, Route> = {
   },
 
   /* ---------------- app language (v1.21.0): phone notifications arrive in it ---------------- */
+  // Personal data that follows the account to every phone (v1.25.0): profile, photo, settings, timetable…
+  'GET my-data': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    return { data: await d.db.fn('luda_user_data_get', { p_user: p.user_id }) }
+  },
+  'POST my-data': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const key = String(body.key ?? '')
+    const rule = USER_DATA[key]
+    if (!rule) throw new Fail('Unknown section')
+    await limit(d, `mydata:${p.user_id}`, 600, 86400, 'Too many changes today. They are saved on this phone and will sync tomorrow.')
+    const data = rule.clean(body.data)
+    if (JSON.stringify(data).length > rule.max) throw new Fail('That is too big to save')
+    const at = typeof body.at === 'string' && !Number.isNaN(Date.parse(body.at)) ? body.at : new Date().toISOString()
+    return await d.db.fn('luda_user_data_put', { p_user: p.user_id, p_key: key, p_data: data, p_at: at })
+  },
+
   'POST lang': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
     const lang = String(body.lang ?? '')

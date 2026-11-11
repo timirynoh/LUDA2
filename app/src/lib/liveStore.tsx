@@ -4,6 +4,7 @@ import { forgetPushForAccount } from './push'
 import { LIVE, api, clearRef, clearSession, getSession, liveConfig, pendingRef, type Me } from './live'
 import { useStore } from './store'
 import { toLocalTicket } from './liveTickets'
+import { useAccountSync } from './accountSync'
 
 /** Rewards worked out by the server (XP, points, streak, badges, quests, challenges, referral). The phone only shows them. */
 export interface Rewards {
@@ -90,6 +91,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     window.addEventListener('luda:rewards', rw)
     return () => { window.removeEventListener('luda:signedout', out); window.removeEventListener('luda:rewards', rw) }
   }, [s.signedIn, set, refreshRewards])
+
+  // Profile, photo, settings, timetable, saved items… follow the account to every phone (v1.25.0).
+  useAccountSync(s, set, s.signedIn ? s.account?.username : undefined)
 
   return <Ctx.Provider value={{ me, rewards, loading, error, refresh, refreshRewards }}>{children}</Ctx.Provider>
 }
