@@ -3337,5 +3337,10 @@
   "Enter your date of birth": "Weka tarehe yako ya kuzaliwa",
   "Add a photo of your document and a selfie holding the code": "Ongeza picha ya hati yako na selfie ukiwa umeshika msimbo",
   "You can send your ID to the team 3 times a day. Try again tomorrow.": "Unaweza kutuma kitambulisho chako kwa timu mara 3 kwa siku. Jaribu tena kesho.",
-  "Your ID is already verified": "Kitambulisho chako tayari kimethibitishwa"
+  "Your ID is already verified": "Kitambulisho chako tayari kimethibitishwa",
+  "It usually arrives in your account in 2–5 minutes. You'll get a notification, and you can follow it in your history.": "Kwa kawaida hufika kwenye akaunti yako ndani ya dakika 2–5. Utapata arifa, na unaweza kuifuatilia kwenye historia yako.",
+  "On its way to your bank. It usually arrives in 2–5 minutes.": "Iko njiani kwenda benki yako. Kwa kawaida hufika ndani ya dakika 2–5.",
+  "Withdrawal returned: {}": "Utoaji umerudishwa: {}",
+  "↩️ Withdrawal returned: {}": "↩️ Utoaji umerudishwa: {}",
+  "To {} ••{}": "Kwenda {} ••{}"
 }

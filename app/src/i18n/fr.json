@@ -3320,5 +3320,10 @@
   "Enter your date of birth": "Saisissez votre date de naissance",
   "Add a photo of your document and a selfie holding the code": "Ajoutez une photo de votre document et un selfie avec le code",
   "You can send your ID to the team 3 times a day. Try again tomorrow.": "Vous pouvez envoyer votre pièce à l’équipe 3 fois par jour. Réessayez demain.",
-  "Your ID is already verified": "Votre pièce est déjà vérifiée"
+  "Your ID is already verified": "Votre pièce est déjà vérifiée",
+  "It usually arrives in your account in 2–5 minutes. You'll get a notification, and you can follow it in your history.": "Il arrive généralement sur votre compte en 2 à 5 minutes. Vous recevrez une notification et pouvez le suivre dans votre historique.",
+  "On its way to your bank. It usually arrives in 2–5 minutes.": "En route vers votre banque. Il arrive généralement en 2 à 5 minutes.",
+  "Withdrawal returned: {}": "Retrait remboursé : {}",
+  "↩️ Withdrawal returned: {}": "↩️ Retrait remboursé : {}",
+  "To {} ••{}": "Vers {} ••{}"
 }

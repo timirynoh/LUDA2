@@ -272,7 +272,7 @@ export function WithdrawSheet({ onClose }: { onClose: () => void }) {
           warning="Check the account carefully. Money sent to a bank can't be pulled back by Luda."
           holdLabel="Hold to withdraw"
           run={async (auth) => { const r = await api('POST', 'withdraw', { amountMinor: minor, account: acct, bankCode: bank!.code, bankName: bank!.name, ...auth }); setResult(r.status); setResultMsg(r.message ?? ''); await refresh() }}
-          done={<Success title={result === 'failed' ? 'Withdrawal didn\'t go through' : result === 'paid' ? 'Sent to your bank 🎉' : 'Withdrawal on its way'} sub={result === 'failed' ? resultMsg || 'Your money is back in your wallet.' : result === 'processing' ? 'Usually arrives within minutes. You\'ll see the status in your history.' : undefined} onClose={onClose} />}
+          done={<Success title={result === 'failed' ? 'Withdrawal didn\'t go through' : result === 'paid' ? 'Sent to your bank 🎉' : 'Withdrawal on its way'} sub={result === 'failed' ? resultMsg || 'Your money is back in your wallet.' : result === 'processing' ? 'It usually arrives in your account in 2–5 minutes. You\'ll get a notification, and you can follow it in your history.' : undefined} onClose={onClose} />}
           onClose={() => setReview(false)} />
       ) : (
         <div className="flex flex-col gap-3">

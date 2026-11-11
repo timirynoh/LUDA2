@@ -110,7 +110,7 @@ function buildItems(me: Me): Item[] {
     const status: Status = w.status === 'paid' ? 'success' : w.status === 'processing' ? 'pending' : 'refunded'
     out.push({
       key: 'wdr' + w.reference, at: w.created_at, title: 'Withdrawal', sub: `${w.bank_name ?? 'Bank'} ${w.account_number}`, amountMinor: -(w.amount_minor + ((w.fee_currency ?? 'NGN') === 'NGN' ? w.fee_minor : 0)), currency: 'NGN', status, reference: w.reference,
-      note: status === 'pending' ? 'On its way to your bank. Usually arrives within minutes.' : status === 'refunded' ? 'The bank transfer failed, so the amount and fee went back into your Naira wallet.' : undefined,
+      note: status === 'pending' ? 'On its way to your bank. It usually arrives in 2–5 minutes.' : status === 'refunded' ? 'The bank transfer failed, so the amount and fee went back into your Naira wallet.' : undefined,
       details: [['Status', LABEL[status]], ['Reference', w.reference], ['Date', when(w.created_at)], ['To', w.account_name], ['Bank', `${w.bank_name ?? ''} ${w.account_number}`], ['Amount', money(w.amount_minor, 'NGN')], ['Luda fee', money(w.fee_minor, w.fee_currency ?? 'NGN')]],
     })
   }

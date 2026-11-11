@@ -520,22 +520,29 @@ test('appeals / support cases: photos, replies, and the team verifies the ID by 
   assert.match((await call('POST', 'case-create', { category: 'other', subject: 'Question 9', message: 'Some question here' }, ada)).j.error, /3 open cases/)
 })
 
-test('Paystack refuses a payout (starter business): money goes straight back, stuck ones heal', async () => {
+test('both providers refuse a payout: it is NOT rejected — it waits for the Luda team (owner, v1.26.0)', async () => {
   await q(`update profiles set kyc_status='verified', kyc_name='ADA CHIOMA OKAFOR', frozen=false, money_hold_until=null where username='ada'`)
   const before = (await bal(ada)).NGN
   world.transferReply = 'starter'; world.flwReply = 'ip' // both routes refuse
   const w = await call('POST', 'withdraw', { amountMinor: 1_000_00, account: '0123456789', bankCode: '058', pin: '4826' }, ada)
-  assert.equal(w.j.status, 'failed', JSON.stringify(w.j)); assert.match(w.j.message, /paused/)
-  assert.match((await q(`select note from withdrawals where reference=$1`, [w.j.reference]))[0].note, /starter business.*Whitelisting/)
+  assert.equal(w.j.status, 'processing', JSON.stringify(w.j)); assert.equal(w.j.message, undefined)
+  const row = (await q(`select provider, status, note from withdrawals where reference=$1`, [w.j.reference]))[0]
+  assert.equal(row.provider, 'manual'); assert.equal(row.status, 'processing'); assert.match(row.note, /Waiting for the Luda team.*starter business.*Whitelisting/)
   world.flwReply = 'NEW'
-  assert.equal((await bal(ada)).NGN, before, 'amount + fee refunded immediately')
-  // a withdrawal stuck in "processing" from before the fix (Paystack never created it) heals on app open
+  assert.ok((await bal(ada)).NGN < before, 'the money stays held for the payout (not refunded)')
+  await call('GET', 'me', undefined, ada) // app open never refunds a manual payout
+  assert.equal((await q(`select status from withdrawals where reference=$1`, [w.j.reference]))[0].status, 'processing')
+  // a withdrawal stuck in "processing" that Paystack never created goes to the team too (no refund)
   world.transferReply = 'pending'
   const ada_id = (await q(`select user_id from profiles where username='ada'`))[0].user_id
   await q(`select luda_withdraw($1,'wdr_oldstuck000000000000001',100000,5000,'50211','Kuda Bank','0123456789','OKAFOR ADA CHIOMA','RCP_x')`, [ada_id])
   await q(`update withdrawals set created_at = now() - interval '20 minutes' where reference='wdr_oldstuck000000000000001'`)
-  assert.equal((await bal(ada)).NGN, before, 'refunded once the user opens the app')
-  assert.equal((await q(`select status from withdrawals where reference='wdr_oldstuck000000000000001'`))[0].status, 'failed')
+  await call('GET', 'me', undefined, ada)
+  const old = (await q(`select status, provider from withdrawals where reference='wdr_oldstuck000000000000001'`))[0]
+  assert.deepEqual([old.status, old.provider], ['processing', 'manual'])
+  // tidy up for the next tests: refund both through SQL
+  for (const r of [w.j.reference, 'wdr_oldstuck000000000000001']) await q(`select luda_withdraw_settle($1,'failed',null,'test cleanup')`, [r])
+  assert.equal((await bal(ada)).NGN, before)
 })
 
 test('Paystack refuses → Flutterwave pays out instead; ₦300 minimum; Kuda maps to Flutterwave\'s own code', async () => {

@@ -3336,5 +3336,10 @@
   "Enter your date of birth": "Doğum tarihini gir",
   "Add a photo of your document and a selfie holding the code": "Belgenin fotoğrafını ve kodu tuttuğun bir selfie ekle",
   "You can send your ID to the team 3 times a day. Try again tomorrow.": "Kimliğini ekibe günde 3 kez gönderebilirsin. Yarın tekrar dene.",
-  "Your ID is already verified": "Kimliğin zaten doğrulandı"
+  "Your ID is already verified": "Kimliğin zaten doğrulandı",
+  "It usually arrives in your account in 2–5 minutes. You'll get a notification, and you can follow it in your history.": "Genellikle 2–5 dakika içinde hesabına geçer. Bildirim alacaksın; geçmişinden de takip edebilirsin.",
+  "On its way to your bank. It usually arrives in 2–5 minutes.": "Bankana gönderiliyor. Genellikle 2–5 dakika içinde ulaşır.",
+  "Withdrawal returned: {}": "Çekim iade edildi: {}",
+  "↩️ Withdrawal returned: {}": "↩️ Çekim iade edildi: {}",
+  "To {} ••{}": "{} ••{} hesabına"
 }

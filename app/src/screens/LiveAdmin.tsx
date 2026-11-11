@@ -25,6 +25,7 @@ const waited = (iso: string) => { const m = Math.round((Date.now() - Date.parse(
 const short = (ref: string) => '…' + ref.slice(-8)
 const lira = (minor: number) => money(Number(minor), 'TRY')
 const BADGE: Record<string, string> = {
+  'to pay': 'bg-rose-500/15 text-rose-300',
   paid: 'bg-mint-400/15 text-mint-300', verified: 'bg-mint-400/15 text-mint-300', valid: 'bg-mint-400/15 text-mint-300', released: 'bg-mint-400/15 text-mint-300',
   pending: 'bg-gold-400/15 text-gold-300', processing: 'bg-gold-400/15 text-gold-300', mismatch: 'bg-gold-400/15 text-gold-300', held: 'bg-gold-400/15 text-gold-300',
   failed: 'bg-rose-500/15 text-rose-300', appeal: 'bg-rose-500/15 text-rose-300', reversed: 'bg-rose-500/15 text-rose-300', refunded: 'bg-sky-400/15 text-sky-300', none: 'bg-fg/10 text-slate-400',
@@ -588,27 +589,101 @@ function TopUps({ onOpen }: { onOpen: (id: string) => void }) {
 }
 
 function Payouts({ onOpen }: { onOpen: (id: string) => void }) {
-  const [status, setStatus] = useState('')
+  const { me } = useLive()
+  const [status, setStatus] = useState('manual')
   const { data, err, load } = useLoad<{ withdrawals: any[] }>(`admin-withdrawals?status=${status}`)
   const [msg, setMsg] = useState('')
+  const [pay, setPay] = useState<any | null>(null)
+  // the "To pay" queue refreshes itself every 30 s
+  useEffect(() => { if (status !== 'manual') return; const t = setInterval(() => void load(), 30_000); return () => clearInterval(t) }, [status, load])
   const recheck = async (ref: string) => { setMsg(''); try { const r = await api('POST', 'admin-recheck', { reference: ref }); setMsg(`${short(ref)} → ${r.status}`); void load() } catch (e) { setMsg(errMsg(e)) } }
+  const list = data?.withdrawals ?? []
   return (
     <div className="flex flex-col gap-2">
-      <Filter value={status} set={setStatus} options={[['', 'All'], ['processing', 'Processing'], ['paid', 'Paid'], ['failed', 'Failed'], ['reversed', 'Reversed']]} />
+      <Filter value={status} set={setStatus} options={[['manual', 'To pay'], ['', 'All'], ['processing', 'Processing'], ['paid', 'Paid'], ['failed', 'Failed'], ['reversed', 'Reversed']]} />
+      {status === 'manual' && <p className="text-xs text-slate-400">Withdrawals Paystack/Flutterwave couldn't send. The person was told it usually takes 2–5 minutes, so pay these first: tap one, “I'm paying this”, pay from the bank app, attach the receipt.{list.length > 0 && <b className="text-slate-200"> Total: {money(list.reduce((t, w) => t + Number(w.amount_minor), 0), 'NGN')}</b>}</p>}
       {msg && <p className="text-xs text-slate-300">{msg}</p>}{err && <p className="text-sm text-rose-300">{err}</p>}
-      {data?.withdrawals.map((w) => (
-        <div key={w.reference} className="glass rounded-2xl p-3 text-sm">
-          <div className="flex items-center justify-between gap-2"><p className="font-bold">{money(Number(w.amount_minor), 'NGN')} <span className="text-xs font-normal text-slate-500">+ {money(Number(w.fee_minor), 'NGN')} fee</span></p><Badge s={w.status} /></div>
-          <p className="mt-0.5 text-xs text-slate-400">{w.account_name} · {w.bank_name} ••{String(w.account_number).slice(-4)} · {when(w.created_at)}{w.provider ? ` · via ${w.provider === 'flutterwave' ? 'Flutterwave' : 'Paystack'}` : ''}</p>
-          {w.note && <p className="text-xs text-slate-500">{w.note}</p>}
-          <div className="mt-2 flex gap-2">
-            {w.status === 'processing' && <button className="chip bg-fg/5 py-1.5 text-xs" onClick={() => recheck(w.reference)}><RefreshCw size={12} /> Re-check</button>}
-            <button className="chip bg-fg/5 py-1.5 text-xs" onClick={() => onOpen(w.user_id)}>Open user</button>
+      {list.map((w) => {
+        const manual = w.provider === 'manual' && w.status === 'processing'
+        const mins = Math.round((Date.now() - Date.parse(w.created_at)) / 60000)
+        const claimed = w.claimed_by && Date.parse(w.claimed_at) > Date.now() - 30 * 60e3 ? w.claimed_by : null
+        return (
+          <div key={w.reference} className={`glass rounded-2xl p-3 text-sm ${manual && mins >= 5 ? 'ring-1 ring-rose-400/60' : ''}`}>
+            <div className="flex items-center justify-between gap-2"><p className="font-bold">{money(Number(w.amount_minor), 'NGN')} <span className="text-xs font-normal text-slate-500">+ {money(Number(w.fee_minor), w.fee_currency ?? 'NGN')} fee</span></p><Badge s={manual ? 'to pay' : w.status} /></div>
+            <p className="mt-0.5 text-xs text-slate-400">{w.account_name} · {w.bank_name} ••{String(w.account_number).slice(-4)} · {when(w.created_at)}{w.provider ? ` · ${w.provider === 'manual' ? 'by the team' : w.provider === 'flutterwave' ? 'via Flutterwave' : 'via Paystack'}` : ''}</p>
+            {manual && <p className={`text-xs ${mins >= 5 ? 'text-rose-300' : 'text-gold-200'}`}>Waiting {mins} min{claimed ? ` · 🙋 ${claimed === me?.profile.username ? 'you are paying' : `@${claimed} is paying`}` : ''}</p>}
+            {w.note && <p className="text-xs text-slate-500">{w.note}</p>}
+            {(w.receiptUrls ?? []).filter(Boolean).map((u: string, i: number) => <a key={i} href={u} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-mint-300 underline"><Receipt size={12} /> Receipt{w.paid_by ? ` (by @${w.paid_by})` : ''}</a>)}
+            <div className="mt-2 flex flex-wrap gap-2">
+              {manual && <button className="btn-primary px-4 py-1.5 text-xs" onClick={() => setPay(w)}>Pay now</button>}
+              {w.status === 'processing' && !manual && <button className="chip bg-fg/5 py-1.5 text-xs" onClick={() => recheck(w.reference)}><RefreshCw size={12} /> Re-check</button>}
+              <button className="chip bg-fg/5 py-1.5 text-xs" onClick={() => onOpen(w.user_id)}>Open user</button>
+            </div>
           </div>
-        </div>
-      ))}
-      {data?.withdrawals.length === 0 && <p className="text-sm text-slate-500">Nothing here.</p>}
+        )
+      })}
+      {data && list.length === 0 && <p className="rounded-3xl border border-dashed border-fg/10 py-10 text-center text-sm text-slate-400">{status === 'manual' ? 'Nothing to pay 🎉' : 'Nothing here.'}</p>}
+      {pay && <PayoutSheet w={pay} meName={me?.profile.username ?? ''} onClose={() => setPay(null)} onDone={() => void load()} />}
     </div>
+  )
+}
+
+/** Pay one withdrawal by hand: claim it, copy the bank details, pay from the bank app, attach the receipt — or refund with a reason. */
+function PayoutSheet({ w, meName, onClose, onDone }: { w: any; meName: string; onClose: () => void; onDone: () => void }) {
+  const [claimed, setClaimed] = useState<string | null>(w.claimed_by && Date.parse(w.claimed_at) > Date.now() - 30 * 60e3 ? w.claimed_by : null)
+  const [claimErr, setClaimErr] = useState('')
+  const [mode, setMode] = useState<'pay' | 'refund'>('pay')
+  const [files, setFiles] = useState<Upload[]>([])
+  const [checked, setChecked] = useState(false)
+  const [note, setNote] = useState('')
+  const [review, setReview] = useState(false)
+  const mine = claimed === meName
+  const naira = (Number(w.amount_minor) / 100).toFixed(2).replace(/\.00$/, '')
+  const claim = async (release = false) => { setClaimErr(''); try { await api('POST', 'admin-payout-claim', { reference: w.reference, release }); setClaimed(release ? null : meName); onDone() } catch (e) { setClaimErr(errMsg(e)) } }
+  const run = async (auth: Approval) => { await api('POST', 'admin-payout', { reference: w.reference, paid: mode === 'pay', checked, note, files: files.map(({ name, type, data }) => ({ name, type, data })), ...auth }); onDone() }
+  return (
+    <Sheet open onClose={onClose} title="Pay withdrawal">
+      {review ? (
+        <ReviewAndPin holdLabel={mode === 'pay' ? 'Hold to mark as paid' : 'Hold to refund'} onClose={() => setReview(false)} run={run}
+          rows={mode === 'pay' ? [['Paid to', w.account_name], ['Bank', `${w.bank_name} · ${w.account_number}`], ['Amount', <b key="a">{money(Number(w.amount_minor), 'NGN')}</b>], ['Receipt', `${files.length} file(s)`]]
+            : [['Refund to', w.account_name], ['Amount + fee back to wallet', money(Number(w.amount_minor), 'NGN')], ['Reason (sent to the person)', note]]}
+          done={<Success title={mode === 'pay' ? 'Marked as paid ✅' : 'Refunded'} sub={mode === 'pay' ? 'The person gets a "Withdrawal sent" notification.' : 'The amount and fee are back in their wallet.'} onClose={onClose} />} />
+      ) : (
+        <div className="flex flex-col gap-4 pb-4">
+          <div className="rounded-3xl bg-gradient-to-br from-fg/[0.07] to-fg/[0.02] p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Send exactly</p>
+            <div className="mt-1 flex items-center justify-between gap-3"><p className="text-3xl font-extrabold">{money(Number(w.amount_minor), 'NGN')}</p><CopyBtn text={naira} label="Amount" /></div>
+            <div className="my-3 h-px bg-fg/10" />
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Account number</p>
+            <div className="mt-1 flex items-center justify-between gap-3"><p className="font-mono text-xl font-bold">{w.account_number}</p><CopyBtn text={w.account_number} label="Number" /></div>
+            <div className="my-3 h-px bg-fg/10" />
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Bank</p>
+            <div className="mt-1 flex items-center justify-between gap-3"><p className="font-semibold">{w.bank_name}</p><CopyBtn text={w.bank_name ?? ''} label="Bank" /></div>
+            <div className="my-3 h-px bg-fg/10" />
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Account name (checked against their ID)</p>
+            <div className="mt-1 flex items-center justify-between gap-3"><p className="font-semibold">{w.account_name}</p><CopyBtn text={w.account_name} label="Name" /></div>
+            <p className="mt-3 text-xs text-slate-400">Asked {when(w.created_at)} · reference <span className="font-mono">{short(w.reference)}</span></p>
+          </div>
+          {mine ? <div className="flex items-center justify-between rounded-2xl bg-mint-400/10 px-3 py-2.5 text-sm text-mint-200"><span>🙋 You're paying this one</span><button className="text-xs text-slate-300 underline" onClick={() => void claim(true)}>Let it go</button></div>
+            : claimed ? <p className="rounded-2xl bg-gold-400/10 px-3 py-2.5 text-sm text-gold-200">@{claimed} is paying this</p>
+            : <button className="btn-primary py-3.5" onClick={() => void claim()}>🙋 I'm paying this now</button>}
+          {claimErr && <p className="text-sm text-rose-300">{claimErr}</p>}
+          <div className="flex rounded-2xl bg-fg/[0.05] p-1">{(['pay', 'refund'] as const).map((m) => <button key={m} onClick={() => setMode(m)} className={`flex-1 rounded-xl py-2.5 text-sm font-semibold ${mode === m ? 'bg-fg/10 text-slate-100' : 'text-slate-400'}`}>{m === 'pay' ? '✅ I paid it' : "↩️ Can't pay"}</button>)}</div>
+          {mode === 'pay' ? <>
+            <p className="text-sm text-slate-300">Send the amount from Luda's bank app to the account above, save the receipt and attach it.</p>
+            <Attachments files={files} setFiles={setFiles} />
+            {files.length > 0 && <label className="flex items-start gap-3 rounded-2xl bg-mint-400/10 p-3 text-sm"><input type="checkbox" className="mt-0.5 size-5 accent-emerald-400" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+              <span>The receipt shows account <b>{w.account_number}</b> and <b>{money(Number(w.amount_minor), 'NGN')}</b>.</span></label>}
+            <button className="btn-primary py-4" disabled={!files.length || !checked || (!!claimed && !mine)} onClick={() => setReview(true)}>Mark as paid</button>
+          </> : <>
+            <div className="flex flex-wrap gap-2">{['The bank account is closed', 'The bank rejected the transfer', 'Account details look wrong'].map((r) => <button key={r} onClick={() => setNote(r)} className={`chip py-2 ${note === r ? 'bg-sky-400/20 text-sky-200' : 'bg-fg/[0.06] text-slate-300'}`}>{r}</button>)}</div>
+            <input className="input text-sm" maxLength={200} placeholder="Or write the reason (sent to the person)" value={note} onChange={(e) => setNote(e.target.value)} />
+            <p className="text-xs text-slate-500">Only refund if it truly can't be paid. Needs the owner or a 'full' money role.</p>
+            <button className="btn-ghost py-4" disabled={!note.trim() || (!!claimed && !mine)} onClick={() => setReview(true)}><Undo2 size={16} /> Refund to their wallet</button>
+          </>}
+        </div>
+      )}
+    </Sheet>
   )
 }
 

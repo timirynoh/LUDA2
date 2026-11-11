@@ -3346,5 +3346,10 @@
   "Enter your date of birth": "أدخل تاريخ ميلادك",
   "Add a photo of your document and a selfie holding the code": "أضف صورة لوثيقتك وصورة ذاتية تمسك فيها الرمز",
   "You can send your ID to the team 3 times a day. Try again tomorrow.": "يمكنك إرسال هويتك إلى الفريق 3 مرات يومياً. حاول مجدداً غداً.",
-  "Your ID is already verified": "هويتك موثقة بالفعل"
+  "Your ID is already verified": "هويتك موثقة بالفعل",
+  "It usually arrives in your account in 2–5 minutes. You'll get a notification, and you can follow it in your history.": "يصل عادةً إلى حسابك خلال 2–5 دقائق. ستصلك إشعار، ويمكنك متابعته في سجلك.",
+  "On its way to your bank. It usually arrives in 2–5 minutes.": "في الطريق إلى بنكك. يصل عادةً خلال 2–5 دقائق.",
+  "Withdrawal returned: {}": "تمت إعادة السحب: {}",
+  "↩️ Withdrawal returned: {}": "↩️ تمت إعادة السحب: {}",
+  "To {} ••{}": "إلى {} ••{}"
 }

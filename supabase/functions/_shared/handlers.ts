@@ -10,7 +10,7 @@ import { b64u, checkRegistration, verifyAssertion, WebAuthnError, type Assertion
 import { MoneyError, type CaseRow, type Db, type PaymentRow, type Profile, type WithdrawalRow } from './db.ts'
 import { DiditUnavailable, accountMatchesName, diditDecision, diditEnabled, diditSignatureOk, diditStart, docHash, idMatchesName, kycEnabled, lookupId, nameTokens, normDate, type DiditEnv, type KycEnv } from './kyc.ts'
 import { CURRENCIES, FOREIGN, LIMITS, convertOut, costIn, billFee, depositFee, featureFees, foreignEnabled, foreignFee, margin, ngnPerTry, p2pFeeTry, perTry, withdrawFee, type Cur, type FeeEnv, type FxEnv } from './money.ts'
-import { PayoutRefused, checkTransfer, createRecipient, flwBanks, flwCheckTransfer, flwResolve, flwSendTransfer, listBanks, matchFlwBank, payoutRefusalMessage, resolveAccount, sendTransfer, type PayoutProvider } from './payouts.ts'
+import { PayoutRefused, checkTransfer, createRecipient, flwBanks, flwCheckTransfer, flwResolve, flwSendTransfer, listBanks, matchFlwBank, resolveAccount, sendTransfer, type PayoutProvider } from './payouts.ts'
 import { priceTicket } from './pricing.ts'
 import { textProblem } from './moderation.ts'
 import { TopupRefused, mobileNumber, topupCheck, topupMaxMinor, topupOperatorList, topupOperators, topupSend, type TopupEnv } from './topup.ts'
@@ -519,6 +519,7 @@ export async function runHealth(env: Env, d: Deps, by = 'auto') {
   const n = (k: string) => Number(c[k] ?? 0)
   if (n('ledger_mismatch')) problems.push({ code: 'ledger', text: `${n('ledger_mismatch')} wallet(s) don't match their ledger`, fix: 'Money must always add up. Contact your developer before doing anything else.' })
   if (n('escrow_missing')) problems.push({ code: 'escrow', text: `${n('escrow_missing')} held payment(s) are missing their ledger entries`, fix: 'Contact your developer.' })
+  if (n('payouts_manual_late')) problems.push({ code: 'manual-payouts', text: `${n('payouts_manual_late')} withdrawal(s) waiting for the team for over 15 minutes`, fix: 'Open Luda HQ → Payouts → To pay, tap "I\'m paying this", pay from the bank app and attach the receipt.' })
   if (n('withdrawals_stuck')) problems.push({ code: 'payouts', text: `${n('withdrawals_stuck')} withdrawal(s) processing for over 30 minutes`, fix: 'Open Luda HQ → Payouts and check them with the provider.' })
   if (n('deposits_mismatch')) problems.push({ code: 'mismatch', text: `${n('deposits_mismatch')} top-up(s) under review (amount didn't match)`, fix: 'Open Luda HQ → Top-ups and tap Re-check.' })
   if (n('bad_webhooks_24h')) problems.push({ code: 'badhook', text: `${n('bad_webhooks_24h')} webhook(s) rejected in the last 24 hours`, fix: 'The secret key or Flutterwave secret hash in Supabase doesn\'t match the provider dashboard.' })
@@ -556,6 +557,7 @@ export function payoutOrder(env: Env): PayoutProvider[] {
 /** Asks the payout provider for a withdrawal's final status; refunds the wallet if it failed. */
 export async function settleWithdrawal(w: WithdrawalRow, env: Env, d: Deps): Promise<WithdrawalRow['status']> {
   if (w.status !== 'processing' && w.status !== 'paid') return w.status
+  if (w.provider === 'manual') return w.status // the Luda team pays these by hand (Luda HQ → Payouts)
   const viaFlw = w.provider === 'flutterwave'
   if (viaFlw ? !env.FLW_SECRET_KEY : !env.PAYSTACK_SECRET_KEY) return w.status
   let t
@@ -565,9 +567,9 @@ export async function settleWithdrawal(w: WithdrawalRow, env: Env, d: Deps): Pro
     // The provider has no such transfer (it was refused before being created): after a while, give the money back.
     const wait = viaFlw ? 30 * 60e3 : 5 * 60e3
     if (e instanceof PayoutRefused && w.status === 'processing' && !w.transfer_code && Date.now() - Date.parse(w.created_at) > wait) {
-      await d.db.withdrawSettle(w.reference, 'failed', null, `${viaFlw ? 'Flutterwave' : 'Paystack'} has no record of this transfer, refunded`)
-      await d.db.log(w.reference, 'withdraw_failed', { reason: e.message, provider: w.provider ?? 'paystack' })
-      return 'failed'
+      // Nothing was sent, so it's safe for the team to pay it by hand (owner: never reject a withdrawal).
+      await toManual(env, d, w.reference, `${viaFlw ? 'Flutterwave' : 'Paystack'} has no record of this transfer`)
+      return 'processing'
     }
     throw e
   }
@@ -616,10 +618,17 @@ async function payOut(reference: string, amount: number, bank: string, bankName:
       return { status: 'processing' as const, provider: p }
     }
   }
-  // Every route said no, so nothing was sent: return the money (and fee) to the wallet right away.
+  // Every route said no, so nothing was sent. Owner's rule (v1.26.0): don't reject it — the Luda team pays it by hand.
   const why = refusals.join(' | ').slice(0, 300) || 'No payout provider is switched on'
-  await d.db.withdrawSettle(reference, 'failed', null, why)
-  return { status: 'failed' as const, provider: null, message: payoutRefusalMessage(refusals[0] ?? why) }
+  await toManual(env, d, reference, why)
+  return { status: 'processing' as const, provider: 'manual' }
+}
+
+/** Puts a withdrawal in the Luda HQ payout queue (money stays held; staff are alerted right away). */
+async function toManual(env: Env, d: Deps, reference: string, why: string) {
+  await d.db.setWithdrawal(reference, { provider: 'manual' })
+  await d.db.fn('luda_withdraw_note', { p_ref: reference, p_note: `Waiting for the Luda team: ${why}`.slice(0, 300) }).catch(() => {})
+  await d.db.log(reference, 'withdraw_manual', { why })
 }
 
 /* ---------------------------------- api ---------------------------------- */
@@ -1310,7 +1319,43 @@ const routes: Record<string, Route> = {
 
   'GET admin-withdrawals': async ({ req, env, d, url }) => {
     await staff(req, env, d, 'money', 'view')
-    return { withdrawals: (await d.db.listWithdrawals(url.searchParams.get('status') || null, 50)).map((w) => ({ ...w, recipient_code: undefined })) }
+    const st = url.searchParams.get('status')
+    const list = st === 'manual' ? (await d.db.listWithdrawals('processing', 100)).filter((w) => w.provider === 'manual').reverse() : await d.db.listWithdrawals(st || null, 50)
+    return { withdrawals: await Promise.all(list.map(async (w) => ({ ...w, recipient_code: undefined, receiptUrls: await signAll(env, d, (w as WithdrawalRow & { receipt?: string[] }).receipt) }))) }
+  },
+
+  // Manual payout queue (v1.26.0): 'I'm paying this one' so nobody pays twice.
+  'POST admin-payout-claim': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'money', 'edit')
+    const r = await d.db.fn<{ ok: boolean; why?: string; by?: string }>('luda_payout_claim', { p_ref: String(body.reference ?? ''), p_staff: a.username, p_release: body.release === true })
+    if (!r.ok) throw new Fail(r.why === 'claimed' ? `@${r.by} is already paying this withdrawal` : 'This withdrawal was already handled', 409)
+    return { ok: true, claimedBy: body.release === true ? null : a.username }
+  },
+  // Paid by hand (receipt + 'the receipt matches' tick) or, if it truly can't be paid, refunded with a reason.
+  'POST admin-payout': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'money', 'edit')
+    await verifyAuth(a, body, env, d)
+    const ref = String(body.reference ?? ''), paid = body.paid === true, note = cleanText(body.note, 200)
+    const w = await d.db.withdrawal(ref)
+    if (!w || w.status !== 'processing' || w.provider !== 'manual') throw new Fail('This withdrawal was already handled', 409)
+    const cl = w as WithdrawalRow & { claimed_by?: string | null; claimed_at?: string | null }
+    if (cl.claimed_by && cl.claimed_by !== a.username && Date.parse(cl.claimed_at ?? '') > Date.now() - 30 * 60e3) throw new Fail(`@${cl.claimed_by} is paying this withdrawal`, 409)
+    if (paid) {
+      if (body.checked !== true) throw new Fail('Tick that the receipt shows the same account and amount')
+      const receipt = await storeFiles(env, d, a.user_id, 'payouts', body.files)
+      if (!receipt.length) throw new Fail('Attach the bank receipt (photo or PDF)')
+      await d.db.fn('luda_payout_paid_info', { p_ref: ref, p_staff: a.username, p_receipt: receipt })
+      await d.db.withdrawSettle(ref, 'paid', null, note || 'Paid by the Luda team')
+      await d.db.log(ref, 'admin_payout_paid', { by: a.username })
+      await notifyUser(env, d, w.user_id, { emoji: '🏦', title: `Withdrawal sent: ${fmtMoney(w.amount_minor, w.currency)}`, body: `To ${w.bank_name ?? 'your bank'} ••${w.account_number.slice(-4)}`, url: '/wallet', tag: `wdr:${ref}`, cat: 'money' })
+    } else {
+      if (!can(a.staff, 'money', 'full')) throw new Fail("Refunds need the owner or a 'full' money role", 403)
+      if (!note) throw new Fail('Tell the person why it could not be paid')
+      await d.db.withdrawSettle(ref, 'failed', null, note)
+      await d.db.log(ref, 'admin_payout_refunded', { by: a.username, note })
+      await notifyUser(env, d, w.user_id, { emoji: '↩️', title: `Withdrawal returned: ${fmtMoney(w.amount_minor, w.currency)}`, body: note, url: '/wallet', tag: `wdr:${ref}`, cat: 'money' })
+    }
+    return { ok: true }
   },
 
   'GET admin-cases': async ({ req, env, d, url }) => {
@@ -2772,6 +2817,14 @@ async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
   for (const s of saved.filter((x) => x.due)) items.push({ key: `savedbill:${s.id}:${cyprusDay().slice(0, 7)}`, emoji: '🗓️', title: `Time to pay ${s.label || s.provider}`, sub: s.amount_minor ? `Last time ${amt(s.amount_minor, 'TRY')} · two taps to pay` : 'Two taps to pay from your Lira wallet', to: `/bills?pay=${s.id}`, level: 'action' })
   // Luda team: bills waiting to be paid (new ones, and ones close to the promised time).
   const sp = await permsOf(p, env, d).catch(() => null)
+  if (sp && can(sp, 'money', 'edit')) {
+    const waiting = (await d.db.listWithdrawals('processing', 100).catch(() => [])).filter((w) => w.provider === 'manual')
+    for (const w of waiting.slice(0, 5)) {
+      const c = w as WithdrawalRow & { claimed_by?: string | null; claimed_at?: string | null }
+      if (c.claimed_by && Date.parse(c.claimed_at ?? '') > Date.now() - 30 * 60e3) continue
+      items.push({ key: `staffpay:${w.reference}`, emoji: '🏦', title: `Pay withdrawal: ${amt(w.amount_minor, w.currency)} to ${w.account_name}`, sub: `${w.bank_name ?? ''} ••${w.account_number.slice(-4)} · Luda HQ → Payouts`, to: '/admin?tab=withdrawals', level: 'urgent' })
+    }
+  }
   if (sp && can(sp, 'money', 'view')) {
     const h = await d.db.fn<{ id: number; at: string; problems: HealthProblem[] } | null>('luda_health_last', {}).catch(() => null)
     if (h && h.problems?.length && Date.parse(h.at) > Date.now() - 36 * 3600e3) {
