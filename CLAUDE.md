@@ -183,3 +183,4 @@ npm run lint
 ## Git
 - Work on branch `claude/cyprus-expat-app-mlnvuc`. Push with `git push -u origin claude/cyprus-expat-app-mlnvuc`.
 - Don't open a PR unless the owner asks.
+- Commits are made as **Rynoh** (`git config user.name "Rynoh"`, `user.email "139359294+timirynoh@users.noreply.github.com"`, the owner's GitHub account) with NO 'Co-Authored-By: Claude' / 'Claude-Session' lines (owner, 2026-11-11: 'start using the name Rynoh'). Old history stays as it is (owner chose not to rewrite it).
