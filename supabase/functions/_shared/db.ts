@@ -114,7 +114,12 @@ export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
     return r
   }
   const rows = async <T>(path: string) => (await (await call(path)).json()) as T[]
-  const rpc = async <T>(fn: string, args: Record<string, unknown>) => (await (await call(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) })).json()) as T
+  // SQL functions that return nothing ('returns void') answer with an EMPTY body on the live server (PostgREST 204),
+  // which made .json() throw 'Unexpected end of JSON input' (v1.28.1: Luda HQ 'Mark as paid' failed after the PIN).
+  const rpc = async <T>(fn: string, args: Record<string, unknown>) => {
+    const text = await (await call(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) })).text()
+    return (text.trim() ? JSON.parse(text) : null) as T
+  }
   const since = (iso: string) => q(iso)
   return {
     async insert(row) { await call('payments', { method: 'POST', headers: { prefer: 'return=minimal' }, body: JSON.stringify(row) }) },
