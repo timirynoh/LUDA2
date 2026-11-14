@@ -66,7 +66,7 @@ import LiveChatRoom from './screens/LiveChatRoom'
 import LiveBills from './screens/LiveBills'
 import LiveSavings from './screens/LiveSavings'
 import LiveMarket from './screens/LiveMarket'
-import LiveFlash from './screens/LiveFlash'
+import LiveFlash, { LiveFlashJob } from './screens/LiveFlash'
 import Uni from './screens/Uni'
 import { useClassReminders } from './lib/reminders'
 import { useGigProgress } from './lib/gigs'
@@ -165,6 +165,7 @@ export default function App() {
                 <Route path="/kyc/return" element={<KycReturn />} />
                 <Route path="/admin" element={LIVE ? <LiveAdmin /> : <Admin />} />
                 <Route path="/flash" element={LIVE ? <LiveFlash /> : <Flash />} />
+                {LIVE && <Route path="/flash/:id" element={<LiveFlashJob />} />}
                 <Route path="/security" element={<Security />} />
                 <Route path="/inbox" element={<Inbox />} />
                 <Route path="/statements" element={LIVE ? <LiveStatements /> : <Navigate to="/wallet" replace />} />

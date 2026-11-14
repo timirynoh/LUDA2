@@ -435,6 +435,13 @@ async function p2pSigned(env: Env, d: Deps, o: Record<string, any>) {
   return { ...o, receiptKeys: undefined, receiptUrls: await signAll(env, d, o.receiptKeys), messages: await Promise.all(((o.messages ?? []) as Record<string, any>[]).map(async (m) => ({ ...m, files: await signAll(env, d, m.files) }))) }
 }
 
+/** A video uploaded with flash-video-start: only a path inside the person's own flash folder is accepted. */
+function flashVideo(p: Profile, v: unknown): string | null {
+  if (v == null || v === '') return null
+  const path = String(v)
+  if (!new RegExp(`^${p.user_id}/flash/[0-9a-f]{16}\\.(mp4|mov|webm|3gp)$`).test(path)) throw new Fail('That video upload is not valid. Try again.')
+  return path
+}
 const needKyc = (p: Profile, what: string) => { if (p.kyc_status !== 'verified') throw new Fail(`Verify your identity to ${what}`, 403) }
 
 /** Hashes only (never the raw IP or phone id): HMAC with a server key, so they can't be reversed or matched elsewhere. */
@@ -1689,54 +1696,149 @@ const routes: Record<string, Route> = {
     return { ok: true }
   },
 
-  /* ---------------- Flash help ---------------- */
+  /* ---------------- Flash help (v1.29.0): chat, the helper's own price, Luda pay or cash ---------------- */
   'GET flash': async ({ req, env, d, url }) => {
     const p = await me(req, env, d)
     if (await d.db.hit(`autorel:${p.user_id}`, 1, 600)) await d.db.fn('luda_auto_release', { p_user: p.user_id }).catch(() => {})
     const r = await d.db.fn<Record<string, Record<string, any>[]>>('luda_flash_list', { p_user: p.user_id, p_city: cleanText(url.searchParams.get('city'), 30) })
-    const strip = (j: Record<string, any>) => ({ ...j, poster: undefined, helper: undefined, mine: j.poster === p.user_id })
-    return { open: r.open.map(strip), mine: r.mine.map(strip), helping: r.helping.map(strip), feePct: featureFees(env).flashPct }
+    const cover = async (j: Record<string, any>) => ({ ...j, photos: undefined, video: undefined, done_photos: undefined, cover: j.photos?.[0] ? await signer(env, d)(j.photos[0]) : null })
+    const all = async (l?: Record<string, any>[]) => Promise.all((l ?? []).map(cover))
+    return { open: await all(r.open), mine: await all(r.mine), helping: await all(r.helping), talking: await all(r.talking), feePct: featureFees(env).flashPct }
   },
 
+  // One job: details, photos, the problem video and the conversations the caller may see (with short-lived links).
+  'GET flash-job': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    if (await d.db.hit(`autorel:${p.user_id}`, 1, 600)) await d.db.fn('luda_auto_release', { p_user: p.user_id }).catch(() => {})
+    const j = await d.db.fn<Record<string, any> | null>('luda_flash_job', { p_job: uuid(url.searchParams.get('id')), p_user: p.user_id })
+    if (!j) throw new Fail('This request is not available', 404)
+    const sign = signer(env, d)
+    return { job: {
+      ...j, photos: await signAll(env, d, j.photos), video: j.video ? await sign(j.video) : null, done_photos: await signAll(env, d, j.done_photos),
+      threads: await Promise.all((j.threads ?? []).map(async (t: Record<string, any>) => ({ ...t, messages: await Promise.all((t.messages ?? []).map(async (m: Record<string, any>) => ({ ...m, files: await signAll(env, d, m.files), video: m.video ? await sign(m.video) : null }))) }))),
+    }, feePct: featureFees(env).flashPct, kyc: p.kyc_status === 'verified' }
+  },
+
+  // A video of the problem (or of anything in the chat): goes straight from the phone to private storage.
+  'POST flash-video-start': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const ext = VIDEO_TYPES[String(body.type ?? '')]
+    if (!ext) throw new Fail('Use a normal phone video (MP4, MOV or WebM)')
+    if (!(Number(body.size) > 0 && Number(body.size) <= MAX_VIDEO_BYTES)) throw new Fail('The video must be under 50 MB. Record only the important part.')
+    await limit(d, `flashvideo:${p.user_id}`, 8, 86400, 'You can upload 8 videos a day')
+    const path = `${p.user_id}/flash/${randomHex(8)}.${ext}`
+    return { path, uploadUrl: await uploadUrl({ SUPABASE_URL: env.SUPABASE_URL, SERVICE_KEY: env.SERVICE_KEY }, path, d.fetch).catch(() => { throw new Fail('Upload is not available right now, try again', 502) }) }
+  },
+
+  // Post a request. Nothing is held now: the price is agreed in the chat, and only the accepted price is held.
   'POST flash-post': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
-    const title = clean(body.title, 70, 'what you need help with', 5), details = clean(body.details ?? '', 400, 'details', 0)
-    const city = cleanText(body.city, 30), reward = lira(body.rewardMinor, 20, 5_000, 'The reward')
-    await verifyAuth(p, body, env, d)
-    await limit(d, `flash:${p.user_id}`, 5, 86400, 'You can post up to 5 Flash jobs a day')
-    const fee = Math.round(reward * featureFees(env).flashPct)
-    const job = await d.db.fn<Record<string, unknown>>('luda_flash_post', { p_poster: p.user_id, p_title: title, p_details: details, p_city: city, p_reward: reward, p_fee: fee }).catch(featureErr)
-    // The emoji the poster picked (from Luda's list only), else the best match for the title.
+    const title = clean(body.title, 70, 'what you need help with', 5), details = clean(body.details ?? '', 600, 'details', 0)
+    const city = cleanText(body.city, 30), budget = lira(body.budgetMinor ?? body.rewardMinor, 20, 20_000, 'Your budget')
+    const pay = body.pay === 'cash' ? 'cash' : 'luda'
+    const video = flashVideo(p, body.video)
+    await limit(d, `flash:${p.user_id}`, 5, 86400, 'You can post up to 5 Flash requests a day')
+    const photos = await storeFiles(env, d, p.user_id, 'flash', body.files)
     const emoji = JOB_EMOJI_PICK.includes(String(body.emoji)) ? String(body.emoji) : jobEmoji(`${title} ${details}`)
-    await d.db.fn('luda_flash_emoji', { p_job: job.id, p_emoji: emoji })
-    return { job: { ...job, emoji } }
+    const job = await d.db.fn<Record<string, unknown>>('luda_flash_post2', { p_poster: p.user_id, p_title: title, p_details: details, p_city: city, p_budget: budget, p_pay: pay, p_photos: photos, p_video: video, p_emoji: emoji }).catch(featureErr)
+    return { job }
   },
 
-  'POST flash-take': async ({ req, env, d, body }) => {
+  // A chat message. Helpers write about an open job (or the job they're doing); the poster answers a helper's thread.
+  'POST flash-msg': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
-    needKyc(p, 'take paid Flash jobs')
+    await limit(d, `flashmsg:${p.user_id}`, 40, 600, 'Slow down a little')
+    const id = uuid(body.id)
+    const j = await d.db.fn<Record<string, any> | null>('luda_flash_job', { p_job: id, p_user: p.user_id })
+    if (!j) throw new Fail('This request is not available', 404)
+    const helper = j.mine ? uuid(body.helper) : p.user_id
+    if (!j.mine) {
+      needKyc(p, 'talk to people about paid Flash jobs')
+      if (!(j.threads ?? []).length) await limit(d, `flashthread:${p.user_id}`, 15, 86400, 'You can start 15 new Flash conversations a day')
+    }
+    const text = body.body ? clean(body.body, 600, 'a message') : ''
+    const video = flashVideo(p, body.video)
+    const files = await storeFiles(env, d, p.user_id, 'flash', body.files)
+    if (!text && !files.length && !video) throw new Fail('Write a message or add a photo or video')
+    const m = await d.db.fn<Record<string, any>>('luda_flash_msg', { p_job: id, p_helper: helper, p_author: p.user_id, p_kind: 'text', p_body: text, p_amount: null, p_files: files, p_video: video }).catch(featureErr)
+    const to = j.mine ? helper : m.poster
+    if (await d.db.hit(`flashping:${id}:${helper}:${to}`, 1, 60).catch(() => false))
+      await notifyUser(env, d, to, { emoji: '💬', title: `@${p.username} wrote about "${j.title}"`, body: text.slice(0, 80) || 'Sent a photo or video', url: `/flash/${id}${j.mine ? '' : `?h=${p.user_id}`}`, tag: `flashmsg:${id}:${helper}:${Date.now()}`, cat: 'money' })
+    return { ok: true }
+  },
+
+  // The helper's own price for the job (with the reason). Replaces their earlier price.
+  'POST flash-quote': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    needKyc(p, 'send prices for paid Flash jobs')
+    await limit(d, `flashquote:${p.user_id}`, 20, 86400, 'You can send 20 prices a day')
+    const id = uuid(body.id), amount = lira(body.amountMinor, 20, 20_000, 'Your price')
+    const note = clean(body.note ?? '', 400, 'the reason', 0)
+    const m = await d.db.fn<Record<string, any>>('luda_flash_msg', { p_job: id, p_helper: p.user_id, p_author: p.user_id, p_kind: 'quote', p_body: note, p_amount: amount, p_files: [], p_video: null }).catch(featureErr)
+    await notifyUser(env, d, m.poster, { emoji: '🧾', title: `@${p.username} sent a price for "${m.title}": ${tl(amount)}`, body: note.slice(0, 80) || 'Open the chat to accept or reply', url: `/flash/${id}?h=${p.user_id}`, tag: `flashquote:${m.id}`, cat: 'money' })
+    return { ok: true }
+  },
+
+  'POST flash-quote-decline': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const m = await d.db.fn<Record<string, any>>('luda_flash_decline', { p_job: uuid(body.id), p_msg: uuid(body.msgId), p_poster: p.user_id }).catch(featureErr)
+    await d.db.fn('luda_flash_sys', { p_job: uuid(body.id), p_helper: m.helper, p_body: `@${p.username} declined this price. You can send a new one.` })
+    return { ok: true }
+  },
+
+  // Accept a price. Luda pay: that amount is held now (PIN/fingerprint); a short wallet says how much to top up.
+  'POST flash-accept': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const id = uuid(body.id), msgId = uuid(body.msgId)
+    const j = await d.db.fn<Record<string, any> | null>('luda_flash_job', { p_job: id, p_user: p.user_id })
+    if (!j || !j.mine || j.status !== 'open') throw new Fail('This request is no longer open', 409)
+    const q = (j.threads ?? []).flatMap((t: Record<string, any>) => t.messages.map((m: Record<string, any>) => ({ ...m, helper: t.helper_id, helperName: t.helper_name }))).find((m: Record<string, any>) => m.id === msgId && m.kind === 'quote' && m.quote_status === 'pending')
+    if (!q) throw new Fail('This price is no longer available', 409)
+    if (j.pay === 'luda') {
+      const bal = Number((await d.db.balances(p.user_id)).TRY ?? 0)
+      if (bal < Number(q.amount_minor)) throw new Fail(`Top up ${tl(Number(q.amount_minor) - bal)} to accept this price. You have ${tl(bal)} in your Lira wallet.`, 402)
+      await verifyAuth(p, body, env, d)
+    }
+    await d.db.fn('luda_flash_accept', { p_job: id, p_msg: msgId, p_poster: p.user_id, p_fee_pct: featureFees(env).flashPct }).catch((e) => {
+      if (e instanceof MoneyError && e.message === 'insufficient_funds') throw new Fail('Top up your Lira wallet to accept this price', 402)
+      return featureErr(e)
+    })
+    await notifyUser(env, d, q.helper, { emoji: '✅', title: `@${p.username} accepted your price for "${j.title}"`, body: j.pay === 'luda' ? `${tl(Number(q.amount_minor))} is held safely by Luda. Do the job, then mark it finished with photos.` : `${tl(Number(q.amount_minor))} in cash when the job is done. Mark it finished with photos.`, url: `/flash/${id}`, tag: `flashaccept:${id}`, cat: 'money' })
+    return { ok: true }
+  },
+
+  // The helper finished: photos of the work are required.
+  'POST flash-finished': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const id = uuid(body.id)
+    if (!(Array.isArray(body.files) && body.files.length)) throw new Fail('Add at least one photo of the finished work')
+    const files = await storeFiles(env, d, p.user_id, 'flash', body.files)
+    const j = await d.db.fn<Record<string, any>>('luda_flash_finished', { p_job: id, p_helper: p.user_id, p_photos: files, p_note: cleanText(body.note, 300) }).catch(featureErr)
+    const pt = await parties(d, 'flash', id)
+    if (pt) await notifyUser(env, d, pt.poster, { emoji: '📸', title: `@${p.username} finished "${pt.title}"`, body: j.pay === 'cash' ? 'Check the photos, pay in cash, then tap Confirm' : 'Check the photos and tap Confirm to pay', url: `/flash/${id}`, tag: `flashfinished:${id}`, cat: 'money' })
+    return { ok: true }
+  },
+
+  // Poster confirms the job is done: the held money goes to the helper (PIN), or a cash job closes.
+  'POST flash-done': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    const id = uuid(body.id)
     const r = await d.db.fn<Record<string, Record<string, any>[]>>('luda_flash_list', { p_user: p.user_id, p_city: '' })
-    if (r.helping.filter((j) => j.status === 'taken').length >= 3) throw new Fail('Finish your current jobs first (max 3 at a time)')
-    await limit(d, `flash-take:${p.user_id}`, 10, 86400)
-    const job = await d.db.fn('luda_flash_take', { p_job: uuid(body.id), p_helper: p.user_id }).catch(featureErr)
-    const pt = await parties(d, 'flash', String(body.id))
-    if (pt) await notifyUser(env, d, pt.poster, { emoji: '⚡', title: `@${p.username} is doing "${pt.title}"`, body: 'Tap Job done when it’s finished', url: '/flash', tag: `flash:${body.id}:take:${Date.now()}`, cat: 'money', push: false })
-    return { job }
+    const j = r.mine.find((x) => x.id === id && x.status === 'taken')
+    if (!j) throw new Fail('Nothing to confirm for this job', 409)
+    if (j.pay !== 'cash' || j.legacy) await verifyAuth(p, body, env, d)
+    await d.db.fn('luda_flash_finish', { p_job: id, p_to: 'helper', p_note: j.pay === 'cash' ? `@${p.username} confirmed the job is done and paid in cash` : `@${p.username} confirmed the job is done` }).catch(featureErr)
+    const pt = await parties(d, 'flash', id)
+    if (pt?.helper && j.pay === 'cash') await notifyUser(env, d, pt.helper, { emoji: '💵', title: `"${j.title}" is complete`, body: 'Marked as paid in cash. Thanks for helping!', url: `/flash/${id}`, tag: `flashdone:${id}`, cat: 'money' })
+    return { ok: true }
   },
 
   'POST flash-drop': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
-    return { job: await d.db.fn('luda_flash_drop', { p_job: uuid(body.id), p_helper: p.user_id }).catch(featureErr) }
-  },
-
-  // Poster: job done → pay the helper. Or cancel an open job → reward back.
-  'POST flash-done': async ({ req, env, d, body }) => {
-    const p = await me(req, env, d)
     const id = uuid(body.id)
-    await verifyAuth(p, body, env, d)
-    const r = await d.db.fn<Record<string, Record<string, any>[]>>('luda_flash_list', { p_user: p.user_id, p_city: '' })
-    if (!r.mine.some((j) => j.id === id && j.status === 'taken')) throw new Fail('Nothing to confirm for this job', 409)
-    await d.db.fn('luda_flash_finish', { p_job: id, p_to: 'helper', p_note: 'Poster confirmed the job is done' }).catch(featureErr)
+    await d.db.fn('luda_flash_drop', { p_job: id, p_helper: p.user_id }).catch(featureErr)
+    const pt = await parties(d, 'flash', id)
+    if (pt) await notifyUser(env, d, pt.poster, { emoji: '↩️', title: `@${p.username} can't do "${pt.title}"`, body: 'Your request is open again; any held money is back in your wallet', url: `/flash/${id}`, tag: `flashdrop:${id}:${Date.now()}`, cat: 'money' })
     return { ok: true }
   },
 
@@ -1745,8 +1847,8 @@ const routes: Record<string, Route> = {
     const id = uuid(body.id)
     const r = await d.db.fn<Record<string, Record<string, any>[]>>('luda_flash_list', { p_user: p.user_id, p_city: '' })
     const j = r.mine.find((x) => x.id === id)
-    if (!j || j.status !== 'open') throw new Fail(j?.status === 'taken' ? 'Someone is already doing this job. Ask them to drop it, or open a case if there is a problem.' : 'Nothing to cancel', 409)
-    await d.db.fn('luda_flash_finish', { p_job: id, p_to: 'poster', p_note: 'Poster cancelled' }).catch(featureErr)
+    if (!j || j.status !== 'open') throw new Fail(j?.status === 'taken' ? 'Someone is already doing this job. Ask them to give it back, or report a problem.' : 'Nothing to cancel', 409)
+    await d.db.fn('luda_flash_finish', { p_job: id, p_to: 'poster', p_note: 'Request cancelled' }).catch(featureErr)
     return { ok: true }
   },
 
@@ -2858,8 +2960,12 @@ async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
   for (const o of t.rate ?? []) items.push({ key: `p2p:${o.id}:rate`, emoji: '⭐', title: `Rate your trade with @${o.other}`, sub: 'Helps everyone trade safely', to: `/p2p/${o.id}`, level: 'info' })
   for (const l of t.bought ?? []) items.push({ key: `buy:${l.id}`, emoji: '📦', title: `Got "${l.title}"?`, sub: `Confirm you received it so @${l.seller} gets paid`, to: '/market', level: 'urgent' })
   for (const l of t.sold ?? []) items.push({ key: `sold:${l.id}`, emoji: '🛍️', title: `Hand over "${l.title}" to @${l.buyer}`, sub: `${amt(l.price, 'TRY')} is held until they confirm`, to: '/market', level: 'action' })
-  for (const j of t.flashPosted ?? []) items.push({ key: `flash:${j.id}`, emoji: '⚡', title: `@${j.helper} is doing "${j.title}"`, sub: 'Tap Job done when it\'s finished', to: '/flash', level: 'action' })
-  for (const j of t.flashHelping ?? []) items.push({ key: `help:${j.id}`, emoji: '💪🏿', title: `Do "${j.title}" for @${j.poster}`, sub: `${amt(j.reward, 'TRY')} when they tap Job done`, to: '/flash', level: 'info' })
+  // Flash (v1.29.0): prices to look at, finished jobs to confirm, jobs to do.
+  const ft = await d.db.fn<Record<string, Record<string, any>[]>>('luda_flash_todo', { p_user: p.user_id }).catch(() => null)
+  for (const q of ft?.quotes ?? []) items.push({ key: `flashq:${q.msg}`, emoji: '🧾', title: `@${q.from} sent a price for "${q.title}": ${amt(q.amount, 'TRY')}`, sub: 'Accept it, or reply in the chat', to: `/flash/${q.job}`, level: 'action' })
+  for (const j of ft?.toConfirm ?? []) items.push({ key: `flashok:${j.job}`, emoji: '📸', title: `@${j.helper} finished "${j.title}"`, sub: j.pay === 'cash' ? 'Check the photos, pay in cash and confirm' : 'Check the photos and confirm to pay', to: `/flash/${j.job}`, level: 'urgent' })
+  for (const j of ft?.inProgress ?? []) items.push({ key: `flash:${j.job}`, emoji: '⚡', title: `@${j.helper} is doing "${j.title}"`, to: `/flash/${j.job}`, level: 'info' })
+  for (const j of ft?.toDo ?? []) items.push({ key: `help:${j.job}`, emoji: '💪🏿', title: `Do "${j.title}" for @${j.poster}`, sub: j.pay === 'cash' ? `${amt(j.amount, 'TRY')} in cash · mark it finished with photos` : `${amt(j.amount, 'TRY')} held by Luda · mark it finished with photos`, to: `/flash/${j.job}`, level: 'action' })
   for (const c of t.cases ?? []) items.push({ key: `case:${c.id}`, emoji: '💬', title: 'The Luda team replied to you', sub: String(c.subject ?? ''), to: '/help', level: 'urgent' })
   for (const f of t.fees ?? []) items.push({ key: `fee:${f.id}:${f.due}`, emoji: '🎓', title: `${f.title}: ${amt(f.amount, f.currency)} due ${new Date(`${f.due}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`, sub: 'Mark it paid once it\'s done', to: '/uni?tab=fees', level: f.due <= cyprusDay() ? 'urgent' : 'action' })
   if (Number(t.bills)) items.push({ key: 'bills', emoji: '🧾', title: Number(t.bills) === 1 ? 'The Luda team is paying your bill' : `The Luda team is paying ${t.bills} bills`, to: '/bills', level: 'info' })

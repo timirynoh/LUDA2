@@ -29,6 +29,14 @@ before(async () => {
   await q(`update profiles set kyc_status='verified', kyc_name=upper(full_name)`)
 })
 
+async function flashAgree(poster: string, helper: string, title: string, amountMinor: number, extra: Record<string, unknown> = {}) {
+  const job = (await call('POST', 'flash-post', { title, details: 'Ground floor to 3rd', city: 'girne', budgetMinor: amountMinor, ...extra }, T[poster])).j.job
+  await call('POST', 'flash-quote', { id: job.id, amountMinor }, T[helper])
+  const qm = (await call('GET', `flash-job?id=${job.id}`, undefined, T[poster])).j.job.threads[0].messages.find((m: any) => m.kind === 'quote')
+  await call('POST', 'flash-accept', { id: job.id, msgId: qm.id, pin: '4826' }, T[poster])
+  return job
+}
+
 test('inbox: money in and out shows for both people, unread count, mark as read; private per person', async () => {
   await q(`select luda_post($1::jsonb)`, [JSON.stringify([{ user_id: id.ada, currency: 'NGN', amount_minor: 1_000_000, kind: 'deposit', ref: 'dep_test' }])])
   assert.equal((await call('POST', 'send', { to: 'kwame', currency: 'NGN', amountMinor: 250_050, pin: '4826' }, T.ada)).status, 200)
@@ -54,9 +62,10 @@ test('inbox: Market, Flash, support replies and sign-ins notify the right person
   await call('POST', 'market-received', { id: item.id, pin: '4826' }, T.ada)
   assert.ok((await inbox('kwame')).items.some((i: any) => i.title === 'Market sale paid to you: ₺392'))
 
-  const job = (await call('POST', 'flash-post', { title: 'Carry a fridge', details: 'Ground floor to 3rd', city: 'girne', rewardMinor: 150_00, pin: '4826' }, T.ada)).j.job
-  await call('POST', 'flash-take', { id: job.id }, T.kwame)
-  assert.ok((await inbox('ada')).items.some((i: any) => i.title === '@kwame is doing "Carry a fridge"'))
+  const job = await flashAgree('ada', 'kwame', 'Carry a fridge', 150_00)
+  assert.ok((await inbox('ada')).items.some((i: any) => i.title === '@kwame sent a price for "Carry a fridge": ₺150'))
+  assert.ok((await inbox('kwame')).items.some((i: any) => i.title === '@ada accepted your price for "Carry a fridge"'))
+  assert.ok(job.id)
 
   const c = (await call('POST', 'case-create', { category: 'payment', subject: 'Missing top-up', message: 'Paid but nothing came' }, T.ada)).j.id
   await call('POST', 'admin-case-reply', { caseId: c, message: 'Can you send the receipt?' }, T.boss)

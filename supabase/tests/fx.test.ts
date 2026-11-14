@@ -29,6 +29,14 @@ before(async () => {
   await q(`select luda_post($1::jsonb)`, [JSON.stringify([{ user_id: id.ada, currency: 'NGN', amount_minor: 1_000_000_00, kind: 'adjustment', ref: 'seed' }])])
 })
 
+async function flashAgree(poster: string, helper: string, title: string, amountMinor: number, extra: Record<string, unknown> = {}) {
+  const job = (await call('POST', 'flash-post', { title, details: 'Ground floor to 3rd', city: 'girne', budgetMinor: amountMinor, ...extra }, T[poster])).j.job
+  await call('POST', 'flash-quote', { id: job.id, amountMinor }, T[helper])
+  const qm = (await call('GET', `flash-job?id=${job.id}`, undefined, T[poster])).j.job.threads[0].messages.find((m: any) => m.kind === 'quote')
+  await call('POST', 'flash-accept', { id: job.id, msgId: qm.id, pin: '4826' }, T[poster])
+  return job
+}
+
 test('bought lira: no profit when the Naira weakens, cannot be sent, daily cap', async () => {
   // buy ₺990 for ₦40,000 at ₦40/₺ (1% fee)
   const quote = (await call('GET', 'convert-quote?from=NGN&amount=4000000', undefined, T.ada)).j
@@ -61,11 +69,10 @@ test('spending uses bought lira first; refunds come back as bought; earned lira 
   const fx0 = (await call('GET', 'me', undefined, T.ada)).j.fx
   assert.equal(fx0.boughtTry, 990_00)
   // spend ₺300 on a Flash job (held) → bought lira goes down first
-  const job = (await call('POST', 'flash-post', { title: 'Carry my fridge upstairs', rewardMinor: 300_00, city: 'lefkosa', pin: '4826' }, T.ada)).j
-  assert.ok(job.job?.id || job.id, JSON.stringify(job))
+  const job = await flashAgree('ada', 'kemal', 'Carry my fridge upstairs', 300_00)
   assert.equal((await call('GET', 'me', undefined, T.ada)).j.fx.boughtTry, 690_00)
-  // cancel → refund → bought again (can't be laundered into free lira)
-  await call('POST', 'flash-cancel', { id: job.job?.id ?? job.id, pin: '4826' }, T.ada)
+  // helper gives it back → refund → bought again (can't be laundered into free lira)
+  await call('POST', 'flash-drop', { id: job.id }, T.kemal)
   assert.equal((await call('GET', 'me', undefined, T.ada)).j.fx.boughtTry, 990_00)
   // lira kemal earns or receives is his to send / convert at today's rate
   await q(`select luda_post($1::jsonb)`, [JSON.stringify([{ user_id: id.kemal, currency: 'TRY', amount_minor: 500_00, kind: 'reward', ref: 'prize' }])])

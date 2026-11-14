@@ -128,34 +128,90 @@ test('marketplace: buyer pays into escrow, seller paid on receipt (minus 2%), ca
   assert.equal(await TRY('kwame'), k1 + 98_00)
 })
 
-test('Flash help: reward held when posted, helper paid when done, cancel/drop work, ID needed to earn', async () => {
+test('Flash help: chat + the helper\'s own price; only the ACCEPTED price is held; finish with photos; confirm pays', async () => {
   const a0 = await TRY('ada')
-  const j = (await call('POST', 'flash-post', { title: 'Help me carry a fridge', details: 'Ground floor to 3rd, Girne centre', city: 'girne', rewardMinor: 200_00, pin: '4826' }, T.ada)).j.job
-  assert.equal(await TRY('ada'), a0 - 200_00)
+  const j = (await call('POST', 'flash-post', { title: 'Help me carry a fridge', details: 'Ground floor to 3rd, Girne centre', city: 'girne', budgetMinor: 200_00, pay: 'luda', files: [PHOTO] }, T.ada)).j.job
+  assert.equal(await TRY('ada'), a0, 'nothing is held when posting')
+  assert.equal(j.photos.length, 1)
   await q(`update profiles set kyc_status='none' where username='boss'`)
-  assert.equal((await call('POST', 'flash-take', { id: j.id }, T.boss)).status, 403, 'earning needs ID')
+  assert.equal((await call('POST', 'flash-quote', { id: j.id, amountMinor: 180_00 }, T.boss)).status, 403, 'pricing needs ID')
   await q(`update profiles set kyc_status='verified' where username='boss'`)
   await q(`update profiles set kyc_status='verified' where username='ada'`)
-  assert.equal((await call('POST', 'flash-take', { id: j.id }, T.ada)).status, 409, 'not your own job')
-  assert.equal((await call('POST', 'flash-take', { id: j.id }, T.kwame)).status, 200)
-  assert.equal((await call('POST', 'flash-take', { id: j.id }, T.boss)).status, 409, 'already taken')
+  assert.equal((await call('POST', 'flash-quote', { id: j.id, amountMinor: 180_00 }, T.ada)).status, 409, 'not on your own request')
+  // two helpers talk to the poster and send their own prices
+  assert.equal((await call('POST', 'flash-msg', { id: j.id, body: 'Is there a lift?' }, T.kwame)).status, 200)
+  assert.equal((await call('POST', 'flash-quote', { id: j.id, amountMinor: 250_00, note: 'Fridge is heavy, needs 2 people' }, T.kwame)).status, 200)
+  assert.equal((await call('POST', 'flash-quote', { id: j.id, amountMinor: 180_00 }, T.boss)).status, 200)
+  assert.equal((await call('POST', 'flash-msg', { id: j.id, helper: id.kwame, body: 'No lift, sorry' }, T.ada)).status, 200)
+  const seen = (await call('GET', `flash-job?id=${j.id}`, undefined, T.ada)).j.job
+  assert.equal(seen.threads.length, 2, 'the poster sees every helper')
+  assert.equal((await call('GET', `flash-job?id=${j.id}`, undefined, T.kwame)).j.job.threads.length, 1, 'a helper sees only their own chat')
+  assert.ok((await call('GET', 'todo', undefined, T.ada)).j.items.some((i: any) => i.key.startsWith('flashq:') && /250/.test(i.title)))
+  const kq = seen.threads.find((t: any) => t.helper_name === 'kwame').messages.find((m: any) => m.kind === 'quote')
+  // short wallet → told how much to top up, nothing held
+  await q(`update flash_msgs set amount_minor = 9_000_00 where id=$1`, [kq.id])
+  const short = await call('POST', 'flash-accept', { id: j.id, msgId: kq.id, pin: '4826' }, T.ada)
+  assert.equal(short.status, 402); assert.match(short.j.error, /^Top up ₺[\d,]+ to accept this price/)
+  await q(`update flash_msgs set amount_minor = 250_00 where id=$1`, [kq.id])
+  assert.equal((await call('POST', 'flash-accept', { id: j.id, msgId: kq.id, pin: '4826' }, T.ada)).status, 200)
+  assert.equal(await TRY('ada'), a0 - 250_00, 'the accepted ₺250 is held, not the ₺200 budget')
+  assert.equal((await call('POST', 'flash-quote', { id: j.id, amountMinor: 150_00 }, T.boss)).status, 409, 'too late for other prices')
   assert.match((await call('POST', 'flash-cancel', { id: j.id }, T.ada)).j.error, /already doing/)
+  // helper gives it back → money back, request open again
   await call('POST', 'flash-drop', { id: j.id }, T.kwame)
-  await call('POST', 'flash-take', { id: j.id }, T.boss)
+  assert.equal(await TRY('ada'), a0)
+  await call('POST', 'flash-quote', { id: j.id, amountMinor: 180_00 }, T.boss)
+  const bq = (await call('GET', `flash-job?id=${j.id}`, undefined, T.ada)).j.job.threads.find((t: any) => t.helper_name === 'boss').messages.filter((m: any) => m.kind === 'quote' && m.quote_status === 'pending')[0]
+  await call('POST', 'flash-accept', { id: j.id, msgId: bq.id, pin: '4826' }, T.ada)
+  assert.match((await call('POST', 'flash-finished', { id: j.id }, T.boss)).j.error, /photo/, 'finish needs photos')
+  assert.equal((await call('POST', 'flash-finished', { id: j.id, files: [PHOTO], note: 'Done, all moved' }, T.boss)).status, 200)
+  assert.ok((await call('GET', 'todo', undefined, T.ada)).j.items.some((i: any) => i.key === `flashok:${j.id}` && i.level === 'urgent'))
   const b0 = await TRY('boss')
   assert.equal((await call('POST', 'flash-done', { id: j.id, pin: '4826' }, T.ada)).status, 200)
-  assert.equal(await TRY('boss'), b0 + 190_00, 'helper gets ₺200 − 5%')
-  const j2 = (await call('POST', 'flash-post', { title: 'Pick up a parcel', rewardMinor: 50_00, pin: '4826' }, T.ada)).j.job
+  assert.equal(await TRY('boss'), b0 + 171_00, 'helper gets ₺180 − 5%')
+  // emoji matching still works
+  const j2 = (await call('POST', 'flash-post', { title: 'Pick up a parcel', budgetMinor: 50_00 }, T.ada)).j.job
   assert.equal(j.emoji, '🧊', 'fridge → 🧊'); assert.equal(j2.emoji, '🛵', 'parcel → 🛵')
-  const j3 = (await call('POST', 'flash-post', { title: 'Need a plumber for a leaking sink', rewardMinor: 50_00, pin: '4826', emoji: '<script>' }, T.ada)).j.job
+  const j3 = (await call('POST', 'flash-post', { title: 'Need a plumber for a leaking sink', budgetMinor: 50_00, emoji: '<script>' }, T.ada)).j.job
   assert.equal(j3.emoji, '🚰', 'unknown emoji ignored, matched from the title')
   assert.equal((await call('GET', 'flash', undefined, T.kwame)).j.open.find((x: any) => x.id === j3.id).emoji, '🚰', 'stored on the server')
-  await call('POST', 'flash-cancel', { id: j3.id, pin: '4826' }, T.ada)
-  const a1 = await TRY('ada')
+  await call('POST', 'flash-cancel', { id: j3.id }, T.ada)
   assert.equal((await call('POST', 'flash-cancel', { id: j2.id }, T.ada)).status, 200)
-  assert.equal(await TRY('ada'), a1 + 50_00)
   const board = (await call('GET', 'flash', undefined, T.kwame)).j
-  assert.ok(board.open.every((x: any) => x.poster === undefined))
+  assert.ok(board.open.every((x: any) => x.poster === undefined && x.helper === undefined))
+})
+
+test('Flash cash jobs: no money held, no PIN; finished with photos; completes automatically 3 days after the photos', async () => {
+  const a0 = await TRY('ada'), k0 = await TRY('kwame')
+  const j = (await call('POST', 'flash-post', { title: 'Fix my washing machine', budgetMinor: 300_00, pay: 'cash' }, T.ada)).j.job
+  assert.equal(j.pay, 'cash')
+  await call('POST', 'flash-quote', { id: j.id, amountMinor: 400_00, note: 'Needs a new pump' }, T.kwame)
+  const kq = (await call('GET', `flash-job?id=${j.id}`, undefined, T.ada)).j.job.threads[0].messages.find((m: any) => m.kind === 'quote')
+  assert.equal((await call('POST', 'flash-accept', { id: j.id, msgId: kq.id }, T.ada)).status, 200, 'cash: no PIN needed, nothing to hold')
+  assert.equal(await TRY('ada'), a0)
+  await call('POST', 'flash-finished', { id: j.id, files: [PHOTO] }, T.kwame)
+  await q(`update flash_jobs set done_at = now() - interval '4 days' where id=$1`, [j.id])
+  await q(`delete from rate_hits where key like 'autorel:%'`)
+  await call('GET', 'flash', undefined, T.kwame)
+  assert.equal((await q(`select status from flash_jobs where id=$1`, [j.id]))[0].status, 'done')
+  assert.equal(await TRY('kwame'), k0, 'cash is paid in hand, never through the wallet')
+})
+
+test('Flash old-style job (reward held at posting): accepting a price returns the old hold and holds the accepted price', async () => {
+  const a0 = await TRY('ada')
+  const old = await q(`select luda_flash_post($1, 'Move a sofa', '', 'girne', 200_00, 10_00) j`, [id.ada])
+  const jid = old[0].j.id
+  await q(`update flash_jobs set legacy = true where id=$1`, [jid])
+  assert.equal(await TRY('ada'), a0 - 200_00)
+  await call('POST', 'flash-quote', { id: jid, amountMinor: 120_00 }, T.kwame)
+  const kq = (await call('GET', `flash-job?id=${jid}`, undefined, T.ada)).j.job.threads[0].messages.find((m: any) => m.kind === 'quote')
+  await call('POST', 'flash-accept', { id: jid, msgId: kq.id, pin: '4826' }, T.ada)
+  assert.equal(await TRY('ada'), a0 - 120_00, 'old ₺200 back, ₺120 held')
+  assert.match((await call('POST', 'flash-video-start', { type: 'application/zip', size: 1000 }, T.ada)).j.error, /MP4/)
+  assert.match((await call('POST', 'flash-video-start', { type: 'video/mp4', size: 80_000_000 }, T.ada)).j.error, /50 MB/)
+  const vid = { path: `${id.ada}/flash/0123456789abcdef.mp4` } // what flash-video-start hands out (the test storage has no upload links)
+  assert.match((await call('POST', 'flash-post', { title: 'Leaking pipe in kitchen', budgetMinor: 100_00, video: `${id.kwame}/flash/aaaaaaaaaaaaaaaa.mp4` }, T.ada)).j.error, /not valid/, "someone else's video path is refused")
+  assert.equal((await call('POST', 'flash-post', { title: 'Leaking pipe in kitchen', budgetMinor: 100_00, video: vid.path }, T.ada)).status, 200)
 })
 
 test('books still balance: wallets = ledger; held money = open escrows', async () => {

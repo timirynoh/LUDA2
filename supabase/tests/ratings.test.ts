@@ -31,6 +31,14 @@ before(async () => {
   await q(`update profiles set kyc_status='verified', kyc_name=upper(full_name)`)
 })
 
+async function flashAgree(poster: string, helper: string, title: string, amountMinor: number, extra: Record<string, unknown> = {}) {
+  const job = (await call('POST', 'flash-post', { title, details: 'Ground floor to 3rd', city: 'girne', budgetMinor: amountMinor, ...extra }, T[poster])).j.job
+  await call('POST', 'flash-quote', { id: job.id, amountMinor }, T[helper])
+  const qm = (await call('GET', `flash-job?id=${job.id}`, undefined, T[poster])).j.job.threads[0].messages.find((m: any) => m.kind === 'quote')
+  await call('POST', 'flash-accept', { id: job.id, msgId: qm.id, pin: '4826' }, T[poster])
+  return job
+}
+
 test('support cases: rate after closing (with the team member), reopen within 7 days, at most twice', async () => {
   const c = (await call('POST', 'case-create', { category: 'payment', subject: 'Top-up not credited', message: 'I paid â‚¦5,000 but nothing came' }, T.ada)).j.id
   assert.equal((await call('POST', 'rate', { kind: 'case', ref: c, stars: 5 }, T.ada)).status, 409, 'only once it is closed')
@@ -87,8 +95,7 @@ test('bills, Market and Flash: rated once finished; reviews show on the personâ€
   assert.match((await call('POST', 'rate', { kind: 'market', ref: item.id, good: true, body: 'pay me outside luda on whatsapp' }, T.ada)).j.error ?? '', /./)
 
   // Flash: poster rates helper
-  const job = (await call('POST', 'flash-post', { title: 'Carry a fridge', details: 'Ground floor to 3rd', city: 'girne', rewardMinor: 150_00, pin: '4826' }, T.ada)).j.job
-  await call('POST', 'flash-take', { id: job.id }, T.kwame)
+  const job = await flashAgree('ada', 'kwame', 'Carry a fridge', 150_00)
   await call('POST', 'flash-done', { id: job.id, pin: '4826' }, T.ada)
   assert.ok((await todo('ada')).some((i) => i.key === `rate:flash:${job.id}` && /@kwame/.test(i.title)))
   assert.equal((await call('POST', 'rate', { kind: 'flash', ref: job.id, good: true, tags: ['good_work', 'on_time'] }, T.ada)).status, 200)
