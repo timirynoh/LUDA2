@@ -1,0 +1,9 @@
+# Supabase project config (only the parts Luda changes from the defaults).
+# The functions check sign-in tokens and provider webhook signatures themselves,
+# so Supabase's own JWT gate is off (this also works with the newer
+# non-JWT "publishable" API keys).
+[functions.api]
+verify_jwt = false
+
+[functions.pay-webhook]
+verify_jwt = false
