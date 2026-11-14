@@ -3334,5 +3334,16 @@
   "Enter your Luda password": "Entrez votre mot de passe Luda",
   "Signed up with Google? Use your payment PIN": "Inscrit avec Google ? Utilisez votre PIN de paiement",
   "One time only, to prove it's you. After this, Luda opens with your 6-digit code.": "Une seule fois, pour prouver que c'est vous. Ensuite, Luda s'ouvre avec votre code à 6 chiffres.",
-  "Type your 6-digit Luda code above instead.": "Tapez plutôt votre code Luda à 6 chiffres ci-dessus."
+  "Type your 6-digit Luda code above instead.": "Tapez plutôt votre code Luda à 6 chiffres ci-dessus.",
+  "Forgot your PIN?": "PIN oublié ?",
+  "Reset your payment PIN": "Réinitialiser votre PIN de paiement",
+  "Forgot your 4-digit PIN? Enter your Luda account password to choose a new one.": "PIN à 4 chiffres oublié ? Entrez le mot de passe de votre compte Luda pour en choisir un nouveau.",
+  "For your safety, withdrawals and sending pause for 24 hours after a reset. Signed up with Google and have no password? Contact the Luda team in Help.": "Pour votre sécurité, les retraits et les envois sont suspendus 24 heures après une réinitialisation. Inscrit avec Google sans mot de passe ? Contactez l'équipe Luda dans Aide.",
+  "New PIN set": "Nouveau PIN défini",
+  "Your new payment PIN is ready": "Votre nouveau PIN de paiement est prêt",
+  "For your safety, withdrawals and sending money are paused for 24 hours. Everything else works now.": "Pour votre sécurité, les retraits et les envois d'argent sont suspendus pendant 24 heures. Tout le reste fonctionne dès maintenant.",
+  "Not done:": "Non effectué :",
+  "This is not a PIN problem.": "Ce n'est pas un problème de PIN.",
+  "Your payment PIN was changed": "Votre PIN de paiement a été modifié",
+  "If this wasn’t you, freeze your account in Security and contact the Luda team.": "Si ce n'était pas vous, gelez votre compte dans Sécurité et contactez l'équipe Luda."
 }

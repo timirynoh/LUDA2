@@ -31,7 +31,13 @@ export function ReviewAndPin({ rows, warning, holdLabel, run, done, onClose }: {
   const canBio = !!bioSaved()?.server
   const go = async (auth: Approval) => {
     setStage('busy'); setErr('')
-    try { await run(auth); setStage('done') } catch (e) { setErr(errMsg(e)); setStage('pin') }
+    try { await run(auth); setStage('done') } catch (e) {
+      // Only a wrong PIN / fingerprint goes back to the PIN pad. Anything else (missing receipt, already handled,
+      // no internet, server error) is shown on the review screen, so it never looks like the PIN stopped working.
+      const m = errMsg(e)
+      if (/\bPIN\b|fingerprint|Face ID|passkey|too many/i.test(m)) { setErr(m); setStage('pin') }
+      else { setErr(m); setStage('review') }
+    }
   }
   const fingerprint = async () => {
     setErr('')
@@ -43,6 +49,7 @@ export function ReviewAndPin({ rows, warning, holdLabel, run, done, onClose }: {
   if (stage === 'pin') return (
     <div className="flex flex-col items-center gap-3"><p className="text-sm text-slate-300">Enter your Luda PIN to approve</p><PinPad error={err} onDone={(pin) => go({ pin })} />
       {canBio && <button className="flex items-center gap-2 text-sm text-mint-300" onClick={fingerprint}><Fingerprint size={18} /> Use fingerprint / Face ID</button>}
+      <a href="/security?a=forgot-pin" className="text-xs text-mint-300 underline">Forgot your PIN?</a>
       <button className="text-xs text-slate-500 underline" onClick={onClose}>Cancel</button></div>
   )
   return (
@@ -51,6 +58,7 @@ export function ReviewAndPin({ rows, warning, holdLabel, run, done, onClose }: {
         {rows.map(([k, v]) => <div key={k} className="flex items-center justify-between gap-3 px-4 py-3 text-sm"><span className="text-slate-400">{k}</span><span className="text-end font-semibold">{v}</span></div>)}
       </div>
       {warning && <div className="rounded-2xl border border-gold-400/30 bg-gold-400/[0.07] p-3 text-xs text-gold-100">{warning}</div>}
+      {err && <div className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-3 text-sm text-rose-200"><b>Not done:</b> {err}<br /><span className="text-xs text-rose-200/70">This is not a PIN problem.</span></div>}
       <HoldButton label={holdLabel} onDone={approve} />
       {canBio && <p className="text-center text-[11px] text-slate-500"><Fingerprint size={12} className="inline" /> You'll approve with your fingerprint / Face ID</p>}
       <button className="btn-ghost text-sm" onClick={onClose}>Go back</button>

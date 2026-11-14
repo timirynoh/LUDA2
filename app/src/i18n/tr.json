@@ -3350,5 +3350,16 @@
   "Enter your Luda password": "Luda şifreni gir",
   "Signed up with Google? Use your payment PIN": "Google ile mi kaydoldun? Ödeme PIN'ini kullan",
   "One time only, to prove it's you. After this, Luda opens with your 6-digit code.": "Yalnızca bir kez, sen olduğunu kanıtlamak için. Bundan sonra Luda 6 haneli kodunla açılır.",
-  "Type your 6-digit Luda code above instead.": "Bunun yerine yukarıya 6 haneli Luda kodunu yaz."
+  "Type your 6-digit Luda code above instead.": "Bunun yerine yukarıya 6 haneli Luda kodunu yaz.",
+  "Forgot your PIN?": "PIN'ini mi unuttun?",
+  "Reset your payment PIN": "Ödeme PIN'ini sıfırla",
+  "Forgot your 4-digit PIN? Enter your Luda account password to choose a new one.": "4 haneli PIN'ini mi unuttun? Yenisini seçmek için Luda hesap şifreni gir.",
+  "For your safety, withdrawals and sending pause for 24 hours after a reset. Signed up with Google and have no password? Contact the Luda team in Help.": "Güvenliğin için sıfırlamadan sonra 24 saat boyunca para çekme ve gönderme durdurulur. Google ile kaydoldun ve şifren yok mu? Yardım bölümünden Luda ekibine yaz.",
+  "New PIN set": "Yeni PIN ayarlandı",
+  "Your new payment PIN is ready": "Yeni ödeme PIN'in hazır",
+  "For your safety, withdrawals and sending money are paused for 24 hours. Everything else works now.": "Güvenliğin için para çekme ve gönderme 24 saat durduruldu. Diğer her şey şimdi çalışıyor.",
+  "Not done:": "Yapılmadı:",
+  "This is not a PIN problem.": "Bu bir PIN sorunu değil.",
+  "Your payment PIN was changed": "Ödeme PIN'in değiştirildi",
+  "If this wasn’t you, freeze your account in Security and contact the Luda team.": "Bu sen değilsen, Güvenlik'te hesabını dondur ve Luda ekibiyle iletişime geç."
 }

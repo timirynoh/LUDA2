@@ -78,3 +78,15 @@ test('the first sign-in code can be created with the account password (the app n
   // changing it later still needs the old code, not the password
   assert.equal((await call('POST', 'passcode', { code: '692041', password: 'Lefkosa2026!' }, u)).status, 401)
 })
+
+test('forgot payment PIN: reset with the account password; money pauses 24 h; old PIN stops working', async () => {
+  const u = (await call('POST', 'signup', { email: 'fp@x.com', username: 'forgetful', fullName: 'Forget Ful', password: 'Lefkosa2026!' })).j.session.access_token
+  await call('POST', 'pin', { pin: '4826' }, u)
+  assert.equal((await call('POST', 'pin-reset', { pin: '7391', password: 'nope' }, u)).status, 401)
+  assert.match((await call('POST', 'pin-reset', { pin: '1111', password: 'Lefkosa2026!' }, u)).j.error, /easy to guess/)
+  const r = await call('POST', 'pin-reset', { pin: '7391', password: 'Lefkosa2026!' }, u)
+  assert.equal(r.status, 200); assert.ok(Date.parse(r.j.holdUntil) > Date.now() + 23 * 3600e3)
+  assert.equal((await call('POST', 'pin-check', { pin: '4826' }, u)).status, 401, 'old PIN no longer works')
+  assert.equal((await call('POST', 'pin-check', { pin: '7391' }, u)).status, 200)
+  assert.ok((await call('GET', 'inbox', undefined, u)).j.items.some((n: any) => /payment PIN was changed/.test(n.title)))
+})

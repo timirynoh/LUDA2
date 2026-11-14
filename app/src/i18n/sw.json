@@ -3351,5 +3351,16 @@
   "Enter your Luda password": "Weka nenosiri lako la Luda",
   "Signed up with Google? Use your payment PIN": "Ulijisajili kwa Google? Tumia PIN yako ya malipo",
   "One time only, to prove it's you. After this, Luda opens with your 6-digit code.": "Mara moja tu, kuthibitisha ni wewe. Baada ya hapo, Luda itafunguka kwa msimbo wako wa tarakimu 6.",
-  "Type your 6-digit Luda code above instead.": "Badala yake andika msimbo wako wa Luda wa tarakimu 6 hapo juu."
+  "Type your 6-digit Luda code above instead.": "Badala yake andika msimbo wako wa Luda wa tarakimu 6 hapo juu.",
+  "Forgot your PIN?": "Umesahau PIN yako?",
+  "Reset your payment PIN": "Weka upya PIN yako ya malipo",
+  "Forgot your 4-digit PIN? Enter your Luda account password to choose a new one.": "Umesahau PIN yako ya tarakimu 4? Weka nenosiri la akaunti yako ya Luda ili kuchagua mpya.",
+  "For your safety, withdrawals and sending pause for 24 hours after a reset. Signed up with Google and have no password? Contact the Luda team in Help.": "Kwa usalama wako, kutoa na kutuma pesa husimamishwa kwa saa 24 baada ya kuweka upya. Ulijisajili kwa Google na huna nenosiri? Wasiliana na timu ya Luda kwenye Msaada.",
+  "New PIN set": "PIN mpya imewekwa",
+  "Your new payment PIN is ready": "PIN yako mpya ya malipo iko tayari",
+  "For your safety, withdrawals and sending money are paused for 24 hours. Everything else works now.": "Kwa usalama wako, kutoa na kutuma pesa kumesimamishwa kwa saa 24. Kila kitu kingine kinafanya kazi sasa.",
+  "Not done:": "Haijafanyika:",
+  "This is not a PIN problem.": "Hili si tatizo la PIN.",
+  "Your payment PIN was changed": "PIN yako ya malipo imebadilishwa",
+  "If this wasn’t you, freeze your account in Security and contact the Luda team.": "Kama si wewe, simamisha akaunti yako kwenye Usalama na wasiliana na timu ya Luda."
 }

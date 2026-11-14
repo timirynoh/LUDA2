@@ -943,6 +943,22 @@ const routes: Record<string, Route> = {
     return { ok: true }
   },
 
+  // Forgot the payment PIN: prove it's you with the account password, choose a new PIN. For safety, withdrawals and
+  // sending pause for 24 hours (like a password reset) and the person is alerted. Email / SMS codes can be added
+  // later when an email/SMS provider is connected (owner: 'keep the flow for later').
+  'POST pin-reset': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    if (typeof body.pin !== 'string' || !/^\d{4}$/.test(body.pin) || /^(\d)\1{3}$|^(0123|1234|2345|3456|4567|5678|6789)$/.test(body.pin)) throw new Fail('Choose a 4-digit PIN that is not easy to guess')
+    if (!body.password) throw new Fail('Enter your Luda password')
+    await limit(d, `pin-reset:${p.user_id}`, 5, 3600, 'Too many tries. Wait an hour and try again.')
+    try { await signIn(p.email, String(body.password).slice(0, 200), authEnv(env), d.fetch) } catch { throw new Fail('Wrong password', 401) }
+    const salt = randomHex(16), hold = new Date(Date.now() + 24 * 3600e3).toISOString()
+    await d.db.updateProfile(p.user_id, { pin_salt: salt, pin_hash: await hashPin(body.pin, salt), pin_fails: 0, pin_locked_until: null, money_hold_until: hold })
+    await d.db.log(p.user_id, 'pin_reset', { how: 'password' })
+    await notifyUser(env, d, p.user_id, { emoji: '🔐', title: 'Your payment PIN was changed', body: 'If this wasn’t you, freeze your account in Security and contact the Luda team.', url: '/security', tag: `pin-reset:${Date.now()}`, cat: 'security' })
+    return { ok: true, holdUntil: hold }
+  },
+
   // Live lock screen and "re-enter your PIN on a new phone": the PIN is checked here only (5 wrong = locked 15 min);
   // the phone never stores the PIN or a hash of it.
   'POST pin-check': async ({ req, env, d, body }) => {
@@ -1367,8 +1383,12 @@ const routes: Record<string, Route> = {
   // Paid by hand (receipt + 'the receipt matches' tick) or, if it truly can't be paid, refunded with a reason.
   'POST admin-payout': async ({ req, env, d, body }) => {
     const a = await staff(req, env, d, 'money', 'edit')
-    await verifyAuth(a, body, env, d)
     const ref = String(body.reference ?? ''), paid = body.paid === true, note = cleanText(body.note, 200)
+    // Check what's missing before the PIN, so a missing receipt never looks like a wrong PIN.
+    if (paid && body.checked !== true) throw new Fail('Tick that the receipt shows the same account and amount')
+    if (paid && !(Array.isArray(body.files) && body.files.length)) throw new Fail('Attach the bank receipt (photo or PDF)')
+    if (!paid && !note) throw new Fail('Tell the person why it could not be paid')
+    await verifyAuth(a, body, env, d)
     const w = await d.db.withdrawal(ref)
     if (!w || w.status !== 'processing' || w.provider !== 'manual') throw new Fail('This withdrawal was already handled', 409)
     const cl = w as WithdrawalRow & { claimed_by?: string | null; claimed_at?: string | null }
@@ -3017,8 +3037,16 @@ export async function handleApi(req: Request, env: Env, d: Deps): Promise<Respon
     await afterRequest(env, d, name, req.method)
     return json(out, 200, h)
   } catch (e) {
-    if (e instanceof Fail) return json({ error: e.message }, e.status, h)
+    // Visible in the live check: every refused Luda HQ action (so staff problems can be diagnosed) and every
+    // unexpected server error. Rate-limited, no request bodies, no PINs.
+    const logIt = (kind: string, msg: string, status: number) =>
+      d.db.hit(`errlog:${kind}`, 60, 3600).then((ok) => (ok ? d.db.log(name, kind, { route: `${req.method} ${name}`, status, error: msg.slice(0, 200) }) : undefined)).catch(() => {})
+    if (e instanceof Fail) {
+      if (req.method === 'POST' && name.startsWith('admin')) await logIt('admin_failed', e.message, e.status)
+      return json({ error: e.message }, e.status, h)
+    }
     console.error('api error', name, e)
+    await logIt('api_error', e instanceof Error ? `${e.name}: ${e.message}` : String(e), 500)
     return json({ error: e instanceof Error && /exchange rate|Provider error|Paystack|Flutterwave|ID check/i.test(e.message) ? e.message : 'Something went wrong, please try again' }, 500, h)
   }
 }

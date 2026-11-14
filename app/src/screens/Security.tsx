@@ -33,7 +33,7 @@ export default function Security() {
   const { s, set, toast, notify, reset } = useStore()
   const sec = s.security
   const setSec = (patch: Partial<typeof sec>) => set((p) => ({ ...p, security: { ...p.security, ...patch } }))
-  const [sheet, setSheet] = useState<null | 'pin' | 'password' | 'delete' | 'unfreeze' | 'passcode'>(() => (LIVE && new URLSearchParams(location.search).get('a') === 'passcode' ? 'passcode' : null))
+  const [sheet, setSheet] = useState<null | 'pin' | 'forgot-pin' | 'password' | 'delete' | 'unfreeze' | 'passcode'>(() => { const a = new URLSearchParams(location.search).get('a'); return LIVE && (a === 'passcode' || a === 'forgot-pin') ? a : null })
   const { me: liveMe } = useLive()
   const { refresh } = useLive()
   const score = [s.phoneVerified, s.verified, s.lockOnOpen, LIVE ? bioOn() : sec.twoStep, !!s.account].filter(Boolean).length
@@ -108,7 +108,7 @@ export default function Security() {
         <p className="pb-2 text-center text-[11px] text-slate-500">{LIVE ? '🔐 Your PIN, sign-in code and password are kept only as protected hashes on Luda\'s server, never on your phone. Timetable photos never leave your phone.' : '🔐 PIN & password are stored only as salted hashes. Your timetable photos never leave your phone.'}</p>
       </div>
 
-      {sheet === 'pin' && <ChangePin onClose={() => setSheet(null)} />}
+      {(sheet === 'pin' || sheet === 'forgot-pin') && <ChangePin forgot={sheet === 'forgot-pin'} onClose={() => setSheet(null)} />}
       {sheet === 'passcode' && <PasscodeSheet onClose={() => setSheet(null)} />}
       {sheet === 'password' && (LIVE ? <LivePasswordSheet onClose={() => setSheet(null)} /> : <PasswordSheet mode="change" onClose={() => setSheet(null)} />)}
       {sheet === 'unfreeze' && (LIVE ? <LiveUnfreeze onClose={() => setSheet(null)} /> : <PasswordSheet mode="unfreeze" onClose={() => setSheet(null)} />)}
@@ -188,24 +188,50 @@ function LivePasswordSheet({ onClose }: { onClose: () => void }) {
   )
 }
 
-function ChangePin({ onClose }: { onClose: () => void }) {
+function ChangePin({ onClose, forgot: startForgot }: { onClose: () => void; forgot?: boolean }) {
   const { checkPin, set, toast, notify } = useStore()
-  const [step, setStep] = useState<'old' | 'new' | 'confirm'>('old')
+  const [step, setStep] = useState<'old' | 'pw' | 'new' | 'confirm'>(startForgot && LIVE ? 'pw' : 'old')
   const [first, setFirst] = useState('')
   const [old, setOld] = useState('')
   const [err, setErr] = useState('')
+  // Forgot the PIN (live): prove it's you with the account password instead of the old PIN.
+  const [forgot, setForgot] = useState(!!startForgot && LIVE)
+  const [pw, setPw] = useState('')
+  const [hold, setHold] = useState('')
   const done = async (pin: string) => {
     setErr('')
     if (step === 'old') { if (LIVE || (await checkPin(pin))) { setOld(pin); return setStep('new') } return setErr('Wrong PIN') } // live: the server checks the old PIN
     if (step === 'new') { if (/^(\d)\1{3}$|^1234$|^0000$/.test(pin)) return setErr('Too easy to guess. Pick another'); setFirst(pin); return setStep('confirm') }
     if (pin !== first) { setStep('new'); return setErr("PINs didn't match") }
+    if (LIVE && forgot) {
+      try { const r = await api<{ holdUntil: string }>('POST', 'pin-reset', { pin, password: pw }); set((p) => ({ ...p, pinHash: 'server' })); toast({ title: 'New PIN set', emoji: '🔑' }); return setHold(r.holdUntil) }
+      catch (e) { const m = e instanceof Error ? e.message : 'Try again'; setStep(/password|too many/i.test(m) ? 'pw' : 'new'); return setErr(m) }
+    }
     if (LIVE) { try { await api('POST', 'pin', { pin, oldPin: old }) } catch (e) { const m = e instanceof Error ? e.message : 'Try again'; setStep(/wrong pin|too many/i.test(m) ? 'old' : 'new'); return setErr(m) } }
     const salt = LIVE ? '' : randomSecret(8), pinHash = LIVE ? 'server' : await hashPin(pin, salt)
     set((p) => ({ ...p, salt, pinHash })); notify('🔑', 'Your PIN was changed'); toast({ title: 'PIN changed', emoji: '🔑' }); onClose()
   }
+  if (hold) return (
+    <Sheet open onClose={onClose} title="New PIN set">
+      <div className="flex flex-col gap-3 pb-4 text-center"><p className="text-4xl">🔑</p><p className="font-bold">Your new payment PIN is ready</p>
+        <p className="text-sm text-slate-300">For your safety, withdrawals and sending money are paused for 24 hours. Everything else works now.</p>
+        <button className="btn-primary py-3.5" onClick={onClose}>Done</button></div>
+    </Sheet>
+  )
   return (
-    <Sheet open onClose={onClose} title="Change PIN">
-      <div className="flex flex-col items-center gap-4"><p className="text-sm text-slate-300">{step === 'old' ? 'Enter your current PIN' : step === 'new' ? 'Choose a new 4-digit PIN' : 'Enter the new PIN again'}</p><PinPad key={step} error={err} onDone={done} /></div>
+    <Sheet open onClose={onClose} title={forgot ? 'Reset your payment PIN' : 'Change PIN'}>
+      {step === 'pw' ? (
+        <form className="flex flex-col gap-3 pb-4" onSubmit={(e) => { e.preventDefault(); if (pw) { setErr(''); setStep('new') } }}>
+          <p className="text-sm text-slate-300">Forgot your 4-digit PIN? Enter your Luda account password to choose a new one.</p>
+          <input className="input" type="password" autoComplete="current-password" placeholder="Password" value={pw} onChange={(e) => setPw(e.target.value)} />
+          {err && <p className="text-xs text-rose-300">{err}</p>}
+          <p className="text-xs text-slate-500">For your safety, withdrawals and sending pause for 24 hours after a reset. Signed up with Google and have no password? Contact the Luda team in Help.</p>
+          <button className="btn-primary py-3.5" disabled={!pw}>Continue</button>
+        </form>
+      ) : (
+        <div className="flex flex-col items-center gap-4"><p className="text-sm text-slate-300">{step === 'old' ? 'Enter your current PIN' : step === 'new' ? 'Choose a new 4-digit PIN' : 'Enter the new PIN again'}</p><PinPad key={step} error={err} onDone={done} />
+          {LIVE && step === 'old' && <button className="text-sm text-mint-300 underline" onClick={() => { setErr(''); setForgot(true); setStep('pw') }}>Forgot your PIN?</button>}</div>
+      )}
     </Sheet>
   )
 }

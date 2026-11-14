@@ -3360,5 +3360,16 @@
   "Enter your Luda password": "أدخل كلمة مرور Luda",
   "Signed up with Google? Use your payment PIN": "سجّلت عبر Google؟ استخدم رمز PIN للدفع",
   "One time only, to prove it's you. After this, Luda opens with your 6-digit code.": "مرة واحدة فقط لإثبات هويتك. بعد ذلك يُفتح Luda برمزك المكوّن من 6 أرقام.",
-  "Type your 6-digit Luda code above instead.": "اكتب بدلًا من ذلك رمز Luda المكوّن من 6 أرقام أعلاه."
+  "Type your 6-digit Luda code above instead.": "اكتب بدلًا من ذلك رمز Luda المكوّن من 6 أرقام أعلاه.",
+  "Forgot your PIN?": "نسيت رمز PIN؟",
+  "Reset your payment PIN": "إعادة تعيين رمز PIN للدفع",
+  "Forgot your 4-digit PIN? Enter your Luda account password to choose a new one.": "نسيت رمز PIN المكوّن من 4 أرقام؟ أدخل كلمة مرور حساب Luda لاختيار رمز جديد.",
+  "For your safety, withdrawals and sending pause for 24 hours after a reset. Signed up with Google and have no password? Contact the Luda team in Help.": "لسلامتك، يتوقف السحب والإرسال لمدة 24 ساعة بعد إعادة التعيين. سجّلت عبر Google وليس لديك كلمة مرور؟ تواصل مع فريق Luda من قسم المساعدة.",
+  "New PIN set": "تم تعيين رمز PIN جديد",
+  "Your new payment PIN is ready": "رمز PIN الجديد للدفع جاهز",
+  "For your safety, withdrawals and sending money are paused for 24 hours. Everything else works now.": "لسلامتك، تم إيقاف السحب وإرسال الأموال لمدة 24 ساعة. كل شيء آخر يعمل الآن.",
+  "Not done:": "لم يتم:",
+  "This is not a PIN problem.": "هذه ليست مشكلة في رمز PIN.",
+  "Your payment PIN was changed": "تم تغيير رمز PIN للدفع",
+  "If this wasn’t you, freeze your account in Security and contact the Luda team.": "إذا لم تكن أنت، جمّد حسابك من قسم الأمان وتواصل مع فريق Luda."
 }
