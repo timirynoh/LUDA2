@@ -12,6 +12,8 @@ import Housing from './screens/Housing'
 import More from './screens/More'
 import Nearby from './screens/Nearby'
 import Onboarding from './screens/Onboarding'
+import { PolicyPage } from './components/PolicyPage'
+import { isPublicPath, PublicPage } from './components/PublicPages'
 import { Landing, LockScreen, ResetPassword, SignIn, SignUp, Splash, useOAuthReturn } from './screens/Auth'
 import { LIVE, getSession, staffCan } from './lib/live'
 import { useLive } from './lib/liveStore'
@@ -128,7 +130,8 @@ export default function App() {
   const [recovery, setRecovery] = useState(() => LIVE && window.location.hash.includes('type=recovery'))
 
   let gateScreen: React.ReactNode = null
-  if (recovery) gateScreen = <ResetPassword onDone={() => { setRecovery(false); setAuthView('signin') }} />
+  if (!authed && !recovery && isPublicPath(loc.pathname)) gateScreen = <PublicPage path={loc.pathname} />
+  else if (recovery) gateScreen = <ResetPassword onDone={() => { setRecovery(false); setAuthView('signin') }} />
   else if (!authed) gateScreen = authView === 'signup'
     ? <SignUp onBack={() => setAuthView('landing')} onSignIn={() => setAuthView('signin')} />
     : authView === 'signin' ? <SignIn onBack={() => setAuthView('landing')} onSignUp={() => setAuthView('signup')} />
@@ -173,6 +176,7 @@ export default function App() {
                 <Route path="/help" element={<Help />} />
                 <Route path="/check" element={<TicketCheckPage />} />
                 <Route path="/terms" element={<GuidePage slug="terms" />} />
+                {(['/about', '/contact', '/fees', '/privacy', '/refunds', '/aml'] as const).map((p) => <Route key={p} path={p} element={<PolicyPage path={p} />} />)}
                 <Route path="/guide/:slug" element={<GuideRoute />} />
                 <Route path="/disputes" element={LIVE ? <Navigate to="/help" replace /> : <DisputeList />} />
                 <Route path="/send" element={LIVE ? <Navigate to="/wallet?a=send" replace /> : <SendScreen />} />

@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { Sheet } from './ui'
 import { liveConfig, money, type LiveConfig } from '../lib/live'
 
-export function FeesSheet({ onClose }: { onClose: () => void }) {
+/** The fee list (server numbers). Used by the Fees sheet in the app and the public Fees page (useluda.com/fees). */
+export function FeeList() {
   const [cfg, setCfg] = useState<LiveConfig | null>(null)
   useEffect(() => { liveConfig().then(setCfg).catch(() => {}) }, [])
   const f = cfg?.fees
@@ -22,7 +23,6 @@ export function FeesSheet({ onClose }: { onClose: () => void }) {
     ['🚌', 'Bus tickets', 'No booking fee. Paying from Naira uses the conversion rate above'],
   ] : []
   return (
-    <Sheet open onClose={onClose} title="Fees">
       <div className="flex flex-col gap-3">
         <p className="flex items-start gap-2 text-sm text-slate-400"><span className="flex-1">Simple, student-friendly fees, all in lira. You always see the exact fee before you confirm.</span><InfoTip slug="tip-fees" /></p>
         {!cfg && <p className="text-sm text-slate-500">Loading…</p>}
@@ -36,6 +36,9 @@ export function FeesSheet({ onClose }: { onClose: () => void }) {
         </div>
         <p className="text-center text-[11px] text-slate-500">No monthly fees. No hidden charges.</p>
       </div>
-    </Sheet>
   )
+}
+
+export function FeesSheet({ onClose }: { onClose: () => void }) {
+  return <Sheet open onClose={onClose} title="Fees"><FeeList /></Sheet>
 }

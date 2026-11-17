@@ -9,7 +9,7 @@ import { Empty } from './LiveKit'
 import { errMsg } from './LiveMoney'
 import { Header, Sheet } from './ui'
 
-export interface Guide { slug: string; kind: 'guide' | 'terms' | 'tip' | 'help' | 'privacy'; topic?: string | null; sort?: number; title: string; intro: string; steps: { title: string; body: string }[]; version: number; updated_at: string; updated_by?: string }
+export interface Guide { slug: string; kind: 'guide' | 'terms' | 'tip' | 'help' | 'privacy' | 'policy'; topic?: string | null; sort?: number; title: string; intro: string; steps: { title: string; body: string }[]; version: number; updated_at: string; updated_by?: string }
 
 const cache: Record<string, Guide> = {}
 let tipsLoaded: Promise<void> | null = null
@@ -44,12 +44,12 @@ export function GuideBody({ g }: { g: Guide }) {
       {g.steps.length > 0 && <ol className="flex flex-col gap-2">
         {g.steps.map((st, i) => (
           <li key={i} className="flex gap-3 rounded-2xl bg-fg/[0.04] p-3">
-            {g.kind !== 'terms' && <span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400 text-xs font-extrabold text-ink-950">{i + 1}</span>}
+            {g.kind !== 'terms' && g.kind !== 'policy' && g.kind !== 'privacy' && <span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400 text-xs font-extrabold text-ink-950">{i + 1}</span>}
             <div className="min-w-0"><p className="text-sm font-bold">{st.title}</p><p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{st.body}</p></div>
           </li>
         ))}
       </ol>}
-      {g.kind === 'terms' && <p className="text-[11px] text-slate-500">Version {g.version} · updated {new Date(g.updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
+      {(g.kind === 'terms' || g.kind === 'policy' || g.kind === 'privacy') && <p className="text-[11px] text-slate-500">{`${g.kind === 'terms' ? `Version ${g.version} · ` : ''}Updated ${new Date(g.updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}</p>}
     </div>
   )
 }
@@ -150,14 +150,14 @@ export function GuidesTab({ staff }: { staff: StaffPerms | null }) {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-slate-400">Everything users read in guides, the ⓘ tips and the Terms comes from here. Changes show in the app straight away (no update needed).</p>
       {err && <p className="text-sm text-rose-300">{err}</p>}
-      {!list ? <p className="text-sm text-slate-500">Loading…</p> : list.length === 0 ? <Empty emoji="📘" title="No guides" /> : (['terms', 'privacy', 'help', 'guide', 'tip'] as const).map((k) => (
+      {!list ? <p className="text-sm text-slate-500">Loading…</p> : list.length === 0 ? <Empty emoji="📘" title="No guides" /> : (['terms', 'privacy', 'policy', 'help', 'guide', 'tip'] as const).map((k) => (
         <section key={k} className="flex flex-col gap-2">
-          <div className="flex items-center justify-between"><p className="label">{k === 'terms' ? 'Terms & Conditions' : k === 'privacy' ? 'Privacy notice' : k === 'help' ? 'Help Center articles' : k === 'guide' ? 'Guides (send them in chats)' : 'ⓘ Info tips'}</p>
+          <div className="flex items-center justify-between"><p className="label">{k === 'terms' ? 'Terms & Conditions' : k === 'privacy' ? 'Privacy notice' : k === 'policy' ? 'Policies & About (public pages)' : k === 'help' ? 'Help Center articles' : k === 'guide' ? 'Guides (send them in chats)' : 'ⓘ Info tips'}</p>
             {k === 'help' && canEdit && <button className="chip bg-mint-400/15 px-3 py-1.5 text-xs text-mint-200" onClick={() => setAdding(true)}><Plus size={13} /> New article</button>}</div>
           {group(k).map((g) => (
             <div key={g.slug} className="card flex items-center gap-3 py-3">
               <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{g.title}</p><p className="truncate text-[11px] text-slate-500">{g.kind === 'terms' ? `Version ${g.version} · ` : ''}{g.kind !== 'tip' ? `/${g.kind === 'terms' ? 'terms' : `guide/${g.slug}`} · ` : ''}updated {new Date(g.updated_at).toLocaleDateString()}{g.updated_by ? ` by @${g.updated_by}` : ''}</p></div>
-              {(k === 'terms' || k === 'privacy' ? canTerms : canEdit) && <button className="text-mint-300" aria-label="Edit" onClick={() => setEdit(g)}><Pencil size={16} /></button>}
+              {(k === 'terms' || k === 'privacy' || k === 'policy' ? canTerms : canEdit) && <button className="text-mint-300" aria-label="Edit" onClick={() => setEdit(g)}><Pencil size={16} /></button>}
               {k === 'help' && canTerms && <button className="text-rose-300" aria-label="Delete" onClick={() => void del(g)}><Trash2 size={16} /></button>}
             </div>
           ))}

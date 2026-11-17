@@ -2805,7 +2805,7 @@ const routes: Record<string, Route> = {
   },
   'GET guides': async ({ d, url }) => {
     const kind = url.searchParams.get('kind')
-    return { guides: (await d.db.fn<Record<string, unknown>[]>('luda_guides', { p_kind: kind && ['guide', 'terms', 'tip'].includes(kind) ? kind : null })).map((g) => ({ ...g, updated_by: undefined })) }
+    return { guides: (await d.db.fn<Record<string, unknown>[]>('luda_guides', { p_kind: kind && ['guide', 'terms', 'tip', 'policy'].includes(kind) ? kind : null })).map((g) => ({ ...g, updated_by: undefined })) }
   },
   'POST terms-accept': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
@@ -2815,7 +2815,7 @@ const routes: Record<string, Route> = {
   'POST admin-guide-save': async ({ req, env, d, body }) => {
     const slug = String(body.slug ?? '').slice(0, 40)
     // Changing the terms (and asking everyone to accept again) needs content:full; guides and tips need edit.
-    const a = await staff(req, env, d, 'content', slug === 'terms' || slug === 'privacy' ? 'full' : 'edit')
+    const a = await staff(req, env, d, 'content', ['terms', 'privacy', 'refunds', 'aml', 'about'].includes(slug) ? 'full' : 'edit')
     const steps = (Array.isArray(body.steps) ? body.steps : []).slice(0, 30).map((x: any) => ({ title: cleanText(x?.title, 120), body: cleanText(x?.body, 1500) })).filter((x: any) => x.title || x.body)
     const g = await d.db.fn('luda_guide_save', { p_slug: slug, p_title: clean(body.title, 120, 'a title', 2), p_intro: cleanText(body.intro, 1500), p_steps: { items: steps }, p_by: a.username, p_bump: slug === 'terms' && !!body.bump }).catch((e) => {
       if (e instanceof MoneyError && e.message === 'not_found') throw new Fail('Not found', 404)

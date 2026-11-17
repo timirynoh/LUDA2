@@ -1,6 +1,7 @@
 // Help Center (v1.19.0, owner: 'like professional apps: structured, nice, an easy flow'). Search first, then your
 // open requests, quick actions, topics and articles. Articles come from the server (Luda HQ edits them), each one asks
 // "Was this helpful?", and "No" leads straight to a message to the Luda team with the topic already filled in.
+import { LegalLinks } from './PublicPages'
 import { ChevronDown, ChevronRight, FileText, MessageCircle, Search, ShieldAlert, ShieldCheck, ThumbsDown, ThumbsUp, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -115,7 +116,7 @@ export function HelpCenter() {
   const [topic, setTopic] = useState<string | null>(() => new URLSearchParams(loc.search).get('topic'))
   const [contact, setContact] = useState<Contact>(null)
   const [hub, setHub] = useState<null | { start: 'list' | 'new'; caseId?: string }>(null)
-  const [legal, setLegal] = useState<null | 'terms' | 'privacy'>(null)
+  const [legal, setLegal] = useState<null | 'terms' | 'privacy' | 'refunds' | 'aml'>(null)
   const first = (s.name || '').split(' ')[0]
   const byTopic = (id: string) => (data?.articles ?? []).filter((a) => a.topic === id)
   const results = useMemo(() => {
@@ -212,7 +213,10 @@ export function HelpCenter() {
         <div className="grid grid-cols-2 gap-2">
           <button className="btn-ghost text-sm" onClick={() => setLegal('terms')}><FileText size={16} /> Terms</button>
           <button className="btn-ghost text-sm" onClick={() => setLegal('privacy')}><FileText size={16} /> Privacy</button>
+          <button className="btn-ghost text-sm" onClick={() => setLegal('refunds')}><FileText size={16} /> Refunds</button>
+          <button className="btn-ghost text-sm" onClick={() => setLegal('aml')}><FileText size={16} /> AML & KYC</button>
         </div>
+        <LegalLinks />
         <p className="text-center text-[11px] text-slate-500">Emergency in TRNC: Police 155 · Ambulance 112 · Fire 199</p>
       </>}
 

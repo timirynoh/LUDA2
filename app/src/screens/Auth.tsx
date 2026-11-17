@@ -1,3 +1,4 @@
+import { LegalLinks } from '../components/PublicPages'
 import { GuideSheet, loadGuide } from '../components/LiveGuides'
 import { PasscodeSetup } from '../components/Passcode'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -46,7 +47,7 @@ export function Splash() {
 
 const SLIDES: { title: string; sub: string; art: ReactNode }[] = [
   {
-    title: 'Your money, sorted', sub: 'Hold Lira, Naira, Cedi & CFA. Convert at live rates and swap cash safely with escrow.',
+    title: 'Your money, sorted', sub: 'Naira and Lira in one wallet. Convert at the rate shown and swap cash safely with escrow.',
     art: (
       <div className="relative h-full w-full">
         <div className="absolute inset-x-6 top-6 rotate-[-6deg] rounded-3xl bg-gradient-to-br from-emerald-500 via-emerald-700 to-emerald-950 p-5 text-white shadow-2xl">
@@ -71,7 +72,7 @@ const SLIDES: { title: string; sub: string; art: ReactNode }[] = [
     ),
   },
   {
-    title: 'Study & travel smarter', sub: 'Timetable from a screenshot, your school’s deadlines, and cheaper bus tickets.',
+    title: 'Study & travel smarter', sub: 'Timetable from a screenshot, your school’s deadlines, and bus tickets in your pocket.',
     art: (
       <div className="relative h-full w-full">
         <div className="absolute inset-x-6 top-6 rotate-[3deg] rounded-3xl bg-gradient-to-br from-indigo-500 via-blue-700 to-indigo-950 p-5 text-white shadow-2xl">
@@ -117,6 +118,7 @@ export function Landing({ onSignUp, onSignIn }: { onSignUp: () => void; onSignIn
         <button className="btn-primary py-4 text-base" onClick={onSignUp}>Create free account</button>
         <button className="btn-ghost py-4 text-base" onClick={onSignIn}>I have an account · Sign in</button>
         <p className="text-center text-xs text-slate-500">Made for the African community in North Cyprus 🇳🇬 🇨🇩 🇨🇲 🇿🇼 🇬🇭 🇰🇪 🇸🇩</p>
+        <LegalLinks />
         <p className="text-center text-[10px] text-slate-600">v{__VERSION__}</p>
       </div>
       <Sheet open={langOpen} onClose={() => setLangOpen(false)} title="Language">
