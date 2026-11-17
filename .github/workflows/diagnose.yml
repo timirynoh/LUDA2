@@ -35,7 +35,7 @@ jobs:
           curl -sS "https://api.supabase.com/v1/projects/$REF/config/auth" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
             | jq -c '{google_on: .external_google_enabled, google_client_id_set: ((.external_google_client_id // "") | length > 0), google_client_id_ends: ((.external_google_client_id // "") | .[-27:]), google_secret_set: ((.external_google_secret // "") | length > 0), site_url, redirect_urls: .uri_allow_list, signups_open: (.disable_signup | not)}' || true
           echo; echo "=== Google sign-in start (should redirect to accounts.google.com)"
-          curl -sS -o /dev/null -w '%{http_code} → %{redirect_url}\n' "https://$REF.supabase.co/auth/v1/authorize?provider=google&redirect_to=https%3A%2F%2Fluda-ct6.pages.dev%2F" | sed -E 's/(client_id=[^&]{0,12})[^&]*/\1…/' || true
+          curl -sS -o /dev/null -w '%{http_code} → %{redirect_url}\n' "https://$REF.supabase.co/auth/v1/authorize?provider=google&redirect_to=https%3A%2F%2Fuseluda.com%2F" | sed -E 's/(client_id=[^&]{0,12})[^&]*/\1…/' || true
           sleep 2
           q "Latest top-ups" "select '…'||right(reference,8) as ref, provider, status, amount_minor/100.0 as charged, currency, credit_minor/100.0 as credit, credit_currency, created_at, paid_at from payments order by created_at desc limit 10"
           q "Processing history (latest 25 events)" "select '…'||right(reference,8) as ref, kind, at, left(coalesce(payload::text,''), 220) as detail from payment_events order by id desc limit 25"
@@ -61,7 +61,7 @@ jobs:
           q "Admin actions and PIN-protected events, last 4 days" "select '…'||right(reference,8) as ref, kind, at, left(coalesce(payload::text,''), 160) as detail from payment_events where (kind like 'admin%' or kind like '%pin%' or kind like 'passcode%' or kind like 'bio%') and at > now() - interval '4 days' order by id desc limit 25"
           q "Refused Luda HQ actions and server errors (last 3 days; shows the real reason when something 'doesn't work')" "select at, kind, payload->>'route' as route, payload->>'status' as status, payload->>'error' as error from payment_events where kind in ('admin_failed', 'api_error') and at > now() - interval '3 days' order by id desc limit 30"
           echo; echo "=== Browser check: does the server accept the app's requests? (CORS preflight with the app's headers)"
-          curl -sS -o /dev/null -D - -X OPTIONS "https://$REF.supabase.co/functions/v1/api/me" -H "Origin: https://luda-ct6.pages.dev" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: authorization,apikey,content-type,x-luda-device" | grep -i -E '^HTTP|access-control' || true
+          curl -sS -o /dev/null -D - -X OPTIONS "https://$REF.supabase.co/functions/v1/api/me" -H "Origin: https://useluda.com" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: authorization,apikey,content-type,x-luda-device" | grep -i -E '^HTTP|access-control' || true
           q "Owner account (for the first P2P ad)" "select username, kyc_status, kyc_name is not null as has_kyc_name, frozen from profiles where username = 'rynoh'"
           q "PROBLEM: wallets that don't match their ledger (should never happen)" "select '…'||right(w.user_id::text,6) as user_, w.currency, w.balance_minor, coalesce(l.s,0) as ledger_sum from wallets w left join (select user_id, currency, sum(amount_minor) s from ledger group by 1,2) l using (user_id, currency) where w.balance_minor <> coalesce(l.s,0)"
           echo; echo "################ HEALTH ################"
