@@ -90,3 +90,30 @@ test('email HTML escapes what people typed', () => {
   const h = mailHtml(MAILS.welcome({ name: '<script>x</script> Doe' }), 'https://useluda.com')
   assert.ok(!h.includes('<script>x')); assert.match(h, /&lt;script&gt;/)
 })
+
+test('support team: new request → email + To do (phone alert); a user reply → new alert; staff without the Support job get nothing', async () => {
+  for (const [u, roles] of [['sam', '{"overview":"view","cases":"edit","users":"view"}'], ['bill', '{"bills":"edit"}']] as const) {
+    const r = await call('POST', 'signup', { email: `${u}@x.com`, username: u, fullName: `${u} Staffer`, password: 'Lefkosa2026!' })
+    T[u] = r.j.session.access_token
+    await q(`insert into staff (email, roles) values ($1, $2::jsonb)`, [`${u}@x.com`, roles])
+  }
+  const c = await call('POST', 'case-create', { category: 'other', subject: 'Top-up missing', message: 'I paid but my wallet is empty' }, T.ada)
+  assert.equal(c.status, 200, JSON.stringify(c.j))
+  const ticket = '#' + c.j.id.replace(/-/g, '').slice(0, 6).toUpperCase()
+  const m = mailsTo('sam@x.com').filter((x) => x.key.startsWith(`case:${c.j.id}`))
+  assert.equal(m.length, 1); assert.equal(m[0].subject, `New support request ${ticket}: Top-up missing`)
+  assert.match(m[0].html, /I paid but my wallet is empty/); assert.match(m[0].html, /admin\?tab=cases/)
+  assert.equal(mailsTo('bill@x.com').length, 1, 'bills staff only got their welcome email')
+  const todo1 = (await call('GET', 'todo', undefined, T.sam)).j.items.find((i: any) => i.key.startsWith(`staffcase:${c.j.id}`))
+  assert.ok(todo1); assert.equal(todo1.level, 'action'); assert.match(todo1.title, new RegExp(ticket))
+  assert.ok(!(await call('GET', 'todo', undefined, T.bill)).j.items.some((i: any) => i.key.startsWith('staffcase:')))
+  assert.ok(!(await call('GET', 'todo', undefined, T.ada)).j.items.some((i: any) => i.key.startsWith('staffcase:')))
+  // the team answers → no longer waiting; the person replies → a NEW alert key (new phone alert); email waits 30 min per case
+  await call('POST', 'admin-case-reply', { caseId: c.j.id, message: 'Checking now', status: 'waiting_user' }, T.sam)
+  assert.ok(!(await call('GET', 'todo', undefined, T.sam)).j.items.some((i: any) => i.key.startsWith(`staffcase:${c.j.id}`)))
+  await new Promise((r) => setTimeout(r, 5))
+  await call('POST', 'case-reply', { caseId: c.j.id, message: 'Here is the receipt' }, T.ada)
+  const todo2 = (await call('GET', 'todo', undefined, T.sam)).j.items.find((i: any) => i.key.startsWith(`staffcase:${c.j.id}`))
+  assert.ok(todo2); assert.notEqual(todo2.key, todo1.key)
+  assert.equal(mailsTo('sam@x.com').filter((x) => x.key.startsWith(`case:${c.j.id}`)).length, 1, 'no second email within 30 min')
+})

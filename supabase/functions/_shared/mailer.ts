@@ -70,6 +70,14 @@ export const MAILS = {
     button: ['Open my wallet', '/wallet'],
     note: 'One account per person: your ID is now linked to this account only.',
   }),
+  staffCase: (v: { user: string; subject: string; ticket: string; preview: string; reply: boolean }): Mail => ({
+    subject: `${v.reply ? 'New reply' : 'New support request'} ${v.ticket}: ${v.subject}`.slice(0, 120), preheader: `@${v.user}: ${v.preview}`.slice(0, 140), icon: v.reply ? '💬' : '🎧',
+    title: v.reply ? `@${v.user} replied to ${v.ticket}` : `New support request from @${v.user}`,
+    intro: v.preview,
+    rows: [['Ticket', v.ticket], ['Subject', v.subject], ['From', `@${v.user}`]],
+    button: ['Answer in Luda HQ', '/admin?tab=cases'],
+    note: 'Reply inside Luda HQ, not to this email: the person gets your answer in the app. This alert comes to Luda team members with the Support job.',
+  }),
 }
 export type MailKind = keyof typeof MAILS
 

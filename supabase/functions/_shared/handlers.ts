@@ -582,6 +582,22 @@ export function mailUser(env: Env, d: Deps, userId: string | null | undefined, k
 }
 const mailWithdrawal = (env: Env, d: Deps, w: WithdrawalRow) => mailUser(env, d, w.user_id, `wdr:${w.reference}`, () =>
   MAILS.withdrawal({ amount: fmtMoney(w.amount_minor, w.currency), bank: w.bank_name ?? 'your bank', account: w.account_number.slice(-4), ref: w.reference, when: cyWhen() }))
+const caseTicket = (id: string) => `#${id.replace(/-/g, '').slice(0, 6).toUpperCase()}`
+/** New support request or user reply → email everyone with the Support job (cases: act or full), at most once per case per 30 min.
+ *  Their phone alert comes from the To do item `staffcase:` (pushSweep). */
+function alertSupportTeam(env: Env, d: Deps, c: { id: string; subject: string; user: string; preview: string; reply: boolean }) {
+  if (!mailEnabled(env)) return
+  return inBackground((async () => {
+    if (!(await d.db.hit(`casemail:${c.id}`, 1, 1800).catch(() => false))) return
+    const team = (await d.db.fn<{ email: string; roles: Record<string, string> }[]>('luda_staff_list', {}).catch(() => [])) ?? []
+    const to = team.filter((m) => m.roles?.cases === 'edit' || m.roles?.cases === 'full').map((m) => m.email)
+    const mail = MAILS.staffCase({ ...c, ticket: caseTicket(c.id), preview: c.preview.slice(0, 300) })
+    for (const email of to.slice(0, 10)) {
+      const ok = await sendMail(env, d.fetch, email, mail, `case:${c.id}:${email}:${Math.floor(Date.now() / 1800e3)}`)
+      await d.db.log(c.id, ok ? 'mail_sent' : 'mail_failed', { key: 'staffcase', to: email.replace(/^(.).*@/, '$1…@') })
+    }
+  })())
+}
 const cyWhen = (at?: string | null) => new Date(at || Date.now()).toLocaleString('en-GB', { timeZone: 'Europe/Nicosia', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 /** Starts a job without making the person wait (Supabase keeps it running after the reply). */
@@ -1146,6 +1162,7 @@ const routes: Record<string, Route> = {
     const c = await d.db.createCase({ user_id: p.user_id, category, subject, reference })
     const files = await storeFiles(env, d, p.user_id, c.id, body.files)
     await d.db.addCaseMessage({ case_id: c.id, author: 'user', author_name: p.full_name, body: message, files })
+    if (reference !== 'kyc-manual') await alertSupportTeam(env, d, { id: c.id, subject, user: p.username, preview: message, reply: false })
     return { id: c.id }
   },
 
@@ -1167,6 +1184,7 @@ const routes: Record<string, Route> = {
     const files = await storeFiles(env, d, p.user_id, c.id, body.files)
     await d.db.addCaseMessage({ case_id: c.id, author: 'user', author_name: p.full_name, body: message || '(photo)', files })
     await d.db.updateCase(c.id, { status: 'open' }) // a reply re-opens the case for the team
+    await alertSupportTeam(env, d, { id: c.id, subject: c.subject, user: p.username, preview: message || '(photo)', reply: true })
     return { ok: true }
   },
 
@@ -3017,6 +3035,14 @@ async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
     if (h && h.problems?.length && Date.parse(h.at) > Date.now() - 36 * 3600e3) {
       const key = `health:${h.problems.map((x) => x.code).sort().join(',')}:${String(h.at).slice(0, 10)}`
       items.push({ key, emoji: '🩺', title: h.problems.length === 1 ? `Luda health check: ${h.problems[0].text}` : `Luda health check: ${h.problems.length} things need you`, sub: h.problems[0].fix ? h.problems[0].fix.slice(0, 120) : 'Open Luda HQ to see them', to: '/admin', level: 'urgent' })
+    }
+  }
+  if (sp && can(sp, 'cases', 'edit')) {
+    // Support requests waiting for the team (new, or the person replied). A new reply = new key = a new phone alert.
+    const waiting = (await d.db.listCases('open', 100).catch(() => [])).filter((c) => c.reference !== 'kyc-manual').reverse()
+    for (const c of waiting.slice(0, 5)) {
+      const late = Date.parse(c.updated_at) < Date.now() - 4 * 3600e3
+      items.push({ key: `staffcase:${c.id}:${new Date(c.updated_at).getTime()}`, emoji: late ? '⏰' : '🎧', title: `${late ? 'Still waiting' : 'Support request'} ${caseTicket(c.id)}: @${c.user?.username ?? 'user'}`, sub: `${c.subject} · Luda HQ → Cases`, to: '/admin?tab=cases', level: late ? 'urgent' : 'action' })
     }
   }
   if (sp && can(sp, 'kyc', 'edit')) {
