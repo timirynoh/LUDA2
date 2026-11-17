@@ -207,6 +207,7 @@ export function HelpCenter() {
           <div className="min-w-0 flex-1"><p className="text-sm font-semibold">Still need help?</p><p className="text-xs text-slate-400">The Luda team replies in your requests. You’ll get a notification.</p></div>
           <button className="btn-primary shrink-0 px-4 py-2.5 text-sm" onClick={() => setContact({ category: 'other' })}>Message</button>
         </section>
+        <p className="-mt-2 text-center text-xs text-slate-400">Prefer email? <a href="mailto:support@useluda.com" translate="no" className="font-semibold text-mint-300 underline-offset-2 hover:underline">support@useluda.com</a></p>
 
         <div className="grid grid-cols-2 gap-2">
           <button className="btn-ghost text-sm" onClick={() => setLegal('terms')}><FileText size={16} /> Terms</button>

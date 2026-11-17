@@ -111,6 +111,8 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     diditN: 0,
     topup: 'SUCCESSFUL' as string, // what the top-up partner answers: SUCCESSFUL | PROCESSING | 'refuse' (4xx) | 'down' (5xx)
     topups: new Map<string, { status: string; body: any }>(), // transaction id -> top-up
+    mails: [] as { key: string; to: string; from: string; reply_to: string; subject: string; html: string; text: string }[],
+    mailDown: false,
   }
   const ok = (j: unknown, status = 200) => new Response(JSON.stringify(j), { status })
   const f = (async (u: string, init?: RequestInit) => {
@@ -141,6 +143,13 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
       const id = world.tokens.get(auth) ?? (auth.startsWith('tok_') && world.users.has(auth.slice(4)) ? auth.slice(4) : '')
       const user = world.users.get(id)
       return user ? ok({ id: user.id, email: user.email, user_metadata: user.meta }) : ok({ msg: 'invalid' }, 401)
+    }
+    // Resend (Luda's own emails)
+    if (url.host === 'api.resend.com' && url.pathname === '/emails') {
+      if (world.mailDown) return ok({ message: 'down' }, 503)
+      const key = new Headers(init?.headers).get('idempotency-key') ?? ''
+      if (!world.mails.some((m) => m.key === key)) world.mails.push({ key, to: body.to?.[0], from: body.from, reply_to: body.reply_to, subject: body.subject, html: body.html, text: body.text })
+      return ok({ id: 'em_' + world.mails.length })
     }
     // Paystack
     if (url.host === 'api.paystack.co') {

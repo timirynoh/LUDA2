@@ -105,7 +105,8 @@ async function drawReceipt(d: ReceiptData): Promise<HTMLCanvasElement> {
   // footer inside card
   const fy = cardTop + cardH - 70
   ctx.fillStyle = '#ecfdf5'; ctx.beginPath(); ctx.roundRect(M + P, fy - 60, CW - P * 2, 84, 24); ctx.fill()
-  ctx.fillStyle = '#047857'; ctx.font = `600 26px ${FONT}`; center('Issued by Luda · useluda.com', fy - 8)
+  ctx.fillStyle = '#047857'; ctx.font = `600 26px ${FONT}`; center('Issued by Luda · useluda.com', fy - 22)
+  ctx.fillStyle = '#64748b'; ctx.font = `500 21px ${FONT}`; center('Help: support@useluda.com', fy + 10)
   // below card
   ctx.fillStyle = '#94a3b8'; ctx.font = `500 24px ${FONT}`
   center(`${d.name ? d.name + ' · ' : ''}Generated ${new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, H - 50)

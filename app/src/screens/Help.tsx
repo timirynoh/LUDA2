@@ -42,7 +42,7 @@ export default function Help() {
         {<>
         <div className="grid grid-cols-3 gap-2 text-center text-xs">
           <a href="https://wa.me/905000000000" target="_blank" rel="noreferrer" className="card flex flex-col items-center gap-1 py-4"><MessageCircle className="text-emerald-300" /> WhatsApp</a>
-          <a href="mailto:support@luda.app" className="card flex flex-col items-center gap-1 py-4"><Mail className="text-sky-300" /> Email</a>
+          <a href="mailto:support@useluda.com" className="card flex flex-col items-center gap-1 py-4"><Mail className="text-sky-300" /> Email</a>
           <button onClick={() => setReport(true)} className="card flex flex-col items-center gap-1 py-4"><Siren className="text-rose-300" /> Report a problem</button>
         </div>
         <Link to="/disputes" className="card flex items-center gap-3"><span className="text-xl">🛡️</span><span className="flex-1 text-sm font-semibold">My appeals & support cases</span><span className="chip bg-fg/5 text-slate-300">{s.disputes.filter((d) => d.status !== 'resolved').length} open</span></Link>

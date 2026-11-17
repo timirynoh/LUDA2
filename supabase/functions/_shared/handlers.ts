@@ -16,9 +16,10 @@ import { textProblem } from './moderation.ts'
 import { TopupRefused, mobileNumber, topupCheck, topupMaxMinor, topupOperatorList, topupOperators, topupSend, type TopupEnv } from './topup.ts'
 import { decodeFile, MAX_VIDEO_BYTES, putFile, signedUrl, uploadUrl, VIDEO_TYPES } from './storage.ts'
 import { checkCode, normPhone, sendCode, smsEnabled, type SmsEnv } from './sms.ts'
+import { MAILS, mailEnabled, sendMail, type Mail, type MailEnv } from './mailer.ts'
 import { checkWebhook, initCheckout, verifyPayment, webhookEvent, type Fetch, type Keys, type Provider } from './providers.ts'
 
-export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv, TopupEnv {
+export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv, TopupEnv, MailEnv {
   APP_URL: string
   ALLOWED_ORIGINS?: string
   TICKET_QR_SECRET?: string
@@ -205,6 +206,7 @@ async function kycSync(p: Profile, env: Env, d: Deps): Promise<{ status: Profile
     throw e
   }
   await notifyUser(env, d, p.user_id, { emoji: '🪪', title: 'Your ID is verified', body: 'Withdrawals, P2P, Market selling and Flash jobs are now unlocked', url: '/wallet', tag: 'kyc-verified', cat: 'security' })
+  await mailUser(env, d, p.user_id, `kyc:${p.user_id}`, () => MAILS.kyc({ name: legal }))
   return { status: 'verified' }
 }
 
@@ -503,6 +505,7 @@ export async function finalizeDeposit(reference: string, env: Env, d: Deps, sour
   await d.db.depositPaid(reference, v.providerTxId)
   await d.db.log(reference, 'paid', { providerTxId: v.providerTxId })
   if (p.user_id) await pushUser(env, d, p.user_id, { title: '💰 Top-up received', body: `${fmtMoney(p.credit_minor ?? p.amount_minor, p.credit_currency ?? p.currency)} added to your wallet`, url: '/wallet', tag: `dep:${reference}`, cat: 'money' })
+  if (p.user_id) await mailUser(env, d, p.user_id, `topup:${reference}`, () => MAILS.topup({ amount: fmtMoney(p.credit_minor ?? p.amount_minor, p.credit_currency ?? p.currency), ref: reference, when: cyWhen() }))
   return { ...p, status: 'paid' }
 }
 
@@ -567,6 +570,20 @@ export async function runHealth(env: Env, d: Deps, by = 'auto') {
   return run
 }
 
+/** Luda's own email to a person (welcome, receipts, ID verified). Background, logged, never fails the request. */
+export function mailUser(env: Env, d: Deps, userId: string | null | undefined, key: string, make: (p: Profile) => Mail) {
+  if (!userId || !mailEnabled(env)) return
+  return inBackground((async () => {
+    const p = await d.db.profile(userId)
+    if (!p?.email) return
+    const ok = await sendMail(env, d.fetch, p.email, make(p), key)
+    await d.db.log(userId, ok ? 'mail_sent' : 'mail_failed', { key })
+  })())
+}
+const mailWithdrawal = (env: Env, d: Deps, w: WithdrawalRow) => mailUser(env, d, w.user_id, `wdr:${w.reference}`, () =>
+  MAILS.withdrawal({ amount: fmtMoney(w.amount_minor, w.currency), bank: w.bank_name ?? 'your bank', account: w.account_number.slice(-4), ref: w.reference, when: cyWhen() }))
+const cyWhen = (at?: string | null) => new Date(at || Date.now()).toLocaleString('en-GB', { timeZone: 'Europe/Nicosia', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
 /** Starts a job without making the person wait (Supabase keeps it running after the reply). */
 function inBackground(job: Promise<unknown>) {
   const rt = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime
@@ -604,7 +621,10 @@ export async function settleWithdrawal(w: WithdrawalRow, env: Env, d: Deps): Pro
   if (t.status === 'processing' || t.status === w.status) return w.status
   await d.db.withdrawSettle(w.reference, t.status, t.transferCode, null)
   await d.db.log(w.reference, `withdraw_${t.status}`, { provider: w.provider ?? 'paystack' })
-  if (t.status === 'paid') await notifyUser(env, d, w.user_id, { emoji: '🏦', title: `Withdrawal sent: ${fmtMoney(w.amount_minor, w.currency)}`, body: 'It’s on its way to your bank', url: '/wallet', tag: `wdr:${w.reference}`, cat: 'money' })
+  if (t.status === 'paid') {
+    await notifyUser(env, d, w.user_id, { emoji: '🏦', title: `Withdrawal sent: ${fmtMoney(w.amount_minor, w.currency)}`, body: 'It’s on its way to your bank', url: '/wallet', tag: `wdr:${w.reference}`, cat: 'money' })
+    await mailWithdrawal(env, d, w)
+  }
   else await pushUser(env, d, w.user_id, { title: '↩️ Withdrawal refunded', body: `${fmtMoney(w.amount_minor, w.currency)} is back in your wallet`, url: '/wallet', tag: `wdr:${w.reference}`, cat: 'money' })
   return t.status
 }
@@ -866,6 +886,7 @@ const routes: Record<string, Route> = {
     if (r.userId) await d.db.fn('luda_sign_in_log', { p_user: r.userId, p_how: 'new account', p_device: deviceOf(req) }).catch(() => {})
     if (r.userId && Number(body.terms) > 0) await d.db.fn('luda_terms_accept', { p_user: r.userId, p_version: Number(body.terms) }).catch(() => {})
     if (r.userId && ref && USERNAME.test(ref) && ref !== username) await d.db.fn('luda_set_inviter', { p_user: r.userId, p_inviter: ref, p_days: REFERRAL_RULES.applyDays }).catch(() => {})
+    if (r.userId) await mailUser(env, d, r.userId, `welcome:${r.userId}`, (p) => MAILS.welcome({ name: p.full_name }))
     return { session: r.session, needsConfirm: !r.session }
   },
 
@@ -1235,6 +1256,7 @@ const routes: Record<string, Route> = {
     }
     const legal = [id.firstName, id.middleName, id.lastName].filter(Boolean).join(' ').toUpperCase()
     await d.db.updateProfile(p.user_id, { kyc_status: 'verified', kyc_name: legal, kyc_dob: dob, kyc_id_type: type, kyc_id_last4: number.slice(-4), kyc_at: new Date().toISOString() } as Partial<Profile>)
+    await mailUser(env, d, p.user_id, `kyc:${p.user_id}`, () => MAILS.kyc({ name: legal }))
     return { status: 'verified', name: legal }
   },
 
@@ -1408,6 +1430,7 @@ const routes: Record<string, Route> = {
       await d.db.withdrawSettle(ref, 'paid', null, note || 'Paid by the Luda team')
       await d.db.log(ref, 'admin_payout_paid', { by: a.username })
       await notifyUser(env, d, w.user_id, { emoji: '🏦', title: `Withdrawal sent: ${fmtMoney(w.amount_minor, w.currency)}`, body: `To ${w.bank_name ?? 'your bank'} ••${w.account_number.slice(-4)}`, url: '/wallet', tag: `wdr:${ref}`, cat: 'money' })
+      await mailWithdrawal(env, d, w)
     } else {
       if (!can(a.staff, 'money', 'full')) throw new Fail("Refunds need the owner or a 'full' money role", 403)
       if (!note) throw new Fail('Tell the person why it could not be paid')
@@ -1499,6 +1522,7 @@ const routes: Record<string, Route> = {
           throw e
         }
         await caseNote('✅ Your identity has been verified by the Luda team. Withdrawals and sending money are now unlocked.', 'resolved')
+        await mailUser(env, d, u.user_id, `kyc:${u.user_id}`, () => MAILS.kyc({ name: legal }))
         break
       }
       case 'kyc-reject': {
