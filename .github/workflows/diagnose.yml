@@ -4,6 +4,11 @@ name: Check payments (read-only)
 
 on:
   workflow_dispatch:
+    inputs:
+      test_email:
+        description: Optional - send a real password-reset email to this Luda account (checks Resend + the branded template)
+        required: false
+        default: ''
   push:
     branches: [claude/cyprus-expat-app-mlnvuc]
     paths: ['.github/workflows/diagnose.yml']
@@ -15,6 +20,15 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
+      - name: Send a test password-reset email (only when an address is given)
+        if: ${{ inputs.test_email != '' }}
+        env:
+          EMAIL: ${{ inputs.test_email }}
+        run: |
+          body=$(jq -n --arg e "$EMAIL" '{email: $e}')
+          code=$(curl -sS -o /tmp/r.json -w '%{http_code}' -X POST "https://$REF.supabase.co/functions/v1/api/recover" \
+            -H "origin: https://useluda.com" -H "content-type: application/json" --data "$body")
+          echo "Luda answered HTTP $code: $(cat /tmp/r.json)"
       - name: Query
         run: |
           q() {
