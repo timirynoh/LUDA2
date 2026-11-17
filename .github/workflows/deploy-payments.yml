@@ -68,6 +68,21 @@ jobs:
           code=$(curl -sS -o /tmp/auth.json -w '%{http_code}' -X PATCH "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/config/auth" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data "$body")
           echo "Supabase Auth address update: HTTP $code"; jq -c '{site_url, uri_allow_list}' /tmp/auth.json || true
+      # Luda's branded sign-in emails (supabase/emails, built by build.py): applied on every deploy so they never drift.
+      - name: Apply Luda's email templates
+        run: |
+          body=$(python3 - <<'PY'
+          import json
+          s = json.load(open('supabase/emails/subjects.json')); b = {}
+          for k, subj in s.items():
+              b[f'mailer_subjects_{k}'] = subj
+              b[f'mailer_templates_{k}_content'] = open(f'supabase/emails/{k}.html').read()
+          print(json.dumps(b))
+          PY
+          )
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data "$body")
+          echo "Email templates: HTTP $code"; [ "$code" = "200" ]
       - name: Print your webhook address
         run: echo "Webhook URL for Paystack and Flutterwave → https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/pay-webhook"
       # v1.24.0 (owner's pick): after every release, call the live server like a phone would. If anything is broken the
