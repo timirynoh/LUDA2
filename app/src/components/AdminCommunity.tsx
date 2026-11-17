@@ -159,6 +159,21 @@ export const AREA_INFO: Record<Exclude<StaffArea, 'team'>, { label: string; view
   banners: { label: 'Banners', view: 'See banners', edit: 'Create and edit banners', full: 'Also delete banners' },
   tickets: { label: 'Bus ticket check', view: '—', edit: 'Scan and check passengers\' tickets (drivers)', full: 'Scan and check tickets' },
 }
+type Roles = Partial<Record<Exclude<StaffArea, 'team'>, StaffLevel>>
+/** One-tap job roles for the Team tab (owner, v1.30.1). Each gives only what that job needs; areas can still be changed one by one after. */
+export const ROLE_PRESETS: { id: string; emoji: string; label: string; sub: string; roles: Roles }[] = [
+  { id: 'support', emoji: '🎧', label: 'Support', sub: 'Reply to support cases, look up accounts', roles: { overview: 'view', cases: 'edit', users: 'view' } },
+  { id: 'kyc', emoji: '🪪', label: 'ID checker', sub: 'Approve or reject IDs sent to the team', roles: { overview: 'view', kyc: 'edit', cases: 'edit', users: 'view' } },
+  { id: 'bills', emoji: '🧾', label: 'Bills team', sub: 'Pay bills on the official sites, upload receipts', roles: { overview: 'view', bills: 'edit', cases: 'view' } },
+  { id: 'payouts', emoji: '🏦', label: 'Payouts team', sub: 'Send withdrawals by hand with a receipt (no refunds)', roles: { overview: 'view', money: 'edit', cases: 'view' } },
+  { id: 'disputes', emoji: '⚖️', label: 'Disputes helper', sub: 'Take P2P disputes and message both sides (you decide)', roles: { overview: 'view', disputes: 'edit', cases: 'edit', users: 'view' } },
+  { id: 'content', emoji: '📝', label: 'Content & banners', sub: 'Check posts, guides, uni calendars and banners', roles: { overview: 'view', content: 'edit', banners: 'edit' } },
+  { id: 'driver', emoji: '🚌', label: 'Bus driver', sub: 'Only scan passengers’ tickets', roles: { tickets: 'edit' } },
+  { id: 'manager', emoji: '🛡️', label: 'Manager (trusted)', sub: 'Almost everything: refunds, disputes, freezing. Not the team or balances', roles: { overview: 'view', users: 'full', kyc: 'full', money: 'edit', bills: 'full', disputes: 'full', cases: 'full', content: 'full', banners: 'full', tickets: 'edit' } },
+]
+const sameRoles = (a: Roles, b: Roles) => { const ka = Object.keys(a), kb = Object.keys(b); return ka.length === kb.length && ka.every((k) => a[k as keyof Roles] === b[k as keyof Roles]) }
+export const presetOf = (r: Roles) => ROLE_PRESETS.find((p) => sameRoles(p.roles, r))
+
 interface StaffRow { email: string; roles: Partial<Record<StaffArea, StaffLevel>>; note: string | null; username: string | null; created_at: string }
 
 export function TeamTab() {
@@ -176,7 +191,7 @@ export function TeamTab() {
       {data?.staff.map((m) => (
         <button key={m.email} onClick={() => setEdit(m)} className="card flex flex-col gap-2 text-start">
           <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-gradient-to-br from-violet-400/40 to-indigo-700/40 font-bold">{m.email.slice(0, 2).toUpperCase()}</span>
-            <div className="min-w-0 flex-1"><p className="truncate font-semibold">{m.email}</p><p className="text-xs text-slate-400">{m.username ? `@${m.username}` : 'No Luda account with this email yet'}{m.note ? ` · ${m.note}` : ''}</p></div><Pencil size={15} className="text-slate-500" /></div>
+            <div className="min-w-0 flex-1"><p className="truncate font-semibold">{m.email}</p><p className="text-xs text-slate-400">{presetOf(m.roles as Roles) ? `${presetOf(m.roles as Roles)!.emoji} ${presetOf(m.roles as Roles)!.label} · ` : ''}{m.username ? `@${m.username}` : 'No Luda account with this email yet'}{m.note ? ` · ${m.note}` : ''}</p></div><Pencil size={15} className="text-slate-500" /></div>
           <div className="flex flex-wrap gap-1.5">{Object.entries(m.roles).map(([a, l]) => <span key={a} className="chip bg-fg/[0.06] py-0.5 text-[11px]">{AREA_INFO[a as Exclude<StaffArea, 'team'>]?.label ?? a}: <b className={l === 'full' ? 'text-gold-200' : l === 'edit' ? 'text-mint-200' : 'text-slate-300'}>{l === 'edit' ? 'act' : l}</b></span>)}</div>
         </button>
       ))}
@@ -205,7 +220,15 @@ function StaffEditor({ m, onClose, onDone }: { m: StaffRow; onClose: () => void;
       <div className="flex flex-col gap-3 pb-4">
         <label className="text-xs text-slate-400">Email of their Luda account<input className="input mt-1" type="email" value={email} disabled={!!m.email} onChange={(e) => setEmail(e.target.value.trim())} placeholder="name@example.com" /></label>
         <label className="text-xs text-slate-400">Note (optional)<input className="input mt-1" maxLength={60} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Bills, weekdays" /></label>
-        <p className="label">What they can do</p>
+        <p className="label">Pick their job</p>
+        <div className="grid grid-cols-2 gap-2">{ROLE_PRESETS.map((p) => {
+          const on = sameRoles(p.roles, roles as Roles)
+          return <button key={p.id} onClick={() => { setRoles({ ...p.roles }); if (!note) setNote(p.label) }}
+            className={`flex flex-col items-start gap-0.5 rounded-2xl p-3 text-start ring-1 ${on ? 'bg-mint-400/15 ring-mint-400/60' : 'bg-fg/[0.04] ring-fg/10'}`}>
+            <span className="text-xl">{p.emoji}</span><span className="text-sm font-semibold">{p.label}{on ? ' ✓' : ''}</span><span className="text-[11px] leading-snug text-slate-400">{p.sub}</span></button>
+        })}</div>
+        <p className="label">What they can do{presetOf(roles as Roles) ? '' : count ? ' · custom' : ''}</p>
+        <p className="-mt-2 text-[11px] text-slate-500">A job fills these in. You can still change any area below.</p>
         {areas.map((a) => {
           const cur = roles[a]
           const levels: (StaffLevel | undefined)[] = a === 'overview' ? [undefined, 'view'] : [undefined, 'view', 'edit', 'full']
