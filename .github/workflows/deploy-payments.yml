@@ -63,7 +63,7 @@ jobs:
           APP_URL: https://useluda.com
           ALLOWED_ORIGINS: https://www.useluda.com,https://luda-ct6.pages.dev
         run: |
-          supabase secrets set --project-ref "$SUPABASE_PROJECT_REF" APP_URL="$APP_URL" ALLOWED_ORIGINS="$ALLOWED_ORIGINS"
+          supabase secrets set --project-ref "$SUPABASE_PROJECT_REF" --yes APP_URL="$APP_URL" ALLOWED_ORIGINS="$ALLOWED_ORIGINS"
           body=$(jq -n --arg site "$APP_URL" --arg list "https://useluda.com/**,https://useluda.com/reset,https://www.useluda.com/**,https://luda-ct6.pages.dev/**,https://luda-ct6.pages.dev/reset" '{site_url: $site, uri_allow_list: $list}')
           code=$(curl -sS -o /tmp/auth.json -w '%{http_code}' -X PATCH "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/config/auth" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data "$body")
