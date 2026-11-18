@@ -31,7 +31,7 @@ export function dealsFor(city: string, areas: string[]): Deal[] {
 export const WELCOME_STEPS = [
   { id: 'sim', emoji: '📱', title: 'Get a local SIM', body: 'Kuzey Kıbrıs Turkcell or Vodafone Telsim shops accept your passport. Ask for a student data package.', to: '/nearby?cat=money' },
   { id: 'group', emoji: '💬', title: 'Join your community group', body: 'Meet people from home who already know the ropes.', to: '/chats' },
-  { id: 'verify', emoji: '🛡️', title: 'Verify your account', body: 'Phone + KYC unlock your wallet. Your first SafeSwap is fee-free.', to: '/profile' },
+  { id: 'verify', emoji: '🛡️', title: 'Verify your account', body: 'Phone + KYC unlock your wallet: withdrawals, sending money and selling.', to: '/profile' },
   { id: 'residency', emoji: '🪪', title: 'Start your residence permit', body: 'Collect documents and track the steps before your deadline.', to: '/residency' },
   { id: 'housing', emoji: '🏠', title: 'Find a place to live', body: 'Verified rooms and roommates; never pay before viewing.', to: '/housing' },
   { id: 'uni', emoji: '🎓', title: 'Set up your university', body: 'Your school’s deadlines, fees and timetable reminders.', to: '/uni' },

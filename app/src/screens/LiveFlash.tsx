@@ -6,6 +6,7 @@
 import { BadgeCheck, Banknote, Camera, ChevronRight, LifeBuoy, Lock, MapPin, Plus, Send, ShieldCheck, Video, Zap } from 'lucide-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
+import { ESCROW } from '../config'
 import { Empty, Pill, Tabs, ago, lira, toMinor, useApi } from '../components/LiveKit'
 import { LiveKyc, ReviewAndPin, errMsg } from '../components/LiveMoney'
 import { Attachments, CasesHub, type Upload } from '../components/LiveSupport'
@@ -116,7 +117,7 @@ function PostSheet({ onClose, onDone }: { onClose: () => void; onDone: (id: stri
   const [title, setTitle] = useState('')
   const [details, setDetails] = useState('')
   const [budget, setBudget] = useState('200')
-  const [pay, setPay] = useState<Pay>('luda')
+  const [pay, setPay] = useState<Pay>(ESCROW ? 'luda' : 'cash') // paying through Luda is paused with the escrow services
   const [picked, setPicked] = useState('')
   const [files, setFiles] = useState<Upload[]>([])
   const [video, setVideo] = useState<{ path: string; name: string } | null>(null)
@@ -154,6 +155,7 @@ function PostSheet({ onClose, onDone }: { onClose: () => void; onDone: (id: stri
         <div className="flex flex-wrap gap-2">{BUDGETS.map((v) => <button key={v} onClick={() => setBudget(String(v))} className={`chip py-2 ${budget === String(v) ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}>₺{v}</button>)}</div>
         <input className="input text-lg font-bold" value={budget} onChange={(e) => setBudget(e.target.value)} inputMode="numeric" aria-label="Budget in lira" />
         <p className="-mt-1 text-xs text-slate-400">A starting point. Helpers can send their own price in the chat; you choose.</p>
+        {ESCROW ? <>
         <p className="label">How will you pay?</p>
         <div className="grid grid-cols-2 gap-2">
           {([['luda', '🔒 Through Luda', 'The price you accept is held safely until the job is done'], ['cash', '💵 Cash', 'Pay the helper in hand when the job is done']] as const).map(([v, l, sub]) => (
@@ -161,6 +163,7 @@ function PostSheet({ onClose, onDone }: { onClose: () => void; onDone: (id: stri
           ))}
         </div>
         <p className="text-xs text-slate-500">Nothing leaves your wallet now.</p>
+        </> : <p className="rounded-2xl bg-fg/[0.05] p-3 text-xs text-slate-300">💵 You pay the helper in cash when the job is done. Only pay once the work is finished.</p>}
         {err && <p className="text-sm text-rose-300">{err}</p>}
         <button className="btn-primary py-4" disabled={busy || pct !== null || title.trim().length < 5 || b < 20_00} onClick={() => void submit()}>{busy ? 'Posting…' : 'Post request'}</button>
       </div>

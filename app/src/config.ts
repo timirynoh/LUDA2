@@ -12,7 +12,14 @@ export const FX_API = 'https://open.er-api.com/v6/latest/USD'
 /** OpenStreetMap Overpass endpoint used for the "Around me" city directory. */
 export const OVERPASS_API = 'https://overpass-api.de/api/interpreter'
 
-/** Fee charged on P2P escrow trades (0.5%). */
+/**
+ * Escrow services (P2P exchange, Verified Exchanger bond, Market purchases through Luda, Flash 'pay through Luda')
+ * are paused "until further notice" (owner, 2026-11-18, v1.33.0). Nothing is deleted: to bring them back set this to
+ * true AND the server secret ESCROW_ENABLED=true, and restore the texts from the table guides_escrow_backup.
+ */
+export const ESCROW = false
+
+/** Fee charged on P2P trades (0.5%). */
 export const P2P_FEE = 0.005
 
 /** Cashback in Luda Points on bill payments (1 point = 0.01 TL). */

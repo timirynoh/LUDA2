@@ -1,6 +1,8 @@
-// Live: marketplace with escrow. The buyer's money is held by Luda until they confirm they got the item;
-// then the seller is paid (minus a small fee). Sellers must be ID-verified. Disputes go to the Luda team.
-import { BadgeCheck, Camera, ImageOff, LifeBuoy, MapPin, Plus, ShieldCheck, Tag } from 'lucide-react'
+// Live marketplace. Sellers must be ID-verified. With escrow ON the buyer's money is held by Luda until they confirm
+// they got the item. While escrow services are paused (config ESCROW, v1.33.0) it is listings only: buyers message the
+// seller on WhatsApp and pay them directly; Luda takes no payment and no fee.
+import { BadgeCheck, Camera, ImageOff, LifeBuoy, MapPin, MessageCircle, Phone, Plus, ShieldCheck, Tag } from 'lucide-react'
+import { ESCROW } from '../config'
 import { useState } from 'react'
 import { Empty, Pill, Tabs, ago, lira, toMinor, useApi } from '../components/LiveKit'
 import { LiveKyc, ReviewAndPin, errMsg } from '../components/LiveMoney'
@@ -13,7 +15,7 @@ import { useStore } from '../lib/store'
 import { RateButton } from '../components/Ratings'
 import { HelpChip } from '../components/HelpCenter'
 
-interface Item { id: string; title: string; description: string; category: string; city: string; price_minor: number; status: 'active' | 'reserved' | 'sold' | 'removed'; created_at: string; updated_at: string; reserved_at: string | null; seller_name?: string; buyer_name?: string; mine: boolean; photoUrls: (string | null)[] }
+interface Item { id: string; title: string; description: string; category: string; city: string; price_minor: number; status: 'active' | 'reserved' | 'sold' | 'removed'; created_at: string; updated_at: string; reserved_at: string | null; seller_name?: string; buyer_name?: string; mine: boolean; photoUrls: (string | null)[]; contact?: string | null }
 interface Market { items: Item[]; mine: Item[]; bought: Item[]; feePct: number }
 const CATS: [string, string][] = [['electronics', '📱 Electronics'], ['furniture', '🛋️ Furniture'], ['books', '📚 Books'], ['fashion', '👗 Fashion'], ['kitchen', '🍳 Kitchen'], ['tickets', '🎟️ Tickets'], ['other', '📦 Other']]
 const catLabel = (c: string) => CATS.find(([k]) => k === c)?.[1] ?? '📦 Other'
@@ -38,9 +40,9 @@ export default function LiveMarket() {
 
   return (
     <div className="pb-8">
-      <Header back title="Marketplace" sub="Buy & sell safely · money held until you get it" right={<div className="flex items-center gap-2"><HelpChip topic="market" /><button className="btn-primary px-4 py-2.5 text-sm" onClick={() => setSell(true)}><Plus size={16} /> Sell</button></div>} />
+      <Header back title="Marketplace" sub={ESCROW ? 'Buy & sell safely · money held until you get it' : 'Buy & sell with students near you'} right={<div className="flex items-center gap-2"><HelpChip topic="market" /><button className="btn-primary px-4 py-2.5 text-sm" onClick={() => setSell(true)}><Plus size={16} /> Sell</button></div>} />
       <div className="flex flex-col gap-4 px-5">
-        <Tabs value={tab} onChange={setTab} tabs={[{ value: 'browse', label: 'Browse' }, { value: 'selling', label: 'Selling' }, { value: 'bought', label: 'Bought', badge: toConfirm }]} />
+        <Tabs value={tab} onChange={setTab} tabs={[{ value: 'browse', label: 'Browse' }, { value: 'selling', label: 'Selling' }, ...(ESCROW || (data?.bought.length ?? 0) > 0 ? [{ value: 'bought' as const, label: 'Bought', badge: toConfirm }] : [])]} />
         {tab === 'browse' && <>
           <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1">
             <button onClick={() => setHere(!here)} className={`chip shrink-0 py-2 ${here ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}><MapPin size={12} /> {here ? cityName(s.city) : 'All cities'}</button>
@@ -55,7 +57,7 @@ export default function LiveMarket() {
                   <p className="truncate text-[11px] text-slate-400">@{x.seller_name}{x.city ? ` · ${cityName(x.city)}` : ''}</p></div>
               </button>))}</div>}
         </>}
-        {tab === 'selling' && (data?.mine.length ? data.mine.map((x) => <MyListing key={x.id} x={x} onChange={done} />) : <Empty emoji="🏷️" title="You're not selling anything" sub="List an item in a minute. You get paid when the buyer confirms." />)}
+        {tab === 'selling' && (data?.mine.length ? data.mine.map((x) => <MyListing key={x.id} x={x} onChange={done} />) : <Empty emoji="🏷️" title="You're not selling anything" sub={ESCROW ? 'List an item in a minute. You get paid when the buyer confirms.' : 'List an item in a minute. Buyers message you on WhatsApp.'} />)}
         {tab === 'bought' && (data?.bought.length ? data.bought.map((x) => <Purchase key={x.id} x={x} onChange={done} />) : <Empty emoji="🛒" title="No purchases yet" sub="When you buy, your money is held safely until you confirm you got the item." />)}
       </div>
       {view && <ItemSheet item={view} feePct={data?.feePct ?? 0.02} onClose={() => setView(null)} onDone={done} />}
@@ -84,11 +86,19 @@ function ItemSheet({ item, feePct, onClose, onDone }: { item: Item; feePct: numb
           <div className="flex items-end justify-between"><p className="text-3xl font-extrabold text-mint-300">{lira(x.price_minor)}</p><span className="chip bg-fg/[0.06] text-slate-300">{catLabel(x.category)}</span></div>
           {x.description && <p className="whitespace-pre-line text-sm text-slate-300">{x.description}</p>}
           <p className="flex items-center gap-2 text-sm text-slate-400"><BadgeCheck size={16} className="text-mint-300" /> @{x.seller_name} · ID-verified seller{x.city ? ` · ${cityName(x.city)}` : ''} · {ago(x.created_at)}</p>
-          <div className="flex items-start gap-3 rounded-2xl bg-mint-400/10 p-3 text-xs text-mint-100"><ShieldCheck size={18} className="shrink-0" /> Buyer protection: the seller is only paid after you confirm you received the item.</div>
-          {x.mine ? <p className="text-center text-sm text-slate-400">This is your listing.</p>
-            : x.status !== 'active' ? <p className="text-center text-sm text-slate-400">This item is no longer available.</p>
-              : <button className="btn-primary py-4" disabled={bal < x.price_minor} onClick={() => setBuy(true)}>{bal < x.price_minor ? `Need ${lira(x.price_minor)} in your Lira wallet` : `Buy for ${lira(x.price_minor)}`}</button>}
-          <p className="text-center text-[11px] text-slate-500">Luda keeps {Math.round(feePct * 100)}% from the seller. Buyers pay no fee.</p>
+          {ESCROW ? <>
+            <div className="flex items-start gap-3 rounded-2xl bg-mint-400/10 p-3 text-xs text-mint-100"><ShieldCheck size={18} className="shrink-0" /> Buyer protection: the seller is only paid after you confirm you received the item.</div>
+            {x.mine ? <p className="text-center text-sm text-slate-400">This is your listing.</p>
+              : x.status !== 'active' ? <p className="text-center text-sm text-slate-400">This item is no longer available.</p>
+                : <button className="btn-primary py-4" disabled={bal < x.price_minor} onClick={() => setBuy(true)}>{bal < x.price_minor ? `Need ${lira(x.price_minor)} in your Lira wallet` : `Buy for ${lira(x.price_minor)}`}</button>}
+            <p className="text-center text-[11px] text-slate-500">Luda keeps {Math.round(feePct * 100)}% from the seller. Buyers pay no fee.</p>
+          </> : <>
+            <div className="flex items-start gap-3 rounded-2xl bg-sky-400/10 p-3 text-xs text-sky-100"><ShieldCheck size={18} className="shrink-0" /> Meet in a public place, check the item, then pay the seller. Never send money before you have seen it.</div>
+            {x.mine ? <p className="text-center text-sm text-slate-400">This is your listing.</p>
+              : x.status !== 'active' ? <p className="text-center text-sm text-slate-400">This item is no longer available.</p>
+                : x.contact ? <a className="btn-primary py-4" href={`https://wa.me/${x.contact.replace(/^\+/, '')}?text=${encodeURIComponent(`Hi, is "${x.title}" on Luda still available?`)}`} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Message the seller on WhatsApp</a>
+                  : <p className="text-center text-sm text-slate-400">The seller hasn't added a contact yet.</p>}
+          </>}
         </div>
       )}
     </Sheet>
@@ -107,7 +117,7 @@ function MyListing({ x, onChange }: { x: Item; onChange: () => void }) {
       {x.status === 'reserved' && <p className="text-xs text-slate-300">@{x.buyer_name} paid. Hand it over; you're paid when they confirm (or automatically after 7 days).</p>}
       {x.status === 'sold' && x.buyer_name && <RateButton kind="market" refId={x.id} title={`Rate @${x.buyer_name}`} sub={x.title} />}
       <div className="flex gap-2">
-        {x.status === 'active' && <button className="btn-ghost flex-1 py-2.5 text-sm" onClick={() => act('market-remove', 'Remove this listing?')}>Remove</button>}
+        {x.status === 'active' && <button className="btn-ghost flex-1 py-2.5 text-sm" onClick={() => act('market-remove', ESCROW ? 'Remove this listing?' : 'Sold it, or no longer selling? The listing will be removed.')}>{ESCROW ? 'Remove' : 'Sold · remove listing'}</button>}
         {x.status === 'reserved' && <button className="btn-ghost flex-1 py-2.5 text-sm" onClick={() => act('market-cancel', "Cancel this sale? The buyer gets their money back and the item goes back on sale.")}>Can't sell · refund buyer</button>}
       </div>
       {err && <p className="text-xs text-rose-300">{err}</p>}
@@ -147,6 +157,7 @@ function SellSheet({ onClose, onDone, feePct }: { onClose: () => void; onDone: (
   const [desc, setDesc] = useState('')
   const [cat, setCat] = useState('other')
   const [price, setPrice] = useState('')
+  const [contact, setContact] = useState(() => { try { return localStorage.getItem('luda.marketContact') ?? '' } catch { return '' } })
   const [photos, setPhotos] = useState<Upload[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -155,20 +166,25 @@ function SellSheet({ onClose, onDone, feePct }: { onClose: () => void; onDone: (
   if (me?.profile.kyc !== 'verified') return <Sheet open onClose={onClose} title="Verify to sell"><p className="mb-3 text-sm text-slate-300">To keep buyers safe, sellers verify their ID once.</p><LiveKyc onDone={onClose} /></Sheet>
   const post = async () => {
     setBusy(true); setErr('')
-    try { await api('POST', 'market-list', { title, description: desc, category: cat, city: s.city, priceMinor: p, photos: photos.map(({ name, type, data }) => ({ name, type, data })) }); setOk(true); onDone() } catch (e) { setErr(errMsg(e)) } finally { setBusy(false) }
+    try {
+      await api('POST', 'market-list', { title, description: desc, category: cat, city: s.city, priceMinor: p, contact, photos: photos.map(({ name, type, data }) => ({ name, type, data })) })
+      try { if (contact) localStorage.setItem('luda.marketContact', contact) } catch { /* a draft only */ }
+      setOk(true); onDone()
+    } catch (e) { setErr(errMsg(e)) } finally { setBusy(false) }
   }
   return (
     <Sheet open onClose={onClose} title="Sell an item">
-      {ok ? <Success title="Listed! 🏷️" sub="Buyers can now pay you safely through Luda." onClose={onClose} /> : (
+      {ok ? <Success title="Listed! 🏷️" sub={ESCROW ? 'Buyers can now pay you safely through Luda.' : 'Buyers can now message you on WhatsApp.'} onClose={onClose} /> : (
         <div className="flex flex-col gap-3 pb-4">
           <div><p className="mb-1 flex items-center gap-1 text-xs text-slate-400"><Camera size={13} /> Up to 3 photos</p><Attachments files={photos} setFiles={(f) => setPhotos(f.filter((x) => x.type !== 'application/pdf').slice(0, 3))} /></div>
           <input className="input" placeholder="What are you selling?" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={70} />
           <textarea className="input min-h-24" placeholder="Condition, size, pickup place…" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={600} />
           <div className="flex flex-wrap gap-2">{CATS.map(([k, l]) => <button key={k} onClick={() => setCat(k)} className={`chip py-2 ${cat === k ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}>{l}</button>)}</div>
           <label className="text-xs text-slate-400"><Tag size={12} className="inline" /> Price (₺)<input className="input mt-1 text-lg font-bold" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="numeric" placeholder="e.g. 600" /></label>
-          {p > 0 && <p className="text-xs text-slate-400">You'll receive <b className="text-mint-300">{lira(p - Math.round(p * feePct))}</b> after Luda's {Math.round(feePct * 100)}% fee.</p>}
+          {!ESCROW && <label className="text-xs text-slate-400"><Phone size={12} className="inline" /> Your WhatsApp number (buyers contact you here)<input className="input mt-1" value={contact} onChange={(e) => setContact(e.target.value)} inputMode="tel" placeholder="+90 533 123 4567" maxLength={20} /></label>}
+          {ESCROW && p > 0 && <p className="text-xs text-slate-400">You'll receive <b className="text-mint-300">{lira(p - Math.round(p * feePct))}</b> after Luda's {Math.round(feePct * 100)}% fee.</p>}
           {err && <p className="text-sm text-rose-300">{err}</p>}
-          <button className="btn-primary py-4" disabled={busy || title.trim().length < 3 || p < 10_00} onClick={post}>{busy ? 'Posting…' : 'Post listing'}</button>
+          <button className="btn-primary py-4" disabled={busy || title.trim().length < 3 || p < 10_00 || (!ESCROW && contact.replace(/[^\d]/g, '').length < 8)} onClick={post}>{busy ? 'Posting…' : 'Post listing'}</button>
         </div>
       )}
     </Sheet>

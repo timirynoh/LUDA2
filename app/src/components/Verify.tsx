@@ -99,7 +99,7 @@ export function UnlockCard() {
 }
 
 const TOUR = [
-  { emoji: '💰', title: 'Your money, sorted', points: ['Wallet in Lira, Naira, Cedi, CFA & more', 'Convert at live rates', 'SafeSwap: meet & exchange with escrow', 'Pay KIB-TEK, water & phone bills'] },
+  { emoji: '💰', title: 'Your money, sorted', points: ['Wallet in Naira and Lira', 'Convert at the rate shown', 'Send money to friends', 'Pay KIB-TEK, water & phone bills'] },
   { emoji: '🏝️', title: 'Your life in North Cyprus', points: ['Verified houses & roommates', 'Jobs & quick gigs', 'Flash help: get things fixed fast', 'Group chats & community events'] },
   { emoji: '🎓', title: 'Study & travel smarter', points: ['Timetable from a screenshot + reminders', 'Your school’s deadlines & fees', 'Cheaper bus & airport tickets', 'Residency permit guide & portal'] },
 ]

@@ -16,6 +16,7 @@ import { TicketCheck } from '../components/TicketCheck'
 import { useLive } from '../lib/liveStore'
 import { RatingsTab } from '../components/AdminRatings'
 import { ExchangersTab } from '../components/Exchanger'
+import { ESCROW } from '../config'
 import { MoneyTab } from '../components/AdminMoney'
 
 type Tab = 'overview' | 'money' | 'ratings' | 'exchangers' | 'bills' | 'cases' | 'disputes' | 'p2p' | 'users' | 'topups' | 'withdrawals' | 'content' | 'uni' | 'guides' | 'banners' | 'tickets' | 'team'
@@ -68,7 +69,7 @@ export default function LiveAdmin() {
     { v: 'overview', l: 'Home', i: HomeIcon }, { v: 'bills', l: 'Bills', i: Receipt, n: o?.billsPending }, { v: 'cases', l: 'Cases', i: Inbox, n: o?.openCases }, { v: 'ratings', l: 'Ratings', i: Star },
     { v: 'money', l: 'Money report', i: Banknote }, { v: 'p2p', l: 'P2P disputes', i: Scale }, { v: 'exchangers', l: 'Exchangers', i: Award }, { v: 'disputes', l: 'Held money', i: Gavel }, { v: 'users', l: 'Users', i: Users }, { v: 'topups', l: 'Top-ups', i: ArrowDownToLine }, { v: 'withdrawals', l: 'Payouts', i: ArrowUpFromLine },
     { v: 'content', l: 'Content', i: Newspaper }, { v: 'uni', l: 'Uni calendars', i: GraduationCap }, { v: 'guides', l: 'Guides & terms', i: BookOpen }, { v: 'tickets', l: 'Ticket check', i: ScanLine }, { v: 'banners', l: 'Banners', i: Megaphone }, { v: 'team', l: 'Team', i: UserCog },
-  ] as { v: Tab; l: string; i: LucideIcon; n?: number }[]).filter((t) => allow(t.v))
+  ] as { v: Tab; l: string; i: LucideIcon; n?: number }[]).filter((t) => allow(t.v) && (ESCROW || !['p2p', 'exchangers', 'disputes'].includes(t.v))) // escrow tabs hidden while paused
   const go = (t: Tab) => { setTab(t); void load() }
   return (
     <div className="pb-10">

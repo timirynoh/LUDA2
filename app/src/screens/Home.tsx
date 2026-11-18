@@ -222,7 +222,8 @@ const SECTIONS: { key: keyof import('../lib/store').State['sections']; label: st
 
 function Customize({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { s, set, t, reward } = useStore()
-  const [list, setList] = useState(s.shortcuts)
+  // Only shortcuts that still exist (e.g. P2P is hidden while escrow services are paused).
+  const [list, setList] = useState(() => s.shortcuts.filter((id) => ACTIONS.some((a) => a.id === id)))
   const [sections, setSections] = useState(s.sections)
   const available = ACTIONS.filter((a) => !list.includes(a.id) && (!a.admin || s.isAdmin))
   const move = (i: number, d: -1 | 1) => { const l = [...list]; [l[i], l[i + d]] = [l[i + d], l[i]]; setList(l) }

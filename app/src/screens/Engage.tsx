@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import { ESCROW } from '../config'
 import { Bell, Bookmark, Heart, Pin, Plus, Share2, Trophy } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Header, Sheet } from '../components/ui'
@@ -267,7 +268,7 @@ function LiveChallenges() {
       <div className="flex flex-col gap-3 px-5">
         {msg && <p className="rounded-2xl bg-mint-400/10 p-3 text-center text-sm text-mint-100">{msg}</p>}
         {!rewards && <p className="text-sm text-slate-500">Loading…</p>}
-        {rewards?.challenges.map((c) => {
+        {rewards?.challenges.filter((c) => ESCROW || c.id !== 'c-p2p').map((c) => {
           const meta = LIVE_CH[c.id] ?? { title: c.id, emoji: '🏆', desc: '', unit: '' }
           const pct = Math.min(1, c.progress / c.goal)
           return (

@@ -56,7 +56,7 @@ test('alerts in my language: the server translates phone notifications into the 
 })
 
 test('statements: opening/closing balances, money in/out, categories and every line for a month', async () => {
-  const month = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 7)
+  const month = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Nicosia' }).format(new Date()).slice(0, 7)
   const s = (await call('GET', `statement?month=${month}`, undefined, T.ada)).j
   assert.equal(s.month, month)
   assert.deepEqual(s.currencies.NGN, { opening: 0, closing: 950_000, in: 1_000_000, out: 50_000 })

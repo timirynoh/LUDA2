@@ -5,53 +5,22 @@ import { Header, Toasts } from './components/ui'
 import { UnlockSheet, useTierCelebration } from './components/Verify'
 import { useKycReview } from './components/Kyc'
 import { useStore } from './lib/store'
-import Bills from './screens/Bills'
-import Exchange from './screens/Exchange'
 import Home from './screens/Home'
-import Housing from './screens/Housing'
-import More from './screens/More'
-import Nearby from './screens/Nearby'
 import Onboarding from './screens/Onboarding'
 import { PolicyPage } from './components/PolicyPage'
 import { isPublicPath, PublicPage } from './components/PublicPages'
 import { Landing, LockScreen, ResetPassword, SignIn, SignUp, Splash, useOAuthReturn } from './screens/Auth'
 import { LIVE, getSession, staffCan } from './lib/live'
 import { useLive } from './lib/liveStore'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { IdleGuard } from './components/IdleGuard'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { OfflineBanner } from './components/OfflineBanner'
-import Security from './screens/Security'
-import Inbox from './screens/Inbox'
-import LiveStatements from './screens/LiveStatements'
-import Search from './screens/Search'
-import Help from './screens/Help'
-import { DisputeList, DisputeView } from './screens/Disputes'
 import { useDisputeProgress, useExchangerReview } from './lib/disputeFlow'
 import { useRateAlerts } from './components/RateAlerts'
-import SendScreen from './screens/Send'
-import Savings from './screens/Savings'
-import Market from './screens/Market'
-import Person from './screens/Person'
 import { Ambassadors, Deals, Invite, useReferralProgress, Welcome } from './screens/Growth'
-import { Challenges, NewsScreen } from './screens/Engage'
 import Promos, { usePromoConfirms } from './screens/Promos'
-import Profile from './screens/Profile'
-import Residency from './screens/Residency'
-import Rewards from './screens/Rewards'
-import Wallet from './screens/Wallet'
-import Chats from './screens/Chats'
 import { RateFromLink } from './components/Ratings'
-import ChatRoom from './screens/ChatRoom'
-import Admin from './screens/Admin'
-import Community from './screens/Community'
-import Jobs from './screens/Jobs'
-import Transport from './screens/Transport'
-import PayReturn from './screens/PayReturn'
-import LiveWallet from './screens/LiveWallet'
-import KycReturn from './screens/KycReturn'
-import LiveAdmin from './screens/LiveAdmin'
-import LiveExchange from './screens/LiveExchange'
 import { GuidedTour } from './components/GuidedTour'
 import { PrivacyShield } from './components/PrivacyShield'
 import { GuidePage, TermsGate } from './components/LiveGuides'
@@ -61,18 +30,55 @@ import { useTodoAlerts } from './components/LiveTodo'
 import { usePushSync } from './components/PushSync'
 import { useAutoUpdate } from './components/AutoUpdate'
 import { useUniReminders } from './components/LiveUni'
-import LiveBoard from './screens/LiveBoard'
-import LiveChats from './screens/LiveChats'
-import LiveP2POrder from './screens/LiveP2P'
-import LiveChatRoom from './screens/LiveChatRoom'
-import LiveBills from './screens/LiveBills'
-import LiveSavings from './screens/LiveSavings'
-import LiveMarket from './screens/LiveMarket'
-import LiveFlash, { LiveFlashJob } from './screens/LiveFlash'
-import Uni from './screens/Uni'
 import { useClassReminders } from './lib/reminders'
 import { useGigProgress } from './lib/gigs'
-import Flash from './screens/Flash'
+
+// Screens load when they are first opened (v1.33.0), so the app starts faster: Home, sign-in and the public pages
+// are in the first download, everything else comes in small pieces.
+const Bills = lazy(() => import('./screens/Bills'))
+const Exchange = lazy(() => import('./screens/Exchange'))
+const Housing = lazy(() => import('./screens/Housing'))
+const Nearby = lazy(() => import('./screens/Nearby'))
+const Security = lazy(() => import('./screens/Security'))
+const Inbox = lazy(() => import('./screens/Inbox'))
+const LiveStatements = lazy(() => import('./screens/LiveStatements'))
+const Search = lazy(() => import('./screens/Search'))
+const Help = lazy(() => import('./screens/Help'))
+const SendScreen = lazy(() => import('./screens/Send'))
+const Savings = lazy(() => import('./screens/Savings'))
+const Market = lazy(() => import('./screens/Market'))
+const Person = lazy(() => import('./screens/Person'))
+const Profile = lazy(() => import('./screens/Profile'))
+const Residency = lazy(() => import('./screens/Residency'))
+const Rewards = lazy(() => import('./screens/Rewards'))
+const Wallet = lazy(() => import('./screens/Wallet'))
+const Chats = lazy(() => import('./screens/Chats'))
+const ChatRoom = lazy(() => import('./screens/ChatRoom'))
+const Admin = lazy(() => import('./screens/Admin'))
+const Community = lazy(() => import('./screens/Community'))
+const Jobs = lazy(() => import('./screens/Jobs'))
+const Transport = lazy(() => import('./screens/Transport'))
+const PayReturn = lazy(() => import('./screens/PayReturn'))
+const LiveWallet = lazy(() => import('./screens/LiveWallet'))
+const KycReturn = lazy(() => import('./screens/KycReturn'))
+const LiveAdmin = lazy(() => import('./screens/LiveAdmin'))
+const LiveExchange = lazy(() => import('./screens/LiveExchange'))
+const LiveBoard = lazy(() => import('./screens/LiveBoard'))
+const LiveChats = lazy(() => import('./screens/LiveChats'))
+const LiveP2POrder = lazy(() => import('./screens/LiveP2P'))
+const LiveChatRoom = lazy(() => import('./screens/LiveChatRoom'))
+const LiveBills = lazy(() => import('./screens/LiveBills'))
+const LiveSavings = lazy(() => import('./screens/LiveSavings'))
+const LiveMarket = lazy(() => import('./screens/LiveMarket'))
+const Uni = lazy(() => import('./screens/Uni'))
+const Flash = lazy(() => import('./screens/Flash'))
+const More = lazy(() => import('./screens/More'))
+const DisputeList = lazy(() => import('./screens/Disputes').then((m) => ({ default: m.DisputeList })))
+const DisputeView = lazy(() => import('./screens/Disputes').then((m) => ({ default: m.DisputeView })))
+const Challenges = lazy(() => import('./screens/Engage').then((m) => ({ default: m.Challenges })))
+const NewsScreen = lazy(() => import('./screens/Engage').then((m) => ({ default: m.NewsScreen })))
+const LiveFlash = lazy(() => import('./screens/LiveFlash'))
+const LiveFlashJob = lazy(() => import('./screens/LiveFlash').then((m) => ({ default: m.LiveFlashJob })))
 
 const TABS = [
   { to: '/', icon: HomeIcon, key: 'nav.home' },
@@ -152,6 +158,7 @@ export default function App() {
             <motion.main key={loc.pathname} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.22 }} className="pb-32">
               <ErrorBoundary key={loc.pathname}>
+              <Suspense fallback={<ScreenLoading />}>
               <Routes location={loc}>
                 <Route path="/" element={<Home />} />
                 <Route path="/wallet" element={LIVE ? <LiveWallet /> : <Wallet />} />
@@ -200,6 +207,7 @@ export default function App() {
                 <Route path="/profile" element={<Profile />} />
                 <Route path="*" element={<Home />} />
               </Routes>
+              </Suspense>
               </ErrorBoundary>
             </motion.main>
           </AnimatePresence>
@@ -240,4 +248,9 @@ function TicketCheckPage() {
   const { me } = useLive()
   const ok = LIVE && staffCan(me?.profile.staff, 'tickets', 'edit')
   return <div className="pb-10"><Header back title="Ticket check" sub="Scan the passenger's live ticket QR" /><div className="px-5">{ok ? <TicketCheck /> : <p className="pt-10 text-center text-sm text-slate-400">This page is for drivers and the Luda team with ticket-check access.</p>}</div></div>
+}
+
+/** Shown for a moment while a screen's code downloads. */
+function ScreenLoading() {
+  return <div className="flex min-h-[50dvh] items-center justify-center" aria-label="Loading"><span className="size-8 animate-spin rounded-full border-2 border-mint-400/30 border-t-mint-400" /></div>
 }

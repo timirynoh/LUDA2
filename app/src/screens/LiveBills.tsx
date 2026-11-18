@@ -356,9 +356,16 @@ function RentSheet({ saved, feeFor, onClose, onDone }: { saved: SavedBill | null
   )
 }
 
+const CY_FMT = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Nicosia', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+/** North Cyprus offset from UTC (UTC+2 winter, UTC+3 summer), same as the server's cyOffsetMs. */
+export function cyOffsetMs(d: Date) {
+  const p = Object.fromEntries(CY_FMT.formatToParts(d).map((x) => [x.type, x.value]))
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(d.getTime() / 1000) * 1000
+}
+
 /** Same rule as the server (billEta): ~2 h inside 09:00–19:00 Cyprus time, otherwise 11:00 next morning. Display only. */
 export function etaText(now = new Date()) {
-  const H = 3 * 3600_000, local = new Date(now.getTime() + H), h = local.getUTCHours() + local.getUTCMinutes() / 60
+  const H = cyOffsetMs(now), local = new Date(now.getTime() + H), h = local.getUTCHours() + local.getUTCMinutes() / 60
   const at = h >= 9 && h < 19 ? new Date(now.getTime() + 2 * 3600_000) : new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + (h >= 19 ? 1 : 0), 11) - H)
   return etaLabel(at.toISOString(), now)
 }

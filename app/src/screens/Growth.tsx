@@ -28,7 +28,7 @@ function DemoInvite() {
   const { s, set, toast, reward } = useStore()
   const code = refCode(s)
   const [enter, setEnter] = useState('')
-  const msg = `Join me on Luda 🇳🇬🇬🇭🇿🇼: wallet, SafeSwap, houses, jobs & more for Africans in North Cyprus. Use my code ${code} and we both get ₺${REFERRAL.reward} 🎁`
+  const msg = `Join me on Luda 🇳🇬🇬🇭🇿🇼: wallet, bills, bus tickets, houses, jobs & more for Africans in North Cyprus. Use my code ${code} and we both get ₺${REFERRAL.reward} 🎁`
   const earned = paidCount(s) * REFERRAL.reward
   const thisMonth = s.referrals.filter((r) => r.stage === 'paid' && new Date(r.ts).getMonth() === new Date().getMonth()).length
   const share = () => {

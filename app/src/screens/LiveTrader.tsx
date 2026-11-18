@@ -1,5 +1,6 @@
 // Live trader profile (/u/:name): everything comes from the server — real completed orders, completion rate,
 // release/send speed and reviews. Nothing here is typed by the person themselves.
+import { ESCROW } from '../config'
 import { Ban, BadgeCheck, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -37,22 +38,22 @@ export function LiveTrader() {
         <div className="card flex items-center gap-4">
           <span className="grid size-16 shrink-0 place-items-center rounded-3xl bg-gradient-to-br from-violet-400/40 to-indigo-700/50 text-2xl font-extrabold">{t.name.slice(0, 1).toUpperCase()}</span>
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-lg font-bold">{t.name} {t.verified && <BadgeCheck size={18} className="text-mint-300" />}{t.exchanger && <ExchangerBadge />}</p>
+            <p className="flex items-center gap-1.5 text-lg font-bold">{t.name} {t.verified && <BadgeCheck size={18} className="text-mint-300" />}{ESCROW && t.exchanger && <ExchangerBadge />}</p>
             <p className="text-xs text-slate-400">{c ? `${c.flag} ${c.name} · ` : ''}{`On Luda since ${new Date(t.since).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}`}</p>
             <p className="text-xs text-slate-400">{t.verified ? 'ID verified' : 'ID not verified yet'}</p>
             {!t.me && <Presence at={t.lastSeen ?? null} />}
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-center">
+        {ESCROW && <div className="grid grid-cols-3 gap-2 text-center">
           <div className="card px-2 py-3"><p className="text-xl font-extrabold">{st.trades}</p><p className="text-[11px] text-slate-400">P2P trades</p></div>
           <div className="card px-2 py-3"><p className="text-xl font-extrabold">{st.rate == null ? '—' : `${st.rate}%`}</p><p className="text-[11px] text-slate-400">Completed</p></div>
           <div className="card px-2 py-3"><p className="text-xl font-extrabold">👍 {st.good ?? 0}</p><p className="text-[11px] text-slate-400">👎 {st.bad ?? 0}</p></div>
-        </div>
-        {(st.releaseMin != null || st.sendMin != null) && <div className="card text-sm">
+        </div>}
+        {ESCROW && (st.releaseMin != null || st.sendMin != null) && <div className="card text-sm">
           {st.releaseMin != null && <p>{`⏱ Usually releases in ~${Math.max(1, st.releaseMin)} min`}</p>}
           {st.sendMin != null && <p>{`⏱ Usually sends in ~${Math.max(1, st.sendMin)} min`}</p>}
         </div>}
-        {t.ads > 0 && <Link to="/exchange?tab=p2p" className="btn-primary py-3 text-sm">See their offers in P2P</Link>}
+        {ESCROW && t.ads > 0 && <Link to="/exchange?tab=p2p" className="btn-primary py-3 text-sm">See their offers in P2P</Link>}
         <section>
           <p className="label mb-2">Reviews</p>
           {t.reviews.length ? t.reviews.map((r, i) => (

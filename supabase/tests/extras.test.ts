@@ -21,7 +21,7 @@ const signup = async (u: string, name: string, extra: Record<string, unknown> = 
   await call('POST', 'pin', { pin: '4826' }, T[u])
   id[u] = (await q(`select user_id from profiles where username=$1`, [u]))[0].user_id
 }
-const today = () => new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10)
+const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Nicosia' }).format(new Date()) // Cyprus date
 
 before(async () => {
   const m = await makeDb(); q = m.q

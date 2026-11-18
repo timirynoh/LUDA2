@@ -47,7 +47,7 @@ export function Splash() {
 
 const SLIDES: { title: string; sub: string; art: ReactNode }[] = [
   {
-    title: 'Your money, sorted', sub: 'Naira and Lira in one wallet. Convert at the rate shown and swap cash safely with escrow.',
+    title: 'Your money, sorted', sub: 'Naira and Lira in one wallet. Convert at the rate shown and let the Luda team pay your bills.',
     art: (
       <div className="relative h-full w-full">
         <div className="absolute inset-x-6 top-6 rotate-[-6deg] rounded-3xl bg-gradient-to-br from-emerald-500 via-emerald-700 to-emerald-950 p-5 text-white shadow-2xl">
@@ -55,7 +55,7 @@ const SLIDES: { title: string; sub: string; art: ReactNode }[] = [
           <div className="mt-3 flex gap-2"><span className="chip bg-black/20">🇹🇷 ₺18,200</span><span className="chip bg-black/20">🇳🇬 ₦230k</span></div>
         </div>
         <div className="absolute right-4 bottom-10 rotate-[5deg] rounded-2xl border border-white/10 bg-ink-800 px-4 py-3 shadow-xl"><p className="text-xs text-slate-400">₦1,000 =</p><p className="text-lg font-bold text-mint-300">₺28.72</p></div>
-        <div className="absolute bottom-4 left-6 rounded-2xl bg-fuchsia-500/90 px-4 py-2 text-sm font-semibold text-white shadow-xl">🔒 SafeSwap escrow</div>
+        <div className="absolute bottom-4 left-6 rounded-2xl bg-fuchsia-500/90 px-4 py-2 text-sm font-semibold text-white shadow-xl">⚡ Bills paid for you</div>
       </div>
     ),
   },
@@ -63,7 +63,7 @@ const SLIDES: { title: string; sub: string; art: ReactNode }[] = [
     title: 'Life in North Cyprus, easier', sub: 'Verified houses, jobs & quick gigs, group chats, events, and fixers on demand.',
     art: (
       <div className="relative h-full w-full">
-        {[['🏠', 'Room in Gönyeli', '£200/mo', 'left-4 top-6 rotate-[-4deg]'], ['💼', 'Barista · Dereboyu', '₺150/hr', 'right-3 top-24 rotate-[4deg]'], ['⚡', 'Plumber on the way', 'escrow ✓', 'left-8 top-44 rotate-[-2deg]'], ['💬', 'Naija in North Cyprus', '312 online', 'right-6 bottom-2 rotate-[3deg]']].map(([e, a, b, pos]) => (
+        {[['🏠', 'Room in Gönyeli', '£200/mo', 'left-4 top-6 rotate-[-4deg]'], ['💼', 'Barista · Dereboyu', '₺150/hr', 'right-3 top-24 rotate-[4deg]'], ['⚡', 'Plumber on the way', 'Flash help', 'left-8 top-44 rotate-[-2deg]'], ['💬', 'Naija in North Cyprus', '312 online', 'right-6 bottom-2 rotate-[3deg]']].map(([e, a, b, pos]) => (
           <div key={a} className={`absolute ${pos} flex items-center gap-3 rounded-2xl border border-white/10 bg-ink-800/95 px-4 py-3 shadow-xl`}>
             <span className="text-2xl">{e}</span><span><span className="block text-sm font-semibold">{a}</span><span className="text-xs text-mint-300">{b}</span></span>
           </div>

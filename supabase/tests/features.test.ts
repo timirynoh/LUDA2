@@ -84,9 +84,12 @@ test('assisted bill pay: held from the wallet, team pays with a receipt, or refu
 
 test('bill ETA: ~2h in working hours, next morning 11:00 at night (Cyprus time)', async () => {
   const { billEta } = await import('../functions/_shared/handlers.ts')
-  assert.equal(billEta(new Date('2026-11-03T08:00:00Z')).toISOString(), '2026-11-03T10:00:00.000Z') // 11:00 local → 13:00 local
-  assert.equal(billEta(new Date('2026-11-03T19:30:00Z')).toISOString(), '2026-11-04T08:00:00.000Z') // 22:30 local → 11:00 next day
-  assert.equal(billEta(new Date('2026-11-03T03:00:00Z')).toISOString(), '2026-11-03T08:00:00.000Z') // 06:00 local → 11:00 same day
+  // Winter (UTC+2)
+  assert.equal(billEta(new Date('2026-11-03T08:00:00Z')).toISOString(), '2026-11-03T10:00:00.000Z') // 10:00 local → 12:00 local
+  assert.equal(billEta(new Date('2026-11-03T19:30:00Z')).toISOString(), '2026-11-04T09:00:00.000Z') // 21:30 local → 11:00 next day
+  assert.equal(billEta(new Date('2026-11-03T03:00:00Z')).toISOString(), '2026-11-03T09:00:00.000Z') // 05:00 local → 11:00 same day
+  // Summer (UTC+3)
+  assert.equal(billEta(new Date('2026-07-03T19:30:00Z')).toISOString(), '2026-07-04T08:00:00.000Z') // 22:30 local → 11:00 next day
 })
 
 test('marketplace: buyer pays into escrow, seller paid on receipt (minus 2%), cancel refunds; scams blocked', async () => {

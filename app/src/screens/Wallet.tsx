@@ -90,7 +90,7 @@ export default function Wallet() {
 
   return (
     <div>
-      <Header title={t('wallet.title')} sub="Multi-currency · escrow-protected" />
+      <Header title={t('wallet.title')} sub="Naira & Lira" />
       <div className="flex snap-x gap-3 overflow-x-auto px-5 pb-2">
         {currencies.map((c, i) => (
           <motion.button key={c} onClick={() => setCur(c)} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}

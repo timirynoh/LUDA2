@@ -8,7 +8,7 @@ import { api } from '../lib/live'
 import { amt, CAT_LABEL, monthName, rowLabel, saveStatementPdf, type Statement } from '../lib/statement'
 import { useStore } from '../lib/store'
 
-const thisMonth = () => new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 7)
+const thisMonth = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Nicosia', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7) // Cyprus month (YYYY-MM)
 
 export default function LiveStatements() {
   const { toast } = useStore()

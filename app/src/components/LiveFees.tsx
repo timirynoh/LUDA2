@@ -1,5 +1,6 @@
 // "Fees" page: every number comes from the server (GET config), so the app can never show a fee the server doesn't charge.
 import { InfoTip } from './LiveGuides'
+import { ESCROW } from '../config'
 import { useEffect, useState } from 'react'
 import { Sheet } from './ui'
 import { liveConfig, money, type LiveConfig } from '../lib/live'
@@ -17,9 +18,13 @@ export function FeeList() {
     ['💱', 'Convert Naira ⇄ Lira', `${pct(f.fxMargin)} built into the rate. Banks and BDCs usually take 3–5%`],
     ['🏦', 'Withdraw to your bank', `${money(f.withdraw, 'TRY')} flat. Taken from your Lira wallet, or the same value in Naira if you have no lira`],
     ['🧾', 'Bill payment', f.billMinor !== undefined ? `${money(f.billMinor, 'TRY')} up to ${money(f.billStepMinor ?? 0, 'TRY')}, ${money(f.billHighMinor ?? 0, 'TRY')} above` : '…'],
-    ['🛍️', 'Market sale', `${pct(f.marketPct)} from the seller. Buyers pay no fee`],
-    ['⚡', 'Flash help', `${pct(f.flashPct)} from the helper. The poster pays no fee`],
-    ['🤝', 'P2P exchange', f.p2pPct !== undefined ? `${pct(f.p2pPct)} of the trade in lira (min ${money(f.p2pMinMinor ?? 0, 'TRY')}, max ${money(f.p2pMaxMinor ?? 0, 'TRY')}), from whoever receives the Naira` : '…'],
+    ...(ESCROW ? [
+      ['🛍️', 'Market sale', `${pct(f.marketPct)} from the seller. Buyers pay no fee`],
+      ['⚡', 'Flash help', `${pct(f.flashPct)} from the helper. The poster pays no fee`],
+      ['🤝', 'P2P exchange', f.p2pPct !== undefined ? `${pct(f.p2pPct)} of the trade in lira (min ${money(f.p2pMinMinor ?? 0, 'TRY')}, max ${money(f.p2pMaxMinor ?? 0, 'TRY')}), from whoever receives the Naira` : '…'],
+    ] as [string, string, string][] : [
+      ['🛍️', 'Market and Flash', 'Free. Luda takes no payment or fee: you pay the seller or helper directly'],
+    ] as [string, string, string][]),
     ['🚌', 'Bus tickets', 'No booking fee. Paying from Naira uses the conversion rate above'],
   ] : []
   return (

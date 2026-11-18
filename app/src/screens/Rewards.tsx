@@ -13,7 +13,7 @@ import { useStore } from '../lib/store'
 const REDEEM = [
   { pts: 500, label: '₺5 wallet credit', tl: 5 },
   { pts: 1500, label: '₺20 off your next bill', tl: 20 },
-  { pts: 3000, label: 'Zero-fee P2P swap', tl: 40 },
+  { pts: 3000, label: '₺40 wallet credit', tl: 40 },
 ]
 
 export default function Rewards() {
@@ -155,7 +155,7 @@ function InviteCard() {
   const base = (s.account?.username ?? s.name ?? 'friend').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'FRIEND'
   const num = String((base.split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % 90) + 10)
   const code = s.referral || `LUDA-${base}${num}`
-  const msg = `Join me on Luda, the app for Africans in North Cyprus: wallet, SafeSwap, houses, jobs & more. Use my code ${code} for 100 bonus XP 🎁`
+  const msg = `Join me on Luda, the app for Africans in North Cyprus: wallet, bills, bus tickets, houses, jobs & more. Use my code ${code} for 100 bonus XP 🎁`
   const copy = async () => {
     if (!s.referral) set((p) => ({ ...p, referral: code }))
     try { await navigator.clipboard.writeText(msg); toast({ title: 'Invite copied', emoji: '📋' }) } catch { toast({ title: `Your code: ${code}`, emoji: '🎁' }) }

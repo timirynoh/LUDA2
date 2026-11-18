@@ -1,9 +1,10 @@
+import { ESCROW } from '../config'
 import { Flame, MapPin, MessageCircle, Wrench, Send, PiggyBank, ShoppingBag, Tag, Newspaper, Trophy, UserPlus, Megaphone, Luggage, ArrowDownLeft, ArrowUpRight, Briefcase, Building2, Bus, Gift, GraduationCap, Handshake, House, Repeat, ShieldCheck, Users, UtensilsCrossed, Zap, type LucideIcon } from 'lucide-react'
 
 export interface Action { id: string; to: string; icon: LucideIcon; key: string; c: string; admin?: boolean }
 
 /** Every shortcut a user can pin to their home screen. */
-export const ACTIONS: Action[] = [
+export const ACTIONS: Action[] = ([
   { id: 'deposit', to: '/wallet?a=deposit', icon: ArrowDownLeft, key: 'act.deposit', c: 'from-mint-400 to-emerald-600' },
   { id: 'withdraw', to: '/wallet?a=withdraw', icon: ArrowUpRight, key: 'act.withdraw', c: 'from-sky-400 to-indigo-500' },
   { id: 'convert', to: '/exchange', icon: Repeat, key: 'act.convert', c: 'from-gold-300 to-amber-500' },
@@ -31,5 +32,5 @@ export const ACTIONS: Action[] = [
   { id: 'residency', to: '/residency', icon: Building2, key: 'act.residency', c: 'from-teal-300 to-cyan-600' },
   { id: 'rewards', to: '/rewards', icon: Gift, key: 'act.rewards', c: 'from-violet-400 to-indigo-600' },
   { id: 'admin', to: '/admin', icon: ShieldCheck, key: 'act.admin', c: 'from-slate-500 to-slate-700', admin: true },
-]
+] as Action[]).filter((a) => ESCROW || a.id !== 'p2p') // P2P is paused with the other escrow services
 export const MAX_SHORTCUTS = 8

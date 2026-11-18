@@ -1,4 +1,5 @@
 import { Search as SearchIcon } from 'lucide-react'
+import { ESCROW } from '../config'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Header } from '../components/ui'
@@ -18,8 +19,8 @@ const EXTRA = [
   { label: 'Profile & settings', to: '/profile', emoji: '👤', kw: 'language theme city account' },
   { label: 'Residency portal', to: '/residency', emoji: '🪪', kw: 'ikamet permit visa immigration' },
   { label: 'Appeals & support cases', to: '/disputes', emoji: '🛡️', kw: 'dispute appeal case refund complaint' },
-  { label: 'P2P exchange / my ad', to: LIVE ? '/exchange?tab=p2p' : '/chats?tab=exchange', emoji: '🏪', kw: 'exchanger merchant ad exchange p2p naira lira dollar' },
-  ...(LIVE ? [{ label: 'Terms & Conditions', to: '/terms', emoji: '📄', kw: 'terms conditions rules privacy policy' }, { label: 'How to record proof', to: '/guide/p2p-proof', emoji: '📹', kw: 'proof video appeal record screen statement' }]
+  ...(ESCROW ? [{ label: 'P2P exchange / my ad', to: LIVE ? '/exchange?tab=p2p' : '/chats?tab=exchange', emoji: '🏪', kw: 'exchanger merchant ad exchange p2p naira lira dollar' }] : []),
+  ...(LIVE ? [{ label: 'Terms & Conditions', to: '/terms', emoji: '📄', kw: 'terms conditions rules privacy policy' }, ...(ESCROW ? [{ label: 'How to record proof', to: '/guide/p2p-proof', emoji: '📹', kw: 'proof video appeal record screen statement' }] : [])]
     : [{ label: 'Saved cards', to: '/wallet', emoji: '💳', kw: 'card bank visa mastercard' }]),
   { label: 'Notification settings', to: '/security', emoji: '🔔', kw: 'notification push alert' },
   { label: 'Daily spin', to: '/', emoji: '🎡', kw: 'spin wheel check-in daily reward' },

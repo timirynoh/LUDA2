@@ -90,7 +90,7 @@ test('push: money received reaches the other person; To do items buzz once; cate
   // A fee instalment due today shows up in To do → one notification, not repeated
   world.pushes.length = 0
   await q(`delete from rate_hits`)
-  const today = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10)
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Nicosia' }).format(new Date())
   assert.equal((await call('POST', 'fee-plan-save', { item: { title: 'Spring fees', due: today, amountMinor: 150000, currency: 'USD' } }, T.kemal)).status, 200)
   const fee = (await Promise.all(sentTo(k.sub.endpoint).map((p) => k.read(p.body)))).filter((x) => /Spring fees/.test(x.title))
   assert.equal(fee.length, 1)

@@ -4,6 +4,13 @@ import { Component, type ReactNode } from 'react'
 export class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
   static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error) {
+    // Screens load in pieces (v1.33.0). After an update the old pieces are gone, so the first open of a screen can fail:
+    // reload once into the new version instead of showing an error.
+    if (/dynamically imported module|Importing a module script failed|Loading chunk|error loading dynamically/i.test(String(error?.message))) {
+      try { if (sessionStorage.getItem('luda.chunkReload') !== String(__VERSION__)) { sessionStorage.setItem('luda.chunkReload', String(__VERSION__)); location.reload() } } catch { /* storage blocked: show the screen below */ }
+    }
+  }
   render() {
     if (!this.state.error) return this.props.children
     return (

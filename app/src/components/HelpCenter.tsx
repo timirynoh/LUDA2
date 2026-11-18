@@ -140,7 +140,7 @@ export function HelpCenter() {
         <div className="relative mt-4">
           <Search size={18} className="absolute start-4 top-1/2 -translate-y-1/2 text-slate-500" />
           <input className="w-full rounded-2xl bg-white py-3.5 ps-11 pe-10 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-4 focus:ring-white/30"
-            placeholder="Search: top-up, withdraw, P2P, ID…" value={q} onChange={(e) => setQ(e.target.value)} />
+            placeholder="Search: top-up, withdraw, bills, ID…" value={q} onChange={(e) => setQ(e.target.value)} />
           {q && <button className="absolute end-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-500" onClick={() => setQ('')} aria-label="Clear"><X size={16} /></button>}
         </div>
       </div>

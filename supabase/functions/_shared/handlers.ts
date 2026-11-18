@@ -37,6 +37,13 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv, Topu
   REWARDS_MONTHLY_CAP?: string // ₺ of cash rewards per month for everyone (default 5,000); after that prizes become points
   FX_TRY_DAY_CAP?: string // ₺ of lira one person can buy with Instant per 24 h (default 5,000)
   ADMIN_EMAILS?: string // comma-separated Luda account emails that can open the owner's admin page
+  ESCROW_ENABLED?: string // 'true' turns escrow services back on (P2P, Exchanger bond, Market buy, Flash pay through Luda). Off since v1.33.0.
+}
+
+/** Escrow services are paused until the owner turns them back on (v1.33.0). Open items can still be finished or refunded. */
+export const escrowOn = (env: Pick<Env, 'ESCROW_ENABLED'>) => env.ESCROW_ENABLED === 'true'
+function needEscrow(env: Env) {
+  if (!escrowOn(env)) throw new Fail('This service is paused for now. It will be back soon.', 403)
 }
 export interface Deps { db: Db; fetch?: Fetch; now?: () => Date }
 
@@ -205,7 +212,7 @@ async function kycSync(p: Profile, env: Env, d: Deps): Promise<{ status: Profile
     }
     throw e
   }
-  await notifyUser(env, d, p.user_id, { emoji: '🪪', title: 'Your ID is verified', body: 'Withdrawals, P2P, Market selling and Flash jobs are now unlocked', url: '/wallet', tag: 'kyc-verified', cat: 'security' })
+  await notifyUser(env, d, p.user_id, { emoji: '🪪', title: 'Your ID is verified', body: 'Withdrawals, sending money, Market selling and Flash jobs are now unlocked', url: '/wallet', tag: 'kyc-verified', cat: 'security' })
   await mailUser(env, d, p.user_id, `kyc:${p.user_id}`, () => MAILS.kyc({ name: legal }))
   return { status: 'verified' }
 }
@@ -296,7 +303,7 @@ const MANUAL_DOCS =['Passport', 'National ID', 'Residence permit', "Driver's lic
 /** Today's 4-digit code for the manual ID selfie (same all day for this person, different for everyone else). */
 async function manualCode(env: Env, userId: string) {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.SERVICE_KEY || env.APP_URL), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const day = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10)
+  const day = cyprusDay()
   const b = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`kyc-manual:${userId}:${day}`)))
   return String((((b[0] << 16) | (b[1] << 8) | b[2]) % 9000) + 1000)
 }
@@ -369,9 +376,17 @@ async function checkTopups(env: Env, d: Deps, userId?: string) {
   }
 }
 
-/** When the team promises to have a bill paid: ~2 hours inside 09:00–21:00 Cyprus time, else 11:00 the next morning. */
+const CY_FMT = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Nicosia', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+/** North Cyprus clock offset from UTC at that moment: UTC+2 in winter, UTC+3 in summer (EET; the TRNC left
+ *  permanent UTC+3 in 2017). Was hardcoded +3, which put 23:00–00:00 in winter on the next day. */
+export function cyOffsetMs(d: Date) {
+  const p = Object.fromEntries(CY_FMT.formatToParts(d).map((x) => [x.type, x.value]))
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(d.getTime() / 1000) * 1000
+}
+
+/** When the team promises to have a bill paid: ~2 hours inside 09:00–19:00 Cyprus time, else 11:00 the next morning. */
 export function billEta(now: Date) {
-  const H = 3 * 3600_000 // TRNC = UTC+3
+  const H = cyOffsetMs(now)
   const local = new Date(now.getTime() + H), h = local.getUTCHours() + local.getUTCMinutes() / 60
   if (h >= 9 && h < 19) return new Date(now.getTime() + 2 * 3600_000)
   const next = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + (h >= 19 ? 1 : 0), 11) - H)
@@ -749,7 +764,7 @@ const convertErr = (e: unknown): never => {
   if (e instanceof MoneyError && e.message === 'too_small') throw new Fail('Amount too small to convert')
   return moneyMsg(e)
 }
-const cyprusDay = (d = new Date()) => new Date(d.getTime() + 3 * 3600e3).toISOString().slice(0, 10)
+const cyprusDay = (d = new Date()) => new Date(d.getTime() + cyOffsetMs(d)).toISOString().slice(0, 10)
 type Activity = Record<string, any>
 function questsDone(a: Activity) {
   return Object.keys(QUEST_XP).filter((q) => ({ phone: a.phone, verify: a.verified, deposit: a.deposits > 0, bill: a.bills > 0, fx: a.converts > 0, p2p: a.p2p > 0, chat: a.groupsJoined > 0, flash: a.flashPosted > 0, ticket: a.tickets > 0 } as Record<string, boolean>)[q])
@@ -866,7 +881,7 @@ const BANNER_THEMES = ['mint', 'sunset', 'ocean', 'grape', 'gold', 'night']
 
 const routes: Record<string, Route> = {
   /* ---- public ---- */
-  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env), fxMargin: margin(env), ...featureFees(env) }, push: (await vapid(d).catch(() => null))?.publicKey ?? null }),
+  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env), fxMargin: margin(env), ...featureFees(env) }, escrow: escrowOn(env), push: (await vapid(d).catch(() => null))?.publicKey ?? null }),
 
   'GET username': async ({ d, url }) => {
     const u = (url.searchParams.get('u') ?? '').toLowerCase()
@@ -1693,8 +1708,13 @@ const routes: Record<string, Route> = {
     const id = crypto.randomUUID()
     const photos = await storeFiles(env, d, p.user_id, `market-${id}`, body.photos)
     if (photos.some((x) => x.endsWith('.pdf'))) throw new Fail('Photos only (JPG, PNG or WEBP)')
+    // While escrow is paused the Market is listings only: buyers contact the seller (WhatsApp number, optional).
+    const contact = String(body.contact ?? '').replace(/[^\d+]/g, '').slice(0, 16)
+    if (contact && !/^\+?\d{8,15}$/.test(contact)) throw new Fail('Enter a WhatsApp number with the country code, e.g. +90 533 123 4567')
+    if (!escrowOn(env) && !contact) throw new Fail('Add your WhatsApp number so buyers can contact you')
     const row = await d.db.fn<Record<string, unknown>>('luda_market_create', { p_id: id, p_seller: p.user_id, p_title: title, p_description: description, p_category: category, p_city: city, p_price: price, p_photos: photos }).catch(featureErr)
-    return { item: row }
+    if (contact) await d.db.fn('luda_market_contact', { p_listing: id, p_seller: p.user_id, p_contact: contact })
+    return { item: { ...row, contact: contact || null } }
   },
 
   'POST market-remove': async ({ req, env, d, body }) => {
@@ -1704,6 +1724,7 @@ const routes: Record<string, Route> = {
   },
 
   'POST market-buy': async ({ req, env, d, body }) => {
+    needEscrow(env)
     const p = await me(req, env, d)
     const id = uuid(body.id)
     await verifyAuth(p, body, env, d)
@@ -1777,7 +1798,7 @@ const routes: Record<string, Route> = {
     const p = await me(req, env, d)
     const title = clean(body.title, 70, 'what you need help with', 5), details = clean(body.details ?? '', 600, 'details', 0)
     const city = cleanText(body.city, 30), budget = lira(body.budgetMinor ?? body.rewardMinor, 20, 20_000, 'Your budget')
-    const pay = body.pay === 'cash' ? 'cash' : 'luda'
+    const pay = body.pay === 'cash' || !escrowOn(env) ? 'cash' : 'luda' // paying through Luda is paused: every request is cash
     const video = flashVideo(p, body.video)
     await limit(d, `flash:${p.user_id}`, 5, 86400, 'You can post up to 5 Flash requests a day')
     const photos = await storeFiles(env, d, p.user_id, 'flash', body.files)
@@ -1836,6 +1857,7 @@ const routes: Record<string, Route> = {
     if (!j || !j.mine || j.status !== 'open') throw new Fail('This request is no longer open', 409)
     const q = (j.threads ?? []).flatMap((t: Record<string, any>) => t.messages.map((m: Record<string, any>) => ({ ...m, helper: t.helper_id, helperName: t.helper_name }))).find((m: Record<string, any>) => m.id === msgId && m.kind === 'quote' && m.quote_status === 'pending')
     if (!q) throw new Fail('This price is no longer available', 409)
+    if (j.pay === 'luda') needEscrow(env)
     if (j.pay === 'luda') {
       const bal = Number((await d.db.balances(p.user_id)).TRY ?? 0)
       if (bal < Number(q.amount_minor)) throw new Fail(`Top up ${tl(Number(q.amount_minor) - bal)} to accept this price. You have ${tl(bal)} in your Lira wallet.`, 402)
@@ -2063,6 +2085,7 @@ const routes: Record<string, Route> = {
     return { ads: ads.map((a) => ({ ...a, nearby: near(a) })), mine, asset, market: mid, rules: { ...(await p2pLimits(p.user_id, d)), feePct: featureFees(env).p2pPct, feeMinTry: featureFees(env).p2pMinMinor, feeMaxTry: featureFees(env).p2pMaxMinor, assetPerTry: asset === 'TRY' ? 1 : await perTry(asset, env, d.fetch).catch(() => null) }, canTrade: !p2pBlock(p), why: p2pBlock(p) }
   },
   'POST p2p-ad-save': async ({ req, env, d, body }) => {
+    needEscrow(env)
     const p = await me(req, env, d)
     const block = p2pBlock(p); if (block) throw new Fail(block, 403)
     const side = body.side === 'buy' ? 'buy' : 'sell'
@@ -2095,6 +2118,7 @@ const routes: Record<string, Route> = {
 
   /* ---------------- P2P: orders ---------------- */
   'POST p2p-order': async ({ req, env, d, body }) => {
+    needEscrow(env)
     const p = await me(req, env, d)
     const block = p2pBlock(p); if (block) throw new Fail(block, 403)
     const method = body.method === 'cash' ? 'cash' : 'bank'
@@ -2517,7 +2541,7 @@ const routes: Record<string, Route> = {
   'GET statement': async ({ req, env, d, url }) => {
     const p = await me(req, env, d)
     const m = String(url.searchParams.get('month') ?? '')
-    const month = /^20\d\d-(0[1-9]|1[0-2])$/.test(m) ? `${m}-01` : new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 8) + '01'
+    const month = /^20\d\d-(0[1-9]|1[0-2])$/.test(m) ? `${m}-01` : cyprusDay().slice(0, 8) + '01'
     const st = await d.db.fn<Record<string, unknown>>('luda_statement', { p_user: p.user_id, p_month: month })
     return { ...st, holder: { name: p.kyc_name || p.full_name, username: p.username, email: p.email } }
   },
@@ -2549,6 +2573,7 @@ const routes: Record<string, Route> = {
     return { me: await d.db.fn('luda_exchanger', { p_user: p.user_id }), rules: { ...EXCHANGER, bond: exchangerBond(env), member: { maxAds: P2P_RULES.maxAds, maxTry: P2P_RULES.maxTry } }, stats: { trades, rate }, checks, eligible: checks.kyc && checks.trades && checks.rate }
   },
   'POST exchanger-apply': async ({ req, env, d, body }) => {
+    needEscrow(env)
     const p = await me(req, env, d)
     needKyc(p, 'become a Verified Exchanger'); noHold(p, d)
     const stats = await d.db.fn<{ trades?: number; rate?: number | null }>('luda_p2p_stats', { p_user: p.user_id }).catch(() => ({} as { trades?: number; rate?: number | null }))
@@ -2630,7 +2655,13 @@ const routes: Record<string, Route> = {
   },
 
   /* ---------------- Help Center (v1.19.0): articles on the server, editable in Luda HQ ---------------- */
-  'GET help': async ({ req, d }) => { await limit(d, `help-ip:${clientIp(req)}`, 300, 600); return { topics: HELP_TOPICS, articles: await d.db.fn('luda_help', {}) } },
+  'GET help': async ({ req, env, d }) => {
+    await limit(d, `help-ip:${clientIp(req)}`, 300, 600)
+    const articles = await d.db.fn<{ topic?: string }[]>('luda_help', {})
+    // P2P is paused with the other escrow services: its topic and articles are hidden (kept on the server).
+    if (escrowOn(env)) return { topics: HELP_TOPICS, articles }
+    return { topics: HELP_TOPICS.filter((t) => t.id !== 'p2p'), articles: articles.filter((a) => a.topic !== 'p2p') }
+  },
   'POST help-vote': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
     await limit(d, `helpvote:${p.user_id}`, 100, 86400)
@@ -2932,7 +2963,8 @@ const routes: Record<string, Route> = {
     const q = cleanText(url.searchParams.get('q'), 40).trim()
     if (q.length < 2) return { posts: [], flash: [], market: [], groups: [], people: [] }
     await limit(d, `search:${p.user_id}`, 120, 600, 'Slow down a little')
-    return d.db.fn('luda_search', { p_q: q })
+    const r = await d.db.fn<Record<string, unknown>>('luda_search', { p_q: q })
+    return escrowOn(env) ? r : { ...r, people: [] } // P2P traders are hidden while escrow is paused
   },
   'GET trader': async ({ req, env, d, url }) => {
     const p = await me(req, env, d)

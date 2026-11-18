@@ -67,7 +67,7 @@ export default function Onboarding() {
     <div key="4" className="flex flex-col gap-8">
       <div className="pt-8">
         <h2 className="text-3xl font-extrabold">{codePin ? 'One more: your sign-in code' : hasServerPin ? 'Enter your Luda PIN' : t('onb.pin')}</h2>
-        <p className="mt-2 text-sm text-slate-400">{codePin ? '🔐 6 digits to open Luda. Your 4-digit PIN is only for payments.' : LIVE ? (hasServerPin ? '🔐 The PIN you already use for Luda payments.' : '🔐 You\'ll use it to approve every payment. Avoid 1234 or your birthday.') : '🔐 Hashed on-device. Needed for withdrawals and releasing escrow.'}</p>
+        <p className="mt-2 text-sm text-slate-400">{codePin ? '🔐 6 digits to open Luda. Your 4-digit PIN is only for payments.' : LIVE ? (hasServerPin ? '🔐 The PIN you already use for Luda payments.' : '🔐 You\'ll use it to approve every payment. Avoid 1234 or your birthday.') : '🔐 Hashed on-device. Needed for withdrawals and payments.'}</p>
       </div>
       {codePin ? <PasscodeSetup pin={codePin} onDone={complete} /> : <PinPad error={pinErr} onDone={(p) => { setPinErr(''); return finish(p) }} />}
     </div>,

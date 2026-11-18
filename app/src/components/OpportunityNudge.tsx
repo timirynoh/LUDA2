@@ -1,6 +1,7 @@
 // Live: a gentle reminder for people who haven't verified their ID yet: "there are paid jobs / offers waiting for you".
 // Owner's rule 8 (no nagging): at most once per visit, never on the first visit (the tour shows then), and
 // "Don't remind me" turns it off for good.
+import { ESCROW } from '../config'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ShieldCheck, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -25,7 +26,7 @@ export function OpportunityNudge() {
       api<{ open: unknown[] }>('GET', 'flash').then((r) => r.open.length).catch(() => 0),
       api<{ items: unknown[] }>('GET', 'board?kind=job').then((r) => r.items.length).catch(() => 0),
       api<{ items: unknown[] }>('GET', 'board?kind=promo').then((r) => r.items.length).catch(() => 0),
-      api<{ ads: unknown[] }>('GET', 'p2p?want=buy').then((r) => r.ads.length).catch(() => 0),
+      ESCROW ? api<{ ads: unknown[] }>('GET', 'p2p?want=buy').then((r) => r.ads.length).catch(() => 0) : Promise.resolve(0),
     ]).then(([jobs, posts, deals, p2p]) => {
       if (!alive || jobs + posts + deals + p2p === 0) return
       setCounts({ jobs, posts, deals, p2p })
@@ -49,7 +50,7 @@ export function OpportunityNudge() {
           <button onClick={() => close(false)} aria-label="Close" className="absolute end-3 top-3 grid size-8 place-items-center rounded-full bg-fg/[0.06]"><X size={15} /></button>
           <p className="flex items-center gap-2 pe-8 font-bold"><ShieldCheck size={18} className="text-mint-300" /> Opportunities are waiting for you</p>
           <ul className="mt-2 flex flex-col gap-1 text-sm text-slate-300">{lines.map((l) => <li key={l}>{l}</li>)}</ul>
-          <p className="mt-2 text-xs text-slate-400">Verify your ID once (about 2 minutes) to take jobs, trade P2P and get paid.</p>
+          <p className="mt-2 text-xs text-slate-400">Verify your ID once (about 2 minutes) to sell, take Flash jobs and withdraw.</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button className="btn-ghost py-2.5 text-xs" onClick={() => close(true)}>Don't remind me</button>
             <Link to="/wallet" onClick={() => close(false)} className="btn-primary py-2.5 text-xs">Verify now</Link>

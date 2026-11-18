@@ -65,8 +65,8 @@ export const MAILS = {
     note: "Didn't ask for this? Freeze your wallet in Security right away and contact support@useluda.com.",
   }),
   kyc: (v: { name: string }): Mail => ({
-    subject: 'Your ID is verified ✅', preheader: 'Withdrawals, P2P, Market selling and Flash jobs are now unlocked.', icon: '🪪',
-    title: `You’re verified, ${first(v.name)}`, intro: 'Your ID check is complete. You can now withdraw to your bank, trade P2P, sell on the Market and take paid Flash jobs.',
+    subject: 'Your ID is verified ✅', preheader: 'Withdrawals, sending money, Market selling and Flash jobs are now unlocked.', icon: '🪪',
+    title: `You’re verified, ${first(v.name)}`, intro: 'Your ID check is complete. You can now withdraw to your bank, send money, sell on the Market and help on Flash.',
     button: ['Open my wallet', '/wallet'],
     note: 'One account per person: your ID is now linked to this account only.',
   }),
