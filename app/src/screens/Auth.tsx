@@ -45,9 +45,11 @@ export function Splash() {
 
 /* ------------------------------ Landing ------------------------------ */
 
-const SLIDES: { title: string; sub: string; art: ReactNode }[] = [
+const SLIDES: { title: string; sub: string; art: ReactNode; hidden?: boolean }[] = ([
   {
     // Owner, 2026-11-19 (v1.33.2): the first slide shows bills being paid for you, not a wallet or balance.
+    // Hidden for now (owner, v1.33.3); remove `hidden` to show it again.
+    hidden: true,
     title: 'Bills, sorted', sub: 'Electricity, water, internet, phone and rent. The Luda team pays them on the official sites and sends you the receipt.',
     art: (
       <div className="relative h-full w-full">
@@ -90,7 +92,7 @@ const SLIDES: { title: string; sub: string; art: ReactNode }[] = [
       </div>
     ),
   },
-]
+] as { title: string; sub: string; art: ReactNode; hidden?: boolean }[]).filter((x) => !x.hidden)
 
 export function Landing({ onSignUp, onSignIn }: { onSignUp: () => void; onSignIn: () => void }) {
   const { s, set } = useStore()
