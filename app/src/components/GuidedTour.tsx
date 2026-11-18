@@ -8,9 +8,9 @@ import { useStore } from '../lib/store'
 
 interface Step { target: string; title: string; text: string; emoji: string }
 const STEPS: Step[] = [
-  { target: '[data-tour="balance"]', emoji: '💰', title: 'Your money', text: 'Your Naira and Lira balances. Tap Wallet to top up, withdraw, convert or send to a friend.' },
+  // Owner, 2026-11-18 (v1.33.1): no separate 'top up' step; topping up is shown only as the way to pay bills.
   { target: '[data-tour="actions"]', emoji: '⚡', title: 'Shortcuts', text: 'Your favourite actions. Tap Edit to choose which ones show here.' },
-  { target: '[data-tour="nav/wallet"]', emoji: '👛', title: 'Wallet', text: 'Every top-up, payment and receipt. Protected by your PIN or fingerprint.' },
+  { target: '[data-tour="nav/wallet"]', emoji: '🧾', title: 'Pay your bills', text: 'Top up your wallet here, then pay electricity, water, internet, phone or rent. The Luda team pays them for you and adds the receipt.' },
   { target: '[data-tour="nav/exchange"]', emoji: '💱', title: 'Exchange', text: 'Change Naira to Lira (and back) at a clear rate, shown before you confirm.' },
   { target: '[data-tour="nav/chats"]', emoji: '💬', title: 'Chats', text: 'Join groups for your country, university, church or mosque. Verified members can start their own.' },
   { target: '[data-tour="nav/more"]', emoji: '🧭', title: 'Everything else', text: 'Bus tickets, bills, housing, jobs, events, news, savings, market and residency help live here.' },
