@@ -3634,5 +3634,17 @@
   "Add your WhatsApp number so buyers can contact you": "Alıcıların sana ulaşabilmesi için WhatsApp numaranı ekle",
   "Enter a WhatsApp number with the country code, e.g. +90 533 123 4567": "Ülke koduyla bir WhatsApp numarası gir, ör. +90 533 123 4567",
   "Pay your bills": "Faturalarını öde",
-  "Top up your wallet here, then pay electricity, water, internet, phone or rent. The Luda team pays them for you and adds the receipt.": "Cüzdanına buradan para yükle, sonra elektrik, su, internet, telefon veya kira öde. Luda ekibi senin için öder ve makbuzu ekler."
+  "Top up your wallet here, then pay electricity, water, internet, phone or rent. The Luda team pays them for you and adds the receipt.": "Cüzdanına buradan para yükle, sonra elektrik, su, internet, telefon veya kira öde. Luda ekibi senin için öder ve makbuzu ekler.",
+  "Bills, sorted": "Faturalar, halledildi",
+  "Electricity, water, internet, phone and rent. The Luda team pays them on the official sites and sends you the receipt.": "Elektrik, su, internet, telefon ve kira. Luda ekibi resmi sitelerden öder ve makbuzu sana gönderir.",
+  "KIB-TEK electricity": "KIB-TEK elektrik",
+  "Meter 2041 · November": "Sayaç 2041 · Kasım",
+  "✓ Paid": "✓ Ödendi",
+  "Water bill": "Su faturası",
+  "Girne municipality": "Girne Belediyesi",
+  "📶 Internet · 🏠 Rent": "📶 İnternet · 🏠 Kira",
+  "Receipt added 🧾": "Makbuz eklendi 🧾",
+  "Internet and rent too": "İnternet ve kira da",
+  "The Luda team pays on the official sites": "Luda ekibi resmi sitelerden öder",
+  "A receipt for every bill": "Her fatura için bir makbuz"
 }

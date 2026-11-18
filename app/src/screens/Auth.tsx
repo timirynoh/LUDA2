@@ -47,14 +47,21 @@ export function Splash() {
 
 const SLIDES: { title: string; sub: string; art: ReactNode }[] = [
   {
-    title: 'Your money, sorted', sub: 'Naira and Lira in one wallet. Convert at the rate shown and let the Luda team pay your bills.',
+    // Owner, 2026-11-19 (v1.33.2): the first slide shows bills being paid for you, not a wallet or balance.
+    title: 'Bills, sorted', sub: 'Electricity, water, internet, phone and rent. The Luda team pays them on the official sites and sends you the receipt.',
     art: (
       <div className="relative h-full w-full">
-        <div className="absolute inset-x-6 top-6 rotate-[-6deg] rounded-3xl bg-gradient-to-br from-emerald-500 via-emerald-700 to-emerald-950 p-5 text-white shadow-2xl">
-          <p className="text-xs text-white/70">Total balance</p><p className="text-3xl font-extrabold">₺24,850</p>
-          <div className="mt-3 flex gap-2"><span className="chip bg-black/20">🇹🇷 ₺18,200</span><span className="chip bg-black/20">🇳🇬 ₦230k</span></div>
+        <div className="absolute inset-x-6 top-5 rotate-[-4deg] rounded-3xl bg-gradient-to-br from-emerald-500 via-emerald-700 to-emerald-950 p-4 text-white shadow-2xl">
+          <div className="flex items-center gap-3"><span className="grid size-11 shrink-0 place-items-center max-[360px]:hidden rounded-2xl bg-white/15 text-2xl">⚡</span>
+            <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">KIB-TEK electricity</p><p className="truncate text-xs text-white/70">Meter 2041 · November</p></div>
+            <span className="chip shrink-0 bg-white text-xs font-bold text-emerald-800">✓ Paid</span></div>
         </div>
-        <div className="absolute right-4 bottom-10 rotate-[5deg] rounded-2xl border border-white/10 bg-ink-800 px-4 py-3 shadow-xl"><p className="text-xs text-slate-400">₦1,000 =</p><p className="text-lg font-bold text-mint-300">₺28.72</p></div>
+        <div className="absolute inset-x-8 top-[6.5rem] max-[360px]:inset-x-5 rotate-[3deg] rounded-3xl border border-white/10 bg-ink-800 p-4 shadow-xl">
+          <div className="flex items-center gap-3"><span className="grid size-10 shrink-0 place-items-center max-[360px]:hidden rounded-2xl bg-sky-400/15 text-xl">💧</span>
+            <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">Water bill</p><p className="truncate text-xs text-slate-400">Girne municipality</p></div>
+            <span className="chip shrink-0 bg-amber-400/15 text-xs text-amber-200">Paying now</span></div>
+        </div>
+        <div className="absolute right-5 bottom-14 rotate-[-3deg] rounded-2xl border border-white/10 bg-ink-800 px-4 py-3 shadow-xl"><p className="text-xs text-slate-400">📶 Internet · 🏠 Rent</p><p className="text-sm font-bold text-mint-300">Receipt added 🧾</p></div>
         <div className="absolute bottom-4 left-6 rounded-2xl bg-fuchsia-500/90 px-4 py-2 text-sm font-semibold text-white shadow-xl">⚡ Bills paid for you</div>
       </div>
     ),
