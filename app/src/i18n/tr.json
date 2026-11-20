@@ -3919,5 +3919,6 @@
 "This month": "Bu ay",
 "Usually within 2 hours · fee from {} · receipt in the app": "Genellikle 2 saat içinde · ücret {} itibaren · makbuz uygulamada",
 " · 🎁 {} off your next payment": " · 🎁 sonraki ödemenizde {} indirim",
-"🔒 Luda never holds your money. If we can't deliver, it goes back to your card or bank.": "🔒 Luda paranızı asla tutmaz. Teslim edemezsek kartınıza veya bankanıza geri döner."
+"🔒 Luda never holds your money. If we can't deliver, it goes back to your card or bank.": "🔒 Luda paranızı asla tutmaz. Teslim edemezsek kartınıza veya bankanıza geri döner.",
+"🔐 The 4-digit PIN you use to approve payments. Not your 6-digit sign-in code: that comes next.": "🔐 Ödemeleri onayladığınız 4 haneli PIN. 6 haneli giriş kodunuz değil: o sonra gelir."
 }
