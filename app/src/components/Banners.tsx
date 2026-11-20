@@ -16,7 +16,8 @@ export const THEMES: Record<string, { bg: string; glow: string; name: string }> 
 /** Luda's own offers (shown when the team hasn't posted any banners). Owner picked: bus tickets, bills, invite & savings. */
 export const DEFAULT_BANNERS: Banner[] = [
   { id: 'd-bus', title: 'Skip the bus queue', body: 'Girne ⇄ Lefkoşa tickets on your phone. VirgoBus & Girneliler.', cta: 'Buy a ticket', link: '/transport', emoji: '🚌', theme: 'ocean' },
-  { id: 'd-bills', title: 'Bills paid for you', body: 'KIB-TEK, water, internet, rent. Usually done within 2 hours.', cta: 'Pay a bill', link: '/bills', emoji: '⚡', theme: 'sunset' },
+  // 'Bills paid for you' banner hidden for now (owner, v1.33.4). To show it again, put this line back:
+  // { id: 'd-bills', title: 'Bills paid for you', body: 'KIB-TEK, water, internet, rent. Usually done within 2 hours.', cta: 'Pay a bill', link: '/bills', emoji: '⚡', theme: 'sunset' },
   { id: 'd-invite', title: 'Invite friends, earn ₺50', body: 'When they verify, you both get a bonus.', cta: 'Invite', link: '/invite', emoji: '🎁', theme: 'grape' },
   { id: 'd-save', title: 'Save for rent, stress-free', body: 'Lock money in a pot until the date you choose.', cta: 'Start saving', link: '/savings', emoji: '🐷', theme: 'mint' },
 ]
