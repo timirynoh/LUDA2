@@ -82,7 +82,7 @@ test('no escrow or P2P anywhere people read: Terms, Privacy, policies, Help Cent
   }
   const help = (await call('GET', 'help')).j
   assert.ok(!help.topics.some((t: any) => t.id === 'p2p'), 'P2P help topic hidden')
-  assert.doesNotMatch(JSON.stringify(help.articles), /escrow|P2P|held by Luda|holds your money/i)
+  assert.doesNotMatch(JSON.stringify(help.articles), /escrow|P2P|held by Luda|(?<!never )holds your money/i)
   assert.ok((await q(`select count(*)::int n from guides_escrow_backup`))[0].n >= 10, 'old texts kept for when it comes back')
 })
 

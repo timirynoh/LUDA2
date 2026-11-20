@@ -41,7 +41,7 @@ test('every public page answers without signing in and names the company', async
   assert.equal(new Set(titles.map((t: string) => t.split('.')[0])).size, titles.length, 'sections numbered once each')
   assert.match(JSON.stringify(terms), /useluda\.com\/refunds/); assert.match(JSON.stringify(terms), /useluda\.com\/aml/)
   const refunds = (await call('GET', 'guide?slug=refunds')).j.guide
-  for (const t of ['Payments that don\'t go through', 'Bus tickets', 'Bills, rent and mobile top-ups', 'Discounts', 'Chargebacks']) assert.ok(refunds.steps.some((s: any) => s.title === t), t)
+  for (const t of ['Payments that don\'t go through', 'Bus tickets', 'Bills, rent and airtime', 'Discounts', 'Chargebacks']) assert.ok(refunds.steps.some((s: any) => s.title === t), t)
 })
 
 test('new Terms version: people who accepted the old one must accept again', async () => {

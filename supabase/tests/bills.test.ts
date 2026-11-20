@@ -45,7 +45,7 @@ test('automatic top-up: paid by the partner straight away, the user is told, fee
   const before = await TRY('ada')
   const f = await call('GET', 'features', undefined, T.ada)
   assert.deepEqual(f.j.topup.billers.sort(), ['telsim', 'turkcell'])
-  const base = { type: 'phone', biller: 'telsim', provider: 'Vodafone Telsim', account: '0542 111 22 33', amountMinor: 200_00, details: { kind: 'TL top-up (prepaid)' }, confirmed: true, pin: '4826' }
+  const base = { type: 'phone', biller: 'telsim', provider: 'Vodafone Telsim', account: '0542 111 22 33', amountMinor: 200_00, details: { kind: 'Airtime (prepaid)' }, confirmed: true, pin: '4826' }
   assert.match((await call('POST', 'bill-create', { ...base, account: '12345' }, T.ada)).j.error, /mobile number/)
   const r = await call('POST', 'bill-create', base, T.ada)
   assert.equal(r.status, 200); assert.equal(r.j.bill.status, 'paid'); assert.equal(r.j.bill.auto.status, 'paid')
@@ -53,7 +53,7 @@ test('automatic top-up: paid by the partner straight away, the user is told, fee
   assert.equal(sent.body.operatorId, 1234); assert.equal(sent.body.amount, 200); assert.equal(sent.body.recipientPhone.number, '905421112233')
   assert.equal(await TRY('ada'), before - 210_00, 'top-up + ₺10 fee')
   const inbox = (await call('GET', 'inbox', undefined, T.ada)).j.items
-  assert.ok(inbox.some((n: any) => /Top-up sent/.test(n.title)))
+  assert.ok(inbox.some((n: any) => /Airtime sent/.test(n.title)))
   // a postpaid phone bill is never automatic
   const post = await call('POST', 'bill-create', { ...base, details: { kind: 'Monthly bill (postpaid)' } }, T.ada)
   assert.equal(post.j.bill.status, 'pending'); assert.equal(post.j.bill.auto, null)
@@ -64,7 +64,7 @@ test('top-up still processing: staff cannot pay it; when the partner says done i
   const r = await call('POST', 'bill-create', { type: 'phone', biller: 'turkcell', provider: 'Kuzey Kıbrıs Turkcell', account: '05331234567', amountMinor: 100_00, details: { kind: 'TL top-up (prepaid)' }, confirmed: true, pin: '4826' }, T.ada)
   assert.equal(r.j.bill.status, 'pending'); assert.equal(r.j.bill.auto.status, 'processing')
   assert.equal((await call('POST', 'admin-bill-claim', { billId: r.j.bill.id }, T.boss)).status, 409, 'cannot claim while the partner is working')
-  assert.match((await call('POST', 'admin-bill', { billId: r.j.bill.id, paid: true, checked: true, files: [PHOTO], pin: '4826' }, T.boss)).j.error, /automatic top-up/)
+  assert.match((await call('POST', 'admin-bill', { billId: r.j.bill.id, paid: true, checked: true, files: [PHOTO], pin: '4826' }, T.boss)).j.error, /automatic airtime/)
   const tid = [...world.topups.keys()].pop()!; world.topups.get(tid)!.status = 'SUCCESSFUL'
   const mine = (await call('GET', 'features', undefined, T.ada)).j.bills
   assert.equal(mine.find((b: any) => b.id === r.j.bill.id).status, 'paid')

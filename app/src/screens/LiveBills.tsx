@@ -25,7 +25,7 @@ const SERVER_TYPE: Record<BillCategory, string> = { electricity: 'electricity', 
 /** Short names so nothing is cut off: [title, subtitle] */
 const TILE: Record<string, [string, string]> = { kibtek: ['Electricity', 'KIB-TEK'], water: ['Water', 'Municipality'], lpg: ['Gas', 'LPG cylinder'], turkcell: ['Turkcell', 'Airtime · bills'], telsim: ['Telsim', 'Airtime · bills'], fiber: ['Internet', 'Home Wi-Fi'], rent: ['Rent', 'Bank transfer'] }
 const REMIND_DAYS = [0, 1, 5, 10, 15, 20, 25, 28]
-const isTopup = (kind?: string) => /top-up/i.test(kind ?? '')
+const isTopup = (kind?: string) => /top-up|airtime/i.test(kind ?? '')
 
 export interface LiveBill { biller?: string | null; claimed_at?: string | null; auto?: { status: string } | null; details?: Record<string, string>; eta_at?: string | null; id: string; type: string; provider: string; account_ref: string; amount_minor: number; fee_minor: number; status: 'pending' | 'paid' | 'refunded'; note: string | null; created_at: string; updated_at: string; receiptUrls: (string | null)[]; photoUrls: (string | null)[] }
 export interface SavedBill { id: string; biller: string; type: string; provider: string; account: string; details: Record<string, string>; label: string | null; amount_minor: number | null; remind_day: number | null; last_paid_at: string | null; paidThisMonth: boolean; due: boolean }
@@ -189,8 +189,8 @@ function PaySheet({ billerId, label, auto, maxAuto, prefill, feeFor, onClose, on
             setResult(r.bill.status === 'paid' ? 'paid' : r.bill.auto ? r.bill.auto.status : 'pending')
             onDone()
           }}
-          done={result === 'paid' ? <Success title="Top-up sent ✅" sub={`${lira(amount)} is on ${account}. It can take a minute to show on the phone.`} onClose={onClose} />
-            : result === 'processing' ? <Success title="Sending your top-up ⚡" sub="It usually takes a few seconds. You'll get a notification when it's done." onClose={onClose} />
+          done={result === 'paid' ? <Success title="Airtime sent ✅" sub={`${lira(amount)} is on ${account}. It can take a minute to show on the phone.`} onClose={onClose} />
+            : result === 'processing' ? <Success title="Sending your airtime ⚡" sub="It usually takes a few seconds. You'll get a notification when it's done." onClose={onClose} />
             : <Success title="Your bill is being paid ⚡" sub={`We're paying ${lira(amount)} to ${label}. Expected ${etaText()}. The receipt will appear in My bills.`} onClose={onClose} />} />
       ) : step === 'check' ? (
         <div className="flex flex-col gap-3 pb-4">
@@ -218,9 +218,9 @@ function PaySheet({ billerId, label, auto, maxAuto, prefill, feeFor, onClose, on
               ) : <input className="input mt-1" value={details[f.key] ?? ''} maxLength={80} placeholder={f.placeholder} onChange={(e) => setDetails((d) => ({ ...d, [f.key]: e.target.value }))} />}
             </label>
           ))}
-          {instant && <p className="rounded-2xl bg-mint-400/10 p-3 text-xs text-mint-200">⚡ Instant: this top-up is sent automatically in seconds. If the operator doesn't accept it, the Luda team sends it for you instead.</p>}
+          {instant && <p className="rounded-2xl bg-mint-400/10 p-3 text-xs text-mint-200">⚡ Instant: this airtime is sent automatically in seconds. If the operator doesn't accept it, the Luda team sends it for you instead.</p>}
           <label className="text-xs text-slate-400">Amount on the bill (₺)<input className="input mt-1 text-lg font-bold" value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="e.g. 640" inputMode="numeric" /></label>
-          {instant && amount > maxAuto && <p className="text-xs text-rose-300">{`Top-ups can be up to ${lira(maxAuto)} at a time.`}</p>}
+          {instant && amount > maxAuto && <p className="text-xs text-rose-300">{`Airtime can be up to ${lira(maxAuto)} at a time.`}</p>}
           {!instant && <div><p className="mb-1 text-xs text-slate-400">Photo of the bill (optional, helps us pay faster)</p><Attachments files={files} setFiles={(f) => setFiles(f.slice(0, 2))} /></div>}
           {amount > 0 && <div className="divide-y divide-fg/5 rounded-2xl bg-fg/[0.04] text-sm">
             <div className="flex justify-between px-4 py-2.5"><span className="text-slate-400">Bill</span><span>{lira(amount)}</span></div>
@@ -268,7 +268,7 @@ function QuickPay({ sb, auto, feeFor, onClose, onDone, onEdit }: { sb: SavedBill
             setResult(r.bill.status === 'paid' ? 'paid' : r.bill.auto?.status ?? 'pending')
             onDone()
           }}
-          done={result === 'paid' ? <Success title="Top-up sent ✅" sub={`${lira(amount)} is on the phone.`} onClose={onClose} />
+          done={result === 'paid' ? <Success title="Airtime sent ✅" sub={`${lira(amount)} is on the phone.`} onClose={onClose} />
             : <Success title="Your bill is being paid ⚡" sub={instant ? 'You’ll get a notification when it’s done.' : `Expected ${etaText()}. The receipt will appear in My bills.`} onClose={onClose} />} />
       ) : (
         <div className="flex flex-col gap-3 pb-4">

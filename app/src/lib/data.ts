@@ -85,7 +85,7 @@ export const LEVELS = [
 
 export const BADGES: Record<string, { name: string; emoji: string; desc: string }> = {
   welcome: { name: 'Hello Cyprus', emoji: '👋', desc: 'Joined Luda' },
-  first_deposit: { name: 'First Coins', emoji: '🪙', desc: 'Made your first deposit' },
+  first_deposit: { name: 'First Coins', emoji: '🪙', desc: 'Made your first payment' },
   bill_slayer: { name: 'Bill Slayer', emoji: '⚡', desc: 'Paid a bill in the app' },
   fx_wizard: { name: 'FX Wizard', emoji: '💱', desc: 'Converted currency' },
   safe_trader: { name: 'Safe Trader', emoji: '🛡️', desc: 'Completed a secure in-person exchange' },
@@ -148,7 +148,7 @@ const DISTRICTS = ['Lefkoşa', 'Girne', 'Gazimağusa', 'Güzelyurt', 'İskele', 
 const NAME_ON_BILL: BillField = { key: 'name', label: 'Name on the bill', placeholder: 'As printed on the bill' }
 export const BILL_FIELDS: Record<string, { account: string; accountPlaceholder: string; fields: BillField[]; note?: string }> = {
   kibtek: { account: 'Subscriber no. (Abone No)', accountPlaceholder: 'e.g. 0123456', note: 'The Abone No is at the top of your KIB-TEK bill.', fields: [
-    { key: 'meter', label: 'Meter type', options: ['Monthly bill', 'Prepaid (kontör) top-up'] }, NAME_ON_BILL, { key: 'district', label: 'District', options: DISTRICTS },
+    { key: 'meter', label: 'Meter type', options: ['Monthly bill', 'Prepaid (kontör) credit'] }, NAME_ON_BILL, { key: 'district', label: 'District', options: DISTRICTS },
     { key: 'period', label: 'Bill month', placeholder: 'e.g. October 2026', optional: true }] },
   water: { account: 'Water subscriber no.', accountPlaceholder: 'From your water bill', fields: [
     { key: 'municipality', label: 'Municipality (Belediye)', options: DISTRICTS.map((d) => `${d} Belediyesi`) }, NAME_ON_BILL,
@@ -157,10 +157,10 @@ export const BILL_FIELDS: Record<string, { account: string; accountPlaceholder: 
     { key: 'address', label: 'Delivery address', placeholder: 'Street, building, flat' }, { key: 'size', label: 'Cylinder', options: ['12 kg', '24 kg', '45 kg'] },
     { key: 'brand', label: 'Brand (if you know)', placeholder: 'e.g. Aygaz, Ipragaz', optional: true }] },
   turkcell: { account: 'Phone number', accountPlaceholder: '+90 533 …', fields: [
-    { key: 'kind', label: 'What to pay', options: ['TL top-up (prepaid)', 'Monthly bill (postpaid)', 'Package / bundle'] },
+    { key: 'kind', label: 'What to pay', options: ['Airtime (prepaid)', 'Monthly bill (postpaid)', 'Package / bundle'] },
     { key: 'package', label: 'Package name', placeholder: 'e.g. 20 GB student pack', optional: true }] },
   telsim: { account: 'Phone number', accountPlaceholder: '+90 542 …', fields: [
-    { key: 'kind', label: 'What to pay', options: ['TL top-up (prepaid)', 'Monthly bill (postpaid)', 'Package / bundle'] },
+    { key: 'kind', label: 'What to pay', options: ['Airtime (prepaid)', 'Monthly bill (postpaid)', 'Package / bundle'] },
     { key: 'package', label: 'Package name', placeholder: 'e.g. 20 GB student pack', optional: true }] },
   fiber: { account: 'Customer / subscriber no.', accountPlaceholder: 'From your internet bill', fields: [
     { key: 'isp', label: 'Internet provider', options: ['Telekomünikasyon Dairesi', 'Multimax', 'Kuzey Kıbrıs Turkcell', 'Vodafone Telsim', 'Other'] }, NAME_ON_BILL] },

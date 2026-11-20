@@ -22,7 +22,7 @@ export function BillCard({ b, footer }: { b: { id: string; claimed_at?: string |
         </div>
         <p className="text-lg font-extrabold">{lira(b.amount_minor)}</p>
       </div>
-      {b.status === 'pending' && (b.auto?.status === 'processing' ? <p className="text-xs text-mint-200">⚡ Sending your top-up… usually a few seconds.</p> : <BillProgress eta={b.eta_at ?? null} paying={!!b.claimed_at} />)}
+      {b.status === 'pending' && (b.auto?.status === 'processing' ? <p className="text-xs text-mint-200">⚡ Sending your airtime… usually a few seconds.</p> : <BillProgress eta={b.eta_at ?? null} paying={!!b.claimed_at} />)}
       <div className="flex flex-wrap items-center gap-2">
         {b.status === 'pending' && <Pill tone="wait">{b.claimed_at ? 'Paying now' : 'Received'}</Pill>}
         {b.status === 'paid' && <Pill tone="ok">{b.auto?.status === 'paid' ? 'Topped up automatically' : 'Paid'}</Pill>}

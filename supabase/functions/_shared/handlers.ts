@@ -378,9 +378,9 @@ async function runTopup(env: Env, d: Deps, billId: string, op: { id: number; cou
   }
 }
 async function settleAutoBill(env: Env, d: Deps, billId: string) {
-  const r = await d.db.fn<{ ok: boolean; bill?: Record<string, any> }>('luda_bill_settle', { p_bill: billId, p_paid: true, p_note: 'Topped up automatically', p_receipt: [] })
+  const r = await d.db.fn<{ ok: boolean; bill?: Record<string, any> }>('luda_bill_settle', { p_bill: billId, p_paid: true, p_note: 'Sent automatically', p_receipt: [] })
   if (!r.ok || !r.bill) return
-  await notifyUser(env, d, r.bill.user_id, { emoji: '📱', title: `Top-up sent: ${tl(Number(r.bill.amount_minor))}`, body: `${r.bill.provider} · ${String(r.bill.account_ref).slice(-4).padStart(8, '•')}`, url: '/bills', tag: `bill:${billId}`, cat: 'money' })
+  await notifyUser(env, d, r.bill.user_id, { emoji: '📱', title: `Airtime sent: ${tl(Number(r.bill.amount_minor))}`, body: `${r.bill.provider} · ${String(r.bill.account_ref).slice(-4).padStart(8, '•')}`, url: '/bills', tag: `bill:${billId}`, cat: 'money' })
 }
 /** Asks the partner about top-ups still running (one person's, or everyone's from the team queue). */
 async function checkTopups(env: Env, d: Deps, userId?: string) {
@@ -587,10 +587,10 @@ function billSpec(body: Record<string, any>, env: Env): BillSpec {
     details.official = isGovLink(details.link) ? 'yes' : 'no'
   }
   if (type === 'rent' && (!details.landlord || !details.iban || !details.period)) throw new Fail("Add the landlord's name, their IBAN and the rent month")
-  const op = type === 'phone' && biller && /top-up/i.test(details.kind ?? '') ? topupOperators(env)[biller] : undefined
+  const op = type === 'phone' && biller && /top-up|airtime/i.test(details.kind ?? '') ? topupOperators(env)[biller] : undefined
   const phone = op ? mobileNumber(account) : null
   if (op && !phone) throw new Fail('Enter the mobile number like 0533 123 45 67')
-  if (op && amount > topupMaxMinor(env)) throw new Fail(`Top-ups can be up to ${tl(topupMaxMinor(env))} at a time`)
+  if (op && amount > topupMaxMinor(env)) throw new Fail(`Airtime can be up to ${tl(topupMaxMinor(env))} at a time`)
   if (body.confirmed !== true) throw new Fail('Please confirm the bill details are correct')
   return { type, provider, account, amount, biller, details, op, phone }
 }
@@ -2188,7 +2188,7 @@ const routes: Record<string, Route> = {
     const id = uuid(body.billId), paid = body.paid === true, note = cleanText(body.note, 200)
     if (!paid && !note) throw new Fail('Tell the user why the bill could not be paid')
     const cur = (await d.db.fn<Record<string, any>[]>('luda_admin_bills', { p_status: 'pending' })).find((x) => x.id === id)
-    if (cur?.auto?.status === 'processing') throw new Fail('An automatic top-up is still running for this bill. Wait for it to finish.', 409)
+    if (cur?.auto?.status === 'processing') throw new Fail('An automatic airtime payment is still running for this bill. Wait for it to finish.', 409)
     if (cur?.claimed_by && cur.claimed_by !== a.username && Date.parse(cur.claimed_at) > Date.now() - 45 * 60e3) throw new Fail(`@${cur.claimed_by} is paying this bill right now`, 409)
     if (paid && body.checked !== true) throw new Fail('Tick that the receipt shows the same number and amount')
     if (!paid && !can(a.staff, 'bills', 'full')) throw new Fail("Your role can mark bills as paid, but refunds need the owner or a 'full' bills role", 403)
@@ -2210,7 +2210,7 @@ const routes: Record<string, Route> = {
   'POST admin-bill-claim': async ({ req, env, d, body }) => {
     const a = await staff(req, env, d, 'bills', 'edit')
     const r = await d.db.fn<{ ok: boolean; why?: string; by?: string }>('luda_bill_claim', { p_bill: uuid(body.billId), p_staff: a.username, p_release: body.release === true })
-    if (!r.ok) throw new Fail(r.why === 'auto' ? 'An automatic top-up is still running for this bill' : r.why === 'claimed' ? `@${r.by} is already paying this bill` : 'This bill was already handled', 409)
+    if (!r.ok) throw new Fail(r.why === 'auto' ? 'An automatic airtime payment is still running for this bill' : r.why === 'claimed' ? `@${r.by} is already paying this bill` : 'This bill was already handled', 409)
     return { ok: true, claimedBy: body.release === true ? null : a.username }
   },
 
@@ -2219,7 +2219,7 @@ const routes: Record<string, Route> = {
     await staff(req, env, d, 'bills', 'full')
     if (!env.RELOADLY_CLIENT_ID || !env.RELOADLY_CLIENT_SECRET) return { on: false, operators: [], active: {} }
     const country = /^[A-Z]{2}$/.test(url.searchParams.get('country') ?? '') ? url.searchParams.get('country')! : 'TR'
-    const operators = await topupOperatorList(env, d.fetch, country).catch((e) => { throw new Fail(`The top-up partner didn't answer: ${String((e as Error).message)}`, 502) })
+    const operators = await topupOperatorList(env, d.fetch, country).catch((e) => { throw new Fail(`The airtime partner didn't answer: ${String((e as Error).message)}`, 502) })
     return { on: true, operators, active: topupOperators(env) }
   },
 

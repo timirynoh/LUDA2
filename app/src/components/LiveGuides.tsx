@@ -4,6 +4,7 @@ import { Eye, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, LIVE, publicGet, staffCan, type StaffPerms } from '../lib/live'
+import { WALLET } from '../config'
 import { useLive } from '../lib/liveStore'
 import { Empty } from './LiveKit'
 import { errMsg } from './LiveMoney'
@@ -169,7 +170,7 @@ export function GuidesTab({ staff }: { staff: StaffPerms | null }) {
   )
 }
 
-const HELP_TOPIC_NAMES: [string, string][] = [['start', '🚀 Getting started'], ['wallet', '💰 Wallet & top-ups'], ['withdraw', '🏦 Withdrawals'], ['p2p', '🤝 P2P exchange'], ['bills', '🧾 Bills'], ['tickets', '🚌 Bus tickets'], ['market', '🛍️ Market & Flash'], ['kyc', '🪪 ID check'], ['account', '🔐 Account & security']]
+const HELP_TOPIC_NAMES: [string, string][] = [['start', '🚀 Getting started'], ['wallet', WALLET ? '💰 Wallet & top-ups' : '💳 Payments & refunds'], ['withdraw', '🏦 Withdrawals'], ['p2p', '🤝 P2P exchange'], ['bills', '🧾 Bills'], ['tickets', '🚌 Bus tickets'], ['market', '🛍️ Market & Flash'], ['kyc', '🪪 ID check'], ['account', '🔐 Account & security']]
 function NewHelpArticle({ onClose, onDone }: { onClose: () => void; onDone: (g: Guide) => void }) {
   const [topic, setTopic] = useState('start')
   const [title, setTitle] = useState('')

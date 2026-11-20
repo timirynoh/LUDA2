@@ -45,7 +45,7 @@ export const MAILS = {
   welcome: (v: { name: string }): Mail => ({
     subject: 'Welcome to Luda 👋🏾', preheader: 'Bus tickets, bills, rent and help in North Cyprus, in one app.', icon: '👋🏾',
     title: `Welcome to Luda, ${first(v.name)}!`,
-    intro: 'Your account is ready. Buy Girne ⇄ Lefkoşa bus tickets, pay your bills and rent, top up your phone, and find housing, jobs and help near you, all in one app. You pay for each service when you use it, with your card or bank.',
+    intro: 'Your account is ready. Buy Girne ⇄ Lefkoşa bus tickets, pay your bills and rent, buy airtime, and find housing, jobs and help near you, all in one app. You pay for each service when you use it, with your card or bank.',
     rows: [['1. Set your payment PIN', 'approves every payment'], ['2. Verify your ID', 'unlocks selling and Flash'], ['3. Pay a bill or buy a ticket', 'card, bank or USSD']],
     button: ['Open Luda', '/'],
     note: 'Questions? Reply to this email or write to support@useluda.com. We never ask for your PIN or password.',

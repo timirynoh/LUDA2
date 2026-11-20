@@ -77,7 +77,7 @@ export function QuoteCard({ q, err }: { q: Quote | null; err?: string }) {
 }
 
 /**
- * Review → hold → PIN → the provider's secure payment page. Used for bus tickets, bills, rent and mobile top-ups.
+ * Review → hold → PIN → the provider's secure payment page. Used for bus tickets, bills, rent and airtime.
  * `rows` describe what is being paid for; the price comes from the server.
  */
 export function DirectPay({ body, rows, onClose, note }: { body: OrderBody; rows: [string, ReactNode][]; onClose: () => void; note?: ReactNode }) {

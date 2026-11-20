@@ -125,7 +125,7 @@ function Overview({ o, go }: { o: Record<string, any> | null; go: (t: Tab) => vo
     { n: o.billsPending ?? 0, text: `bill${o.billsPending === 1 ? '' : 's'} to pay · ${lira(o.billsPendingMinor ?? 0)}`, tab: 'bills', icon: Receipt },
     { n: o.openCases ?? 0, text: `support case${o.openCases === 1 ? '' : 's'} waiting for a reply`, tab: 'cases', icon: Inbox },
     { n: p.withdrawalsStuck ?? 0, text: 'payout(s) processing for over 30 min', tab: 'withdrawals', icon: ArrowUpFromLine },
-    { n: p.mismatch ?? 0, text: "top-up(s) under review (amount didn't match)", tab: 'topups', icon: ArrowDownToLine },
+    { n: p.mismatch ?? 0, text: WALLET ? "top-up(s) under review (amount didn't match)" : "payment(s) under review (amount didn't match)", tab: 'topups', icon: ArrowDownToLine },
   ] as Todo[]).filter((x) => x.n > 0)
   const warn = [p.badWebhooks7d && `${p.badWebhooks7d} rejected webhook(s) this week: check secret keys/hash`, p.ledgerMismatch && `${p.ledgerMismatch} wallet(s) don't match their ledger: contact your developer`].filter(Boolean) as string[]
   const wh = o.webhooks7d ?? {}
@@ -161,7 +161,7 @@ function Overview({ o, go }: { o: Record<string, any> | null; go: (t: Tab) => vo
       <div className="grid grid-cols-2 gap-2.5 tab:grid-cols-3">
         <Stat icon={Users} tint="from-sky-400 to-indigo-500" label="Users" value={o.users} sub={`+${o.newUsers7d} new · ${o.verified} verified`} />
         {o.balances && <>
-        <Stat icon={ArrowDownToLine} tint="from-mint-400 to-emerald-600" label="Top-ups" value={o.deposits7d?.count ?? 0} sub={`${money(o.deposits7d?.NGN ?? 0, 'NGN')} · ${money(o.deposits7d?.TRY ?? 0, 'TRY')}`} />
+        <Stat icon={ArrowDownToLine} tint="from-mint-400 to-emerald-600" label={WALLET ? 'Top-ups' : 'Payments'} value={o.deposits7d?.count ?? 0} sub={`${money(o.deposits7d?.NGN ?? 0, 'NGN')} · ${money(o.deposits7d?.TRY ?? 0, 'TRY')}`} />
         <Stat icon={ArrowUpFromLine} tint="from-violet-400 to-fuchsia-600" label="Payouts" value={o.withdrawals7d?.count ?? 0} sub={money(o.withdrawals7d?.NGN ?? 0, 'NGN')} />
         <Stat icon={Ticket} tint="from-amber-400 to-orange-600" label="Bus tickets" value={o.tickets7d ?? 0} />
         <Stat icon={Banknote} tint="from-gold-300 to-amber-500" label="Fees earned" value={money(o.fees7d?.withdrawNGN ?? 0, 'NGN')} sub="withdrawal fees" />
@@ -253,8 +253,8 @@ function BillsTab({ onChange }: { onChange: () => void }) {
             <p className="truncate font-bold">{b.provider}</p>
             <p className="truncate font-mono text-sm text-slate-300">{b.account_ref}</p>
             <p className="text-[11px] text-slate-500">@{b.username} · {status === 'pending' ? (b.eta_at ? <span className={lateB ? 'text-rose-300' : soon ? 'text-gold-200' : ''}>{lateB ? `late (promised ${hhmm(b.eta_at)})` : `due ${hhmm(b.eta_at)}`}</span> : `waiting ${waited(b.created_at)}`) : when(b.created_at)}</p>
-            {status === 'pending' && b.auto?.status === 'processing' && <p className="text-[11px] text-sky-300">📱 Automatic top-up running — don’t pay</p>}
-            {status === 'pending' && b.auto && ['refused', 'unknown', 'failed'].includes(b.auto.status) && <p className="text-[11px] text-gold-200">📱 Automatic top-up {b.auto.status === 'unknown' ? 'didn’t confirm' : 'failed'} — pay by hand</p>}
+            {status === 'pending' && b.auto?.status === 'processing' && <p className="text-[11px] text-sky-300">📱 Automatic airtime running — don’t pay</p>}
+            {status === 'pending' && b.auto && ['refused', 'unknown', 'failed'].includes(b.auto.status) && <p className="text-[11px] text-gold-200">📱 Automatic airtime {b.auto.status === 'unknown' ? 'didn’t confirm' : 'failed'} — pay by hand</p>}
             {status === 'pending' && claimLive(b) && <p className="text-[11px] text-mint-300">🙋 {b.claimed_by === meName ? 'You are paying this' : `@${b.claimed_by} is paying`}</p>}
           </div>
           <div className="flex flex-col items-end gap-1"><p className="text-xl font-extrabold">{lira(b.amount_minor)}</p>{status !== 'pending' && <Badge s={b.status} />}</div>
@@ -275,8 +275,8 @@ function TopupPartnerCard() {
   const check = async () => { setBusy(true); setErr(''); try { setR(await api('GET', `admin-topup-operators?country=${country}`)) } catch (e) { setErr(errMsg(e)) } finally { setBusy(false) } }
   return (
     <div className="card mt-2 flex flex-col gap-2 text-sm">
-      <p className="font-semibold">📱 Automatic mobile top-ups</p>
-      <p className="text-xs text-slate-400">Prepaid TL top-ups for operators switched on in the server secret TOPUP_OPERATORS (e.g. <span className="font-mono">telsim:1234,turkcell:5678</span>) are sent by the partner (Reloadly) in seconds. Check the list below and only switch on an operator whose name is clearly the North Cyprus one (KKTC Telsim / Kuzey Kıbrıs Turkcell). Turkey’s Turkcell won’t top up a KKTC line.</p>
+      <p className="font-semibold">📱 Automatic airtime</p>
+      <p className="text-xs text-slate-400">Prepaid airtime for operators switched on in the server secret TOPUP_OPERATORS (e.g. <span className="font-mono">telsim:1234,turkcell:5678</span>) are sent by the partner (Reloadly) in seconds. Check the list below and only switch on an operator whose name is clearly the North Cyprus one (KKTC Telsim / Kuzey Kıbrıs Turkcell). Turkey’s Turkcell won’t top up a KKTC line.</p>
       <div className="flex gap-2">{(['TR', 'CY'] as const).map((c) => <button key={c} onClick={() => setCountry(c)} className={`chip py-1.5 text-xs ${country === c ? 'bg-mint-400/20 text-mint-200' : 'bg-fg/[0.06] text-slate-300'}`}>{c === 'TR' ? 'Turkey (+90)' : 'Cyprus'}</button>)}
         <button className="chip bg-fg/[0.08] py-1.5 text-xs" disabled={busy} onClick={() => void check()}>{busy ? 'Checking…' : 'Check operators'}</button></div>
       {err && <p className="text-xs text-rose-300">{err}</p>}
@@ -328,9 +328,9 @@ function BillPaySheet({ b, meName, onClose, onDone }: { b: AdminBill; meName: st
           done={<Success title={mode === 'pay' ? 'Marked as paid ✅' : 'Refunded'} sub={mode === 'pay' ? `@${b.username} can now see the receipt.` : (WALLET ? 'The full amount and fee are back in their wallet.' : 'The money is on its way back to their card or bank.')} onClose={onClose} />} />
       ) : (
         <div className="flex flex-col gap-4 pb-4">
-          {autoRunning && <p className="rounded-2xl bg-sky-400/10 p-3 text-sm text-sky-200">📱 The automatic top-up is still running. Don’t pay this by hand; it updates itself within a minute.</p>}
-          {b.auto?.status === 'unknown' && <p className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-200">⚠️ The automatic top-up didn’t confirm. Before paying, check the Reloadly dashboard for reference <span className="font-mono">{b.auto.ref ?? `bill-${b.id}`}</span>. If it went through, mark this as paid with a screenshot of it.</p>}
-          {b.auto && ['refused', 'failed'].includes(b.auto.status) && <p className="rounded-2xl bg-gold-400/10 p-3 text-xs text-gold-200">📱 The automatic top-up was refused{b.auto.said ? `: ${b.auto.said}` : ''}. Nothing was sent, so pay it by hand.</p>}
+          {autoRunning && <p className="rounded-2xl bg-sky-400/10 p-3 text-sm text-sky-200">📱 The automatic airtime payment is still running. Don’t pay this by hand; it updates itself within a minute.</p>}
+          {b.auto?.status === 'unknown' && <p className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-200">⚠️ The automatic airtime payment didn’t confirm. Before paying, check the Reloadly dashboard for reference <span className="font-mono">{b.auto.ref ?? `bill-${b.id}`}</span>. If it went through, mark this as paid with a screenshot of it.</p>}
+          {b.auto && ['refused', 'failed'].includes(b.auto.status) && <p className="rounded-2xl bg-gold-400/10 p-3 text-xs text-gold-200">📱 The automatic airtime payment was refused{b.auto.said ? `: ${b.auto.said}` : ''}. Nothing was sent, so pay it by hand.</p>}
           <div className="rounded-3xl bg-gradient-to-br from-fg/[0.07] to-fg/[0.02] p-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{rent ? 'Send exactly' : 'Pay exactly'}</p>
             <div className="mt-1 flex items-center justify-between gap-3"><p className="text-3xl font-extrabold">{lira(b.amount_minor)}</p><CopyBtn text={amount} label="Amount" /></div>
