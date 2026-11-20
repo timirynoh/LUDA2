@@ -3905,5 +3905,7 @@
 " · 🎁 {} off your next payment": " · 🎁 {} de réduction sur votre prochain paiement",
 "🔒 Luda never holds your money. If we can't deliver, it goes back to your card or bank.": "🔒 Luda ne garde jamais votre argent. Si nous ne pouvons pas livrer, il retourne sur votre carte ou votre compte.",
 "🔐 The 4-digit PIN you use to approve payments. Not your 6-digit sign-in code: that comes next.": "🔐 Le PIN à 4 chiffres qui valide vos paiements. Pas votre code de connexion à 6 chiffres : il vient ensuite.",
-"Luda is having a short connection problem. Please try again in a minute.": "Luda a un petit problème de connexion. Réessayez dans une minute."
+"Luda is having a short connection problem. Please try again in a minute.": "Luda a un petit problème de connexion. Réessayez dans une minute.",
+"Paid for a service in Luda at least once": "Avoir payé un service dans Luda au moins une fois",
+"Pay for a service": "Payer un service"
 }

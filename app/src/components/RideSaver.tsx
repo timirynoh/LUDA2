@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, Loader2, Ticket, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { SAVER, TICKET_DISCOUNT } from '../config'
+import { SAVER, TICKET_DISCOUNT, WALLET } from '../config'
 import { saverChecks, saverState } from '../lib/saver'
 import { useStore } from '../lib/store'
 import { PhoneVerify } from './PhoneVerify'
@@ -89,7 +89,7 @@ export function SaverSheet({ onClose }: { onClose: () => void }) {
                   <p className="flex items-center gap-2 text-sm">{c.ok ? <Check size={16} className="text-mint-300" /> : <X size={16} className="text-rose-300" />}{c.label}</p>
                   {!c.ok && c.fix === 'verify' && phase === 'result' && <div className="mt-2 ps-6"><PhoneVerify compact /></div>}
                   {!c.ok && c.fix === 'id' && phase === 'result' && s.phoneVerified && <div className="mt-2 ps-6"><IdVerify /></div>}
-                  {!c.ok && c.fix === 'deposit' && phase === 'result' && <Link to="/wallet?a=deposit" onClick={onClose} className="btn-primary mt-2 ms-6 w-fit px-4 py-2 text-xs">Top up wallet</Link>}
+                  {!c.ok && c.fix === 'deposit' && phase === 'result' && <Link to={WALLET ? '/wallet?a=deposit' : '/payments'} onClick={onClose} className="btn-primary mt-2 ms-6 w-fit px-4 py-2 text-xs">{WALLET ? 'Top up wallet' : 'Pay for a service'}</Link>}
                 </motion.div>
               )}
             </AnimatePresence>

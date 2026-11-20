@@ -3921,5 +3921,7 @@
 " · 🎁 {} off your next payment": " · 🎁 sonraki ödemenizde {} indirim",
 "🔒 Luda never holds your money. If we can't deliver, it goes back to your card or bank.": "🔒 Luda paranızı asla tutmaz. Teslim edemezsek kartınıza veya bankanıza geri döner.",
 "🔐 The 4-digit PIN you use to approve payments. Not your 6-digit sign-in code: that comes next.": "🔐 Ödemeleri onayladığınız 4 haneli PIN. 6 haneli giriş kodunuz değil: o sonra gelir.",
-"Luda is having a short connection problem. Please try again in a minute.": "Luda kısa bir bağlantı sorunu yaşıyor. Lütfen bir dakika sonra tekrar deneyin."
+"Luda is having a short connection problem. Please try again in a minute.": "Luda kısa bir bağlantı sorunu yaşıyor. Lütfen bir dakika sonra tekrar deneyin.",
+"Paid for a service in Luda at least once": "Luda’da en az bir kez bir hizmet ödedi",
+"Pay for a service": "Bir hizmet için öde"
 }

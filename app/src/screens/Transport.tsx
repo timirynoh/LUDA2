@@ -251,7 +251,7 @@ function BookSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
               <div className="flex justify-between text-slate-400"><span>Official price</span><span className={saved ? 'line-through' : ''}>{fmt(official, 'TRY')}</span></div>
               {saved > 0 && <div className="flex justify-between text-mint-300"><span>Ride Saver (₺{q.off} × {q.seats} seat{q.seats > 1 ? 's' : ''})</span><span>−{fmt(saved, 'TRY')}</span></div>}
               {st.active && pax > q.seats && <p className="text-[11px] text-slate-500">Saver covers you + {SAVER.companions} companion. Other seats are normal price.</p>}
-              {!st.active && !online && <button className="mt-1 text-start text-xs text-violet-300 underline" onClick={() => setSaverOpen(true)}>{st.message} {st.reason === 'not_member' ? `Save ₺${q.off}/seat →` : ''}</button>}
+              {!LIVE && !st.active && !online && <button className="mt-1 text-start text-xs text-violet-300 underline" onClick={() => setSaverOpen(true)}>{st.message} {st.reason === 'not_member' ? `Save ₺${q.off}/seat →` : ''}</button>}
               <div className="mt-1 flex justify-between text-lg font-extrabold"><span>You pay</span><span>{fmt(total, 'TRY')}</span></div>
               {trip.estimated && <p className="mt-1 text-[11px] text-slate-500">{LIVE ? 'Estimated fare: confirm the price with the driver.' : 'Fare estimated for this route in the demo.'}</p>}
             </div>

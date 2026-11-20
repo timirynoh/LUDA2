@@ -171,7 +171,7 @@ export default function Home() {
         </Link>
       )}
 
-      {s.saver.status === 'none' && tierOf(s) >= 2 && <SaverCard dismissible onOpen={() => setSaverOpen(true)} />}
+      {!LIVE && s.saver.status === 'none' && tierOf(s) >= 2 && <SaverCard dismissible onOpen={() => setSaverOpen(true)} />}
       {saverOpen && <SaverSheet onClose={() => setSaverOpen(false)} />}
 
       {activeTrade && (
