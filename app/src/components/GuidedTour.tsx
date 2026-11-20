@@ -18,7 +18,7 @@ const STEPS: Step[] = WALLET ? [
   { target: '[data-tour="search"]', emoji: '🔎', title: 'Search', text: 'Looking for something? Search finds any feature fast.' },
   { target: '[data-tour="inbox"]', emoji: '🔔', title: 'Notifications', text: 'Payments, replies from support and updates land here.' },
 ] : [
-  { target: '[data-tour="balance"]', emoji: '💳', title: 'Pay for what you need', text: 'Bus tickets, bills, rent and phone top-ups. Pick one, see the price, and pay by card, bank transfer or USSD. Nothing to top up.' },
+  { target: '[data-tour="balance"]', emoji: '💳', title: 'Pay for what you need', text: 'Bus tickets, bills, rent and airtime. Pick one, see the price, and pay by card, bank transfer or USSD. Luda never holds your money.' },
   { target: '[data-tour="actions"]', emoji: '⚡', title: 'Shortcuts', text: 'Your favourite actions. Tap Edit to choose which ones show here.' },
   { target: '[data-tour="nav/bills"]', emoji: '🧾', title: 'Bills', text: 'Electricity, water, internet, phone or rent. The Luda team pays them on the official sites and adds the receipt.' },
   { target: '[data-tour="nav/payments"]', emoji: '📄', title: 'My payments', text: 'Everything you paid for, with receipts. If something can’t be delivered, the money goes back to your card or bank.' },

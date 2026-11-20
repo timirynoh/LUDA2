@@ -86,11 +86,11 @@ export default function Home() {
           <div className="relative">
             <p className="text-sm font-medium text-emerald-100/80">What do you want to pay for?</p>
             <div className="mt-3 grid grid-cols-4 gap-2">
-              {([['/transport', '🚌', 'Bus ticket'], ['/bills', '⚡', 'Bills'], ['/bills', '🏠', 'Rent'], ['/bills', '📱', 'Top-up']] as const).map(([to, e, l]) => (
+              {([['/transport', '🚌', 'Bus ticket'], ['/bills', '⚡', 'Bills'], ['/bills', '🏠', 'Rent'], ['/bills', '📱', 'Airtime']] as const).map(([to, e, l]) => (
                 <Link key={l} to={to} className="flex flex-col items-center gap-1 rounded-2xl bg-black/20 px-1 py-3 text-center backdrop-blur"><span className="text-2xl">{e}</span><span className="text-[11px] font-semibold leading-tight">{l}</span></Link>
               ))}
             </div>
-            <p className="mt-3 text-xs text-emerald-100/80">Pay by card, bank transfer or USSD. Nothing to top up.{(me?.profile.discountMinor ?? 0) > 0 ? ` 🎁 ₺${(me!.profile.discountMinor! / 100).toLocaleString()} off your next payment.` : ''}</p>
+            <p className="mt-3 text-xs text-emerald-100/80">Pay by card, bank transfer or USSD. Luda never holds your money.{(me?.profile.discountMinor ?? 0) > 0 ? ` 🎁 ₺${(me!.profile.discountMinor! / 100).toLocaleString()} off your next payment.` : ''}</p>
             <div className="mt-3 flex items-center justify-between text-xs text-emerald-100/80">
               <span>{t('home.level')} {level.idx} · {s.xp} / {level.next} XP</span>
               <span className="font-semibold text-gold-200">🪙 {s.points} pts</span>

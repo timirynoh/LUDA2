@@ -632,7 +632,7 @@ function priceOrder(body: Record<string, any>, env: Env, d: Deps, p: Profile) {
   }
   if (kind === 'bill') {
     const spec = billSpec(body, env), fee = billFee(spec.amount, env)
-    const label = `${spec.type === 'phone' && spec.op ? 'Mobile top-up' : BILL_WORD[spec.type] ?? 'Bill'} · ${spec.provider}`
+    const label = `${spec.type === 'phone' && spec.op ? 'Airtime' : BILL_WORD[spec.type] ?? 'Bill'} · ${spec.provider}`
     return { kind, label, total: spec.amount + fee, fee, spec: { bill: spec, save: body.save === true, label: cleanText(body.label, 40), remind: body.remind === undefined ? null : int(body.remind) } as Record<string, unknown> }
   }
   throw new Fail('Pick what you want to pay for')

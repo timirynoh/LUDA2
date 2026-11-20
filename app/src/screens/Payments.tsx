@@ -44,7 +44,7 @@ export default function Payments() {
       <Header title="My payments" sub="Every service you paid for, with receipts" />
       <div className="flex flex-col gap-4 px-5">
         <div data-tour="balance" className="grid grid-cols-2 gap-2.5">
-          {([['/transport', Bus, 'Bus ticket', 'from-cyan-400 to-sky-700'], ['/bills', Zap, 'Pay a bill', 'from-orange-400 to-rose-500'], ['/bills', HomeIcon, 'Pay rent', 'from-amber-400 to-orange-600'], ['/bills', Smartphone, 'Mobile top-up', 'from-emerald-400 to-cyan-700']] as const).map(([to, I, label, c]) => (
+          {([['/transport', Bus, 'Bus ticket', 'from-cyan-400 to-sky-700'], ['/bills', Zap, 'Pay a bill', 'from-orange-400 to-rose-500'], ['/bills', HomeIcon, 'Pay rent', 'from-amber-400 to-orange-600'], ['/bills', Smartphone, 'Airtime', 'from-emerald-400 to-cyan-700']] as const).map(([to, I, label, c]) => (
             <Link key={label} to={to} className="card flex items-center gap-3 py-3"><span className={`grid size-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${c} text-white`}><I size={18} /></span><span className="text-sm font-semibold">{label}</span></Link>
           ))}
         </div>
