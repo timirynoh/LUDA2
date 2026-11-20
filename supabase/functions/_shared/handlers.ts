@@ -1073,6 +1073,14 @@ const communityErr = (e: unknown): never => {
   return moneyMsg(e)
 }
 const BANNER_THEMES = ['mint', 'sunset', 'ocean', 'grape', 'gold', 'night']
+/** A banner photo: '' (none) or a compressed data URL the app made (JPEG/PNG/WebP, ≤ ~300 KB). */
+const bannerImage = (v: unknown): string => {
+  const t = String(v ?? '')
+  if (!t) return ''
+  if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(t)) throw new Fail('The photo must be a JPG, PNG or WebP picture')
+  if (t.length > 420_000) throw new Fail('The photo is too big. Use a smaller picture.')
+  return t
+}
 
 const routes: Record<string, Route> = {
   /* ---- public ---- */
@@ -2784,6 +2792,7 @@ const routes: Record<string, Route> = {
       title: clean(b.title, 60, 'a title', 2), body: b.body ? clean(b.body, 120, 'a line of text') : '', cta: cleanText(b.cta, 24) || 'Open', link,
       emoji: cleanText(b.emoji, 8) || '✨', theme: BANNER_THEMES.includes(String(b.theme)) ? String(b.theme) : 'mint',
       starts_at: iso(b.startsAt), ends_at: iso(b.endsAt), active: b.active !== false, sort: Math.max(-100, Math.min(100, int(b.sort ?? 0))),
+      ...(b.image === undefined ? {} : { image: bannerImage(b.image) }),
     }
     const saved = await d.db.fn<Record<string, unknown>>('luda_banner_save', { p_id: b.id ? uuid(b.id) : null, p: data, p_by: a.user_id }).catch(communityErr)
     await d.db.log(String(saved.id), 'admin_banner_saved', { by: a.username, title: data.title })

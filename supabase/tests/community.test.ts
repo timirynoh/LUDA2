@@ -56,6 +56,13 @@ test('banners: staff create/schedule, Home shows only live ones, links stay insi
   await call('POST', 'admin-banner-save', { banner: { title: 'Next week only', link: '/bills', startsAt: new Date(Date.now() + 7 * 86400e3).toISOString() } }, T.tom)
   const live = (await call('GET', 'banners')).j.banners
   assert.equal(live.length, 1); assert.equal(live[0].title, 'Skip the bus queue'); assert.equal(live[0].theme, 'ocean')
+  // v1.38.0: a banner can carry a photo (data URL); anything else is refused, and the live list shows it
+  assert.match((await call('POST', 'admin-banner-save', { banner: { ...b, image: 'https://evil.com/x.jpg' } }, T.tom)).j.error, /JPG, PNG or WebP/)
+  const pic = 'data:image/jpeg;base64,' + 'A'.repeat(400)
+  const withPic = (await call('POST', 'admin-banner-save', { banner: { ...b, image: pic, startsAt: '', endsAt: '' } }, T.tom)).j.banner
+  assert.equal(withPic.image, pic)
+  assert.ok((await call('GET', 'banners')).j.banners.some((x: any) => x.id === b.id && x.image === pic))
+  assert.equal((await call('POST', 'admin-banner-save', { banner: { ...b, image: undefined, title: 'Kept photo', startsAt: '', endsAt: '' } }, T.tom)).j.banner.image, pic, 'leaving the photo out keeps it')
   assert.equal((await call('POST', 'admin-banner-save', { banner: { ...b, active: false, startsAt: '', endsAt: '' } }, T.tom)).status, 200)
   assert.equal((await call('GET', 'banners')).j.banners.length, 0)
   assert.equal((await call('POST', 'admin-banner-delete', { id: b.id }, T.tom)).status, 403, 'deleting needs full')

@@ -1,6 +1,6 @@
 // Luda HQ: Content (review reported/news posts, post as Luda Official), Banners (Home carousel), Team (owner gives staff roles by email).
 import { WALLET } from '../config'
-import { Eye, EyeOff, Megaphone, Pencil, Plus, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
+import { Eye, EyeOff, ImagePlus, Megaphone, Pencil, Plus, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { BOARD, type BoardKind, type BoardPost } from '../lib/board'
 import { api, staffCan, type StaffArea, type StaffLevel, type StaffPerms } from '../lib/live'
@@ -77,7 +77,7 @@ function ReviewCard({ p, canAct, status, onReview }: { p: BoardPost; canAct: boo
 const LINKS: [string, string][] = [['/transport', 'Bus tickets'], ['/bills', 'Pay bills'], ...(WALLET ? [['/wallet', 'Wallet'], ['/exchange', 'Exchange'], ['/savings', 'Savings']] as [string, string][] : [['/payments', 'My payments']] as [string, string][]), ['/market', 'Market'], ['/flash', 'Flash help'],
   ['/invite', 'Invite friends'], ['/housing', 'Housing'], ['/jobs', 'Jobs'], ['/community', 'Events'], ['/news', 'News'], ['/promos', 'Deals'], ['/chats', 'Chats'], ['/uni', 'University'], ['/residency', 'Residency']]
 type BannerRow = Banner & { active: boolean; starts_at: string | null; ends_at: string | null; sort: number }
-const blank: BannerRow = { id: '', title: '', body: '', cta: 'Open', link: '/transport', emoji: '✨', theme: 'mint', active: true, starts_at: null, ends_at: null, sort: 0 }
+const blank: BannerRow = { id: '', title: '', body: '', cta: 'Open', link: '/transport', emoji: '✨', theme: 'mint', image: '', active: true, starts_at: null, ends_at: null, sort: 0 }
 const local = (iso: string | null) => (iso ? new Date(Date.parse(iso) - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '')
 const state = (b: BannerRow) => !b.active ? 'Off' : b.starts_at && Date.parse(b.starts_at) > Date.now() ? 'Scheduled' : b.ends_at && Date.parse(b.ends_at) < Date.now() ? 'Ended' : 'Live'
 
@@ -113,7 +113,7 @@ function BannerEditor({ b, canDelete, onClose, onDone }: { b: BannerRow; canDele
   const set = <K extends keyof BannerRow>(k: K, v: BannerRow[K]) => setF((x) => ({ ...x, [k]: v }))
   const save = async () => {
     setBusy(true); setErr('')
-    try { await api('POST', 'admin-banner-save', { banner: { id: f.id || undefined, title: f.title, body: f.body, cta: f.cta, link: f.link, emoji: f.emoji, theme: f.theme, active: f.active, sort: f.sort, startsAt: f.starts_at ?? '', endsAt: f.ends_at ?? '' } }); onDone(); onClose() } catch (e) { setErr(errMsg(e)) } finally { setBusy(false) }
+    try { await api('POST', 'admin-banner-save', { banner: { id: f.id || undefined, title: f.title, body: f.body, cta: f.cta, link: f.link, emoji: f.emoji, theme: f.theme, image: f.image ?? '', active: f.active, sort: f.sort, startsAt: f.starts_at ?? '', endsAt: f.ends_at ?? '' } }); onDone(); onClose() } catch (e) { setErr(errMsg(e)) } finally { setBusy(false) }
   }
   const del = async () => { setBusy(true); try { await api('POST', 'admin-banner-delete', { id: f.id }); onDone(); onClose() } catch (e) { setErr(errMsg(e)); setBusy(false) } }
   return (
@@ -127,6 +127,7 @@ function BannerEditor({ b, canDelete, onClose, onDone }: { b: BannerRow; canDele
           <label className="text-xs text-slate-400">Button text<input className="input mt-1" maxLength={24} value={f.cta} onChange={(e) => set('cta', e.target.value)} /></label>
           <label className="text-xs text-slate-400">Emoji<input className="input mt-1 text-center text-xl" maxLength={8} value={f.emoji} onChange={(e) => set('emoji', e.target.value)} /></label>
         </div>
+        <BannerPhoto value={f.image ?? ''} onChange={(v) => set('image', v)} onError={setErr} />
         <p className="text-xs text-slate-400">Button opens</p>
         <div className="flex flex-wrap gap-2">{LINKS.map(([l, n]) => <button key={l} onClick={() => set('link', l)} className={`chip py-2 ${f.link === l ? 'bg-mint-400/20 text-mint-200 ring-1 ring-mint-400/40' : 'bg-fg/[0.06] text-slate-300'}`}>{n}</button>)}</div>
         <p className="text-xs text-slate-400">Colour</p>
@@ -144,6 +145,38 @@ function BannerEditor({ b, canDelete, onClose, onDone }: { b: BannerRow; canDele
         {f.id && canDelete && <button className="btn-ghost py-3 text-sm text-rose-300" disabled={busy} onClick={() => void del()}><Trash2 size={15} /> Delete banner</button>}
       </div>
     </Sheet>
+  )
+}
+
+/** Banner photo: cropped to the banner's shape (12:5) and compressed on the phone before it is sent (≤ ~300 KB). */
+async function bannerPhoto(file: File): Promise<string> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error('Pick a JPG, PNG or WebP picture')
+  const img = await new Promise<HTMLImageElement>((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error('That picture could not be opened')); i.src = URL.createObjectURL(file) })
+  const W = 1200, H = 500, r = Math.max(W / img.naturalWidth, H / img.naturalHeight)
+  const w = img.naturalWidth * r, h = img.naturalHeight * r
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  c.getContext('2d')!.drawImage(img, (W - w) / 2, (H - h) / 2, w, h)
+  URL.revokeObjectURL(img.src)
+  for (const q of [0.82, 0.72, 0.6, 0.5]) { const u = c.toDataURL('image/jpeg', q); if (u.length <= 400_000) return u }
+  throw new Error('The photo is too big. Use a smaller picture.')
+}
+
+function BannerPhoto({ value, onChange, onError }: { value: string; onChange: (v: string) => void; onError: (e: string) => void }) {
+  const [busy, setBusy] = useState(false)
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl bg-fg/[0.04] p-3">
+      <p className="text-xs text-slate-400">Photo (optional) · wide picture, best 1200×500. Keep words out of the picture: the title and button are added on top and translated.</p>
+      <div className="flex gap-2">
+        <label className="btn-ghost flex-1 cursor-pointer py-2.5 text-sm"><ImagePlus size={16} /> {busy ? 'Preparing…' : value ? 'Change photo' : 'Add a photo'}
+          <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={busy} onChange={(e) => {
+            const file = e.target.files?.[0]; e.target.value = ''
+            if (!file) return
+            setBusy(true); onError('')
+            bannerPhoto(file).then(onChange).catch((x) => onError((x as Error).message)).finally(() => setBusy(false))
+          }} /></label>
+        {value && <button className="btn-ghost px-4 py-2.5 text-sm text-rose-300" onClick={() => onChange('')}><Trash2 size={15} /> Remove</button>}
+      </div>
+    </div>
   )
 }
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LIVE, api } from '../lib/live'
 
-export interface Banner { id: string; title: string; body: string; cta: string; link: string; emoji: string; theme: string }
+export interface Banner { id: string; title: string; body: string; cta: string; link: string; emoji: string; theme: string; image?: string | null }
 export const THEMES: Record<string, { bg: string; glow: string; name: string }> = {
   mint: { bg: 'from-emerald-400 via-teal-500 to-cyan-700', glow: 'bg-lime-200/40', name: 'Mint' },
   sunset: { bg: 'from-amber-400 via-orange-500 to-rose-600', glow: 'bg-yellow-200/40', name: 'Sunset' },
@@ -26,7 +26,18 @@ const hidden = (): string[] => { try { return JSON.parse(localStorage.getItem(HI
 
 export function BannerCard({ b, onHide, preview }: { b: Banner; onHide?: () => void; preview?: boolean }) {
   const t = THEMES[b.theme] ?? THEMES.mint
-  const inner = (
+  const inner = b.image ? (
+    // Photo banner (v1.38.0): the picture fills the card, a dark fade on the text side keeps the words readable.
+    <div className="relative flex h-full min-h-[148px] items-end overflow-hidden rounded-[1.75rem] bg-ink-900 text-white shadow-xl shadow-black/20">
+      <img src={b.image} alt="" className="absolute inset-0 size-full object-cover" loading="lazy" decoding="async" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/75 via-black/40 to-transparent rtl:bg-gradient-to-l" />
+      <div className="relative min-w-0 max-w-[68%] p-4 pe-2">
+        <p className="text-lg font-extrabold leading-tight drop-shadow">{b.title}</p>
+        {b.body && <p className="mt-1 line-clamp-2 text-xs text-white/90 drop-shadow">{b.body}</p>}
+        <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-bold text-ink-950 shadow">{b.cta || 'Open'} <ArrowRight size={13} className="rtl:rotate-180" /></span>
+      </div>
+    </div>
+  ) : (
     <div className={`relative flex h-full min-h-[132px] items-center gap-3 overflow-hidden rounded-[1.75rem] bg-gradient-to-br ${t.bg} p-4 pe-10 text-white shadow-xl shadow-black/20`}>
       <div className={`pointer-events-none absolute -end-8 -top-10 size-36 rounded-full ${t.glow} blur-2xl`} />
       <div className="pointer-events-none absolute -bottom-12 start-1/3 size-28 rounded-full bg-white/10 blur-2xl" />
