@@ -259,11 +259,24 @@ const CASE_CATEGORIES = ['kyc', 'payment', 'withdrawal', 'account', 'other']
 const cleanText = (v: unknown, max: number) => String(v ?? '').replace(/[<>\u0000-\u0008\u000b-\u001f]/g, '').trim().slice(0, max)
 
 /** The extra details a provider needs (name on the bill, district, IBAN, month…), cleaned. Max 8 short fields. */
+/** Residency fees (v1.35.0): the payment page link from the official site (state hospital or tax office). https only. */
+function payLink(v: unknown): string {
+  const s = String(v ?? '').trim().slice(0, 1000)
+  let u: URL
+  try { u = new URL(s) } catch { throw new Fail('Paste the full payment page link (it starts with https://)') }
+  if (u.protocol !== 'https:' || u.username || u.password) throw new Fail('Paste the full payment page link (it starts with https://)')
+  return u.toString()
+}
+/** Official North Cyprus government addresses (e.g. online.vergi.gov.ct.tr). Other links are allowed but flagged for the team. */
+const isGovLink = (link: string) => { try { const h = new URL(link).hostname.toLowerCase(); return h === 'gov.ct.tr' || h.endsWith('.gov.ct.tr') } catch { return false } }
+export const RESIDENCY_PAYEES = ['State hospital', 'Tax office']
+
 function billDetails(v: unknown): Record<string, string> {
   const out: Record<string, string> = {}
   if (!v || typeof v !== 'object') return out
   for (const [k, raw] of Object.entries(v as Record<string, unknown>).slice(0, 8)) {
-    if (!/^[a-z_]{2,20}$/.test(k)) continue
+    if (!/^[a-z_]{2,20}$/.test(k) || k === 'official') continue
+    if (k === 'link') { out.link = payLink(raw); continue }
     const val = cleanText(raw, 80)
     if (!val) continue
     if (k === 'iban') {
@@ -425,7 +438,7 @@ async function threads(env: Env, d: Deps, caseIds: string[]) {
 
 
 /* ------------------------- wallet features (pots, bills, market, Flash) ------------------------- */
-const BILL_TYPES = ['electricity', 'water', 'internet', 'phone', 'rent', 'other']
+const BILL_TYPES = ['electricity', 'water', 'internet', 'phone', 'rent', 'other', 'residency']
 const MARKET_CATEGORIES = ['electronics', 'furniture', 'books', 'fashion', 'kitchen', 'tickets', 'other']
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const uuid = (v: unknown) => { const x = String(v ?? ''); if (!UUID.test(x)) throw new Fail('Not found', 404); return x }
@@ -434,6 +447,12 @@ const tl = (minor: number) => `₺${(minor / 100).toLocaleString('en-US')}`
 function lira(v: unknown, min: number, max: number, what: string) {
   const a = int(v)
   if (!(a >= min * 100 && a <= max * 100) || a % 100) throw new Fail(`${what} must be between ${tl(min * 100)} and ${tl(max * 100)} (whole lira)`)
+  return a
+}
+/** An amount in kuruş within [min, max] TL (kuruş allowed). */
+function kurus(v: unknown, min: number, max: number, what: string) {
+  const a = int(v)
+  if (!(a >= min * 100 && a <= max * 100)) throw new Fail(`${what} must be between ${tl(min * 100)} and ${tl(max * 100)}`)
   return a
 }
 function clean(v: unknown, max: number, what: string, min = 1) {
@@ -557,9 +576,16 @@ function billSpec(body: Record<string, any>, env: Env): BillSpec {
   const provider = clean(body.provider, 60, 'who the bill is from (e.g. KIB-TEK)', 2)
   const account = cleanText(body.account, 40).replace(/\s+/g, '')
   if (!/^[\w\-+./]{3,40}$/.test(account)) throw new Fail('Enter the customer / subscriber number from the bill')
-  const amount = lira(body.amountMinor, 10, 20_000, 'The bill amount')
+  const residency = type === 'residency'
+  // Government fees can have kuruş (e.g. ₺1,570.50); other bills stay whole lira.
+  const amount = residency ? kurus(body.amountMinor, 10, 20_000, 'The fee') : lira(body.amountMinor, 10, 20_000, 'The bill amount')
   const biller = /^[a-z]{2,12}$/.test(String(body.biller ?? '')) ? String(body.biller) : null
   const details = billDetails(body.details)
+  if (residency) {
+    if (!RESIDENCY_PAYEES.includes(provider)) throw new Fail('Pick State hospital or Tax office')
+    if (!details.link) throw new Fail('Paste the payment page link from the official site')
+    details.official = isGovLink(details.link) ? 'yes' : 'no'
+  }
   if (type === 'rent' && (!details.landlord || !details.iban || !details.period)) throw new Fail("Add the landlord's name, their IBAN and the rent month")
   const op = type === 'phone' && biller && /top-up/i.test(details.kind ?? '') ? topupOperators(env)[biller] : undefined
   const phone = op ? mobileNumber(account) : null
@@ -569,7 +595,7 @@ function billSpec(body: Record<string, any>, env: Env): BillSpec {
   return { type, provider, account, amount, biller, details, op, phone }
 }
 
-const BILL_WORD: Record<string, string> = { electricity: 'Electricity bill', water: 'Water bill', internet: 'Internet bill', phone: 'Mobile', rent: 'Rent', other: 'Bill' }
+const BILL_WORD: Record<string, string> = { residency: 'Residency fee', electricity: 'Electricity bill', water: 'Water bill', internet: 'Internet bill', phone: 'Mobile', rent: 'Rent', other: 'Bill' }
 
 /** Puts a bill in the team's queue (paid for from the order that just came in), plus saved bill and auto top-up. */
 async function placeBill(env: Env, d: Deps, userId: string, spec: BillSpec, files: string[], extra: { save?: boolean; label?: string; remind?: number | null; orderRef?: string }) {
@@ -580,7 +606,7 @@ async function placeBill(env: Env, d: Deps, userId: string, spec: BillSpec, file
   await d.db.log(id, 'bill_new', { user: userId, type: spec.type, amount: spec.amount, fee, biller: spec.biller, order: extra.orderRef ?? null })
   if (extra.orderRef) await d.db.fn('luda_bill_order', { p_bill: id, p_ref: extra.orderRef })
   if (spec.biller) await d.db.fn('luda_bill_set_biller', { p_bill: id, p_biller: spec.biller })
-  if (spec.biller && extra.save) {
+  if (spec.biller && extra.save && spec.type !== 'residency') {
     const remind = extra.remind ?? null
     await d.db.fn('luda_saved_bill_save', { p_user: userId, p_biller: spec.biller, p_type: spec.type, p_provider: spec.provider, p_account: spec.account,
       p_details: Object.fromEntries(Object.entries(spec.details).filter(([k]) => k !== 'period' && k !== 'reference')), p_label: extra.label ?? '',
@@ -1214,6 +1240,7 @@ const routes: Record<string, Route> = {
     const c = await chargeFor(o.total - discount, provider, cur, env, d)
     const quote = { label: o.label, kind: o.kind, totalTry: o.total, feeTry: o.fee, discountTry: discount, discountAvailable: have, currency: cur, amountMinor: c.amount, feeMinor: c.fee, chargeMinor: c.charge, providerAddsFee: c.providerAddsFee, estFeeMinor: c.estFee, provider }
     if (body.quote === true) return quote
+    if (o.kind === 'bill' && (o.spec.bill as BillSpec).type === 'residency' && !(Array.isArray(body.files) && body.files.length)) throw new Fail('Add a screenshot of the payment page showing the amount')
     await verifyAuth(p, body, env, d)
     await limit(d, `order:${p.user_id}`, 30, 86400, 'You can make up to 30 payments a day')
     noHold(p, d)

@@ -289,7 +289,7 @@ function TopupPartnerCard() {
   )
 }
 
-const DETAIL_LABEL: Record<string, string> = { name: 'Name on the bill', district: 'District', meter: 'Meter type', period: 'Month', municipality: 'Municipality', address: 'Address', size: 'Cylinder', brand: 'Brand', kind: 'What to pay', package: 'Package', isp: 'Internet provider', landlord: 'Account holder', iban: 'IBAN', reference: 'Payment description' }
+const DETAIL_LABEL: Record<string, string> = { link: 'Payment page link', official: 'Official gov.ct.tr address', name: 'Name on the bill', district: 'District', meter: 'Meter type', period: 'Month', municipality: 'Municipality', address: 'Address', size: 'Cylinder', brand: 'Brand', kind: 'What to pay', package: 'Package', isp: 'Internet provider', landlord: 'Account holder', iban: 'IBAN', reference: 'Payment description' }
 const REFUSE = ['Customer number not found', 'Amount on the bill is different', 'Provider site is down, try again later', 'Bill already paid']
 const REFUSE_RENT = ['The IBAN is wrong', 'The name doesn’t match the IBAN', 'The bank refused the transfer']
 
@@ -304,7 +304,8 @@ function BillPaySheet({ b, meName, onClose, onDone }: { b: AdminBill; meName: st
   const [claimErr, setClaimErr] = useState('')
   const rent = b.type === 'rent'
   const amount = (Number(b.amount_minor) / 100).toFixed(2).replace(/\.00$/, '')
-  const site = (b.biller && PAY_SITE[b.biller]) || `https://www.google.com/search?q=${encodeURIComponent(`${b.provider} online ödeme`)}`
+  const residency = b.type === 'residency'
+  const site = (residency && b.details?.link) || (b.biller && PAY_SITE[b.biller]) || `https://www.google.com/search?q=${encodeURIComponent(`${b.provider} online ödeme`)}`
   const autoRunning = b.auto?.status === 'processing'
   const mine = claimed === meName
   const claim = async (release = false) => {
@@ -334,7 +335,7 @@ function BillPaySheet({ b, meName, onClose, onDone }: { b: AdminBill; meName: st
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{rent ? 'Send exactly' : 'Pay exactly'}</p>
             <div className="mt-1 flex items-center justify-between gap-3"><p className="text-3xl font-extrabold">{lira(b.amount_minor)}</p><CopyBtn text={amount} label="Amount" /></div>
             {!rent && <><div className="my-3 h-px bg-fg/10" />
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Customer / subscriber number</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{residency ? 'Kimlik / tax / passport number' : 'Customer / subscriber number'}</p>
               <div className="mt-1 flex items-center justify-between gap-3"><p className="selectable break-all font-mono text-xl font-bold">{b.account_ref}</p><CopyBtn text={b.account_ref} label="Number" /></div></>}
             {Object.entries(b.details ?? {}).filter(([k]) => !rent || k !== 'period').map(([k, v]) => <div key={k}><div className="my-3 h-px bg-fg/10" />
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{DETAIL_LABEL[k] ?? k}</p>
@@ -359,7 +360,9 @@ function BillPaySheet({ b, meName, onClose, onDone }: { b: AdminBill; meName: st
           {mode === 'pay' ? <>
             <ol className="flex flex-col gap-2 text-sm">
               {rent ? <li className="flex items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400/20 text-xs font-bold text-mint-200">1</span><span className="flex-1">In your bank app: send a FAST/EFT transfer to the IBAN above, to exactly this name, with the description</span></li>
-                : <li className="flex items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400/20 text-xs font-bold text-mint-200">1</span><span className="flex-1">Pay on the official site or your bank app</span><a href={site} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-xl bg-fg/[0.07] px-3 py-2 text-xs font-semibold"><ExternalLink size={13} /> {b.biller && PAY_SITE[b.biller] ? 'Open pay site' : 'Find site'}</a></li>}
+                : <li className="flex items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400/20 text-xs font-bold text-mint-200">1</span><span className="flex-1">Pay on the official site or your bank app</span><a href={site} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-xl bg-fg/[0.07] px-3 py-2 text-xs font-semibold"><ExternalLink size={13} /> {residency ? 'Open payment page' : b.biller && PAY_SITE[b.biller] ? 'Open pay site' : 'Find site'}</a></li>}
+              {residency && b.details?.official !== 'yes' && <li className="rounded-2xl bg-rose-500/10 p-3 text-xs text-rose-200">⚠️ This link is NOT a gov.ct.tr address. Check it is the real state hospital / tax office payment page before entering the card. If in doubt, refund it with a reason.</li>}
+              {residency && <li className="text-xs text-slate-400">Check the name, ID/tax number and total on the page match the student's screenshot before paying.</li>}
               <li className="flex items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-mint-400/20 text-xs font-bold text-mint-200">2</span><span className="flex-1">{rent ? 'Save the bank receipt (dekont), then attach it' : 'Screenshot or save the receipt, then attach it'}</span></li>
             </ol>
             <Attachments files={files} setFiles={setFiles} />

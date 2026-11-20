@@ -1,6 +1,6 @@
 // "My payments" (v1.34.0, replaces the wallet): Luda keeps no balance, so this is simply every service the person
 // paid for (bus tickets, bills, rent, mobile top-ups) with its status, any refund, a receipt and help.
-import { Bus, Copy, Download, FileText, Home as HomeIcon, LifeBuoy, Smartphone, Zap } from 'lucide-react'
+import { Bus, Landmark, Copy, Download, FileText, Home as HomeIcon, LifeBuoy, Smartphone, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { LiveKyc } from '../components/LiveMoney'
@@ -19,7 +19,7 @@ export interface Order {
 }
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-const icon = (o: Order) => (o.item.kind === 'ticket' ? Bus : o.item.bill?.type === 'rent' ? HomeIcon : o.item.bill?.type === 'phone' ? Smartphone : Zap)
+const icon = (o: Order) => (o.item.kind === 'ticket' ? Bus : o.item.bill?.type === 'rent' ? HomeIcon : o.item.bill?.type === 'residency' ? Landmark : o.item.bill?.type === 'phone' ? Smartphone : Zap)
 
 function StatusPill({ o }: { o: Order }) {
   if (o.refund === 'refunded') return <Pill tone="back">Refunded</Pill>

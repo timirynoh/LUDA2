@@ -1,11 +1,11 @@
 import { WALLET } from '../config'
-import { Droplets, ExternalLink, Home, Receipt, Smartphone, Wifi, Zap, type LucideIcon } from 'lucide-react'
+import { Droplets, ExternalLink, Home, Receipt, Smartphone, Wifi, Zap, type LucideIcon, Landmark } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Pill, ago, lira } from './LiveKit'
 import { RateButton } from './Ratings'
 
-export const BILL_ICON: Record<string, LucideIcon> = { electricity: Zap, water: Droplets, internet: Wifi, phone: Smartphone, rent: Home, other: Receipt }
-export const BILL_TINT: Record<string, string> = { electricity: 'from-amber-400 to-orange-500', water: 'from-sky-400 to-blue-500', internet: 'from-violet-400 to-fuchsia-500', phone: 'from-yellow-300 to-amber-500', rent: 'from-emerald-400 to-teal-500', other: 'from-slate-400 to-slate-600' }
+export const BILL_ICON: Record<string, LucideIcon> = { electricity: Zap, water: Droplets, internet: Wifi, phone: Smartphone, rent: Home, residency: Landmark, other: Receipt }
+export const BILL_TINT: Record<string, string> = { electricity: 'from-amber-400 to-orange-500', water: 'from-sky-400 to-blue-500', internet: 'from-violet-400 to-fuchsia-500', phone: 'from-yellow-300 to-amber-500', rent: 'from-emerald-400 to-teal-500', residency: 'from-teal-400 to-cyan-700', other: 'from-slate-400 to-slate-600' }
 
 export const Ago = ({ iso }: { iso: string }) => <span>{ago(iso)}</span>
 

@@ -139,3 +139,31 @@ test('texts follow pay-per-service: terms, policies and help never mention a wal
   const r = (await call('GET', 'rewards', undefined, T.ada)).j
   assert.ok(r.redeem.every((x: any) => /off a payment/.test(x.label)))
 })
+
+test('residency fees: state hospital / tax office link + screenshot, paid at checkout, the team pays it on the official page', async () => {
+  const LINK = 'https://online.vergi.gov.ct.tr/gvdos_online-vergi/index.jsp?tip=1&vergiNo=484076111&harcTip=1'
+  const SHOT = { name: 'page.png', type: 'image/png', data: Buffer.from('fakepng').toString('base64') }
+  const FEE = { kind: 'bill', type: 'residency', biller: 'residency', provider: 'Tax office', account: '484076111', amountMinor: 1570_50, confirmed: true, details: { name: 'Ada Okafor', link: LINK } }
+  const bad = async (body: any, re: RegExp) => { const r = await call('POST', 'checkout', { ...FEE, ...body, pin: '4826' }, T.ada); assert.equal(r.status, 400, JSON.stringify(r.j)); assert.match(r.j.error, re) }
+  await bad({ files: [SHOT], details: { name: 'Ada' } }, /payment page link/)
+  await bad({ files: [SHOT], details: { link: 'http://online.vergi.gov.ct.tr/x' } }, /https/)
+  await bad({ files: [SHOT], provider: 'KIB-TEK' }, /State hospital or Tax office/)
+  await bad({}, /screenshot/)
+  const quote = (await call('POST', 'checkout', { ...FEE, quote: true }, T.ada)).j
+  assert.equal(quote.totalTry, 1570_50 + 20_00, 'kuruş allowed; normal bill fee (₺20 above ₺1,000)')
+  assert.equal(quote.label, 'Residency fee · Tax office')
+  const o = (await call('POST', 'checkout', { ...FEE, files: [SHOT], save: true, pin: '4826' }, T.ada)).j
+  assert.ok(o.reference, JSON.stringify(o))
+  await pay(o.reference)
+  const billId = (await call('GET', `order?ref=${o.reference}`, undefined, T.ada)).j.result.billId
+  const b = (await call('GET', 'admin-bills', undefined, T.boss)).j.bills.find((x: any) => x.id === billId)
+  assert.equal(b.type, 'residency'); assert.equal(b.details.link, LINK); assert.equal(b.details.official, 'yes')
+  assert.equal(b.amount_minor, 1570_50)
+  assert.ok(!(await q(`select 1 from saved_bills where user_id=$1 and type='residency'`, [id.ada])).length, 'not saved: the link changes each time')
+  // a link that isn't a government address still works, but the team sees it flagged
+  const o2 = (await call('POST', 'checkout', { ...FEE, provider: 'State hospital', amountMinor: 450_00, details: { link: 'https://pay.example-bank.com/x?id=9' }, files: [SHOT], pin: '4826' }, T.ada)).j
+  await pay(o2.reference)
+  const id2 = (await call('GET', `order?ref=${o2.reference}`, undefined, T.ada)).j.result.billId
+  assert.equal((await call('GET', 'admin-bills', undefined, T.boss)).j.bills.find((x: any) => x.id === id2).details.official, 'no')
+  assert.ok(await zero('ada'))
+})

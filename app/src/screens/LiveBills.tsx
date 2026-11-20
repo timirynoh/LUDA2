@@ -18,6 +18,7 @@ import { api } from '../lib/live'
 import { useLive } from '../lib/liveStore'
 import { useStore } from '../lib/store'
 import { HelpChip } from '../components/HelpCenter'
+import { ResidencyFeeSheet } from '../components/ResidencyFees'
 
 const ICONS: Record<BillCategory, typeof Zap> = { electricity: Zap, water: Droplets, gas: Flame, internet: Wifi, mobile: Smartphone, rent: Home }
 const SERVER_TYPE: Record<BillCategory, string> = { electricity: 'electricity', water: 'water', gas: 'other', internet: 'internet', mobile: 'phone', rent: 'rent' }
@@ -38,6 +39,7 @@ export default function LiveBills() {
   const [quick, setQuick] = useState<SavedBill | null>(null)
   const [manage, setManage] = useState<SavedBill | null>(null)
   const [help, setHelp] = useState<string | null>(null)
+  const [residency, setResidency] = useState(() => params.get('residency') === '1')
   const city = CITIES.find((c) => c.id === s.city)
   const fees = data?.fees
   const fee = fees?.billMinor ?? 10_00
@@ -103,6 +105,12 @@ export default function LiveBills() {
           ) })}
         </div>
 
+        {!WALLET && <button onClick={() => setResidency(true)} className="card flex items-center gap-3 text-start">
+          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-teal-400 to-cyan-700 text-white"><Landmark size={20} /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Residency fees</span><span className="block text-[11px] text-slate-400">State hospital medicals · tax office permit fee</span></span>
+          <span className="chip bg-mint-400/15 py-1 text-[11px] text-mint-200">New</span>
+        </button>}
+
         <div className="flex items-center justify-between"><p className="label">My bills</p>{pending.length > 0 && <span className="text-xs text-gold-200">{pending.length} being paid</span>}</div>
         {!data ? <p className="text-sm text-slate-500">Loading…</p> : data.bills.length === 0
           ? <Empty emoji="🧾" title="No bills yet" sub="Pay your first bill above. You'll see its status and receipt here." />
@@ -115,6 +123,7 @@ export default function LiveBills() {
         prefill={saved.find((x) => x.biller === biller) ?? null} feeFor={feeFor} onClose={() => setBiller(null)} onDone={done} />}
       {quick && <QuickPay sb={quick} auto={auto.includes(quick.biller)} feeFor={feeFor} onClose={() => setQuick(null)} onDone={done} onEdit={() => { setBiller(quick.biller); setQuick(null) }} />}
       {manage && <ManageSaved sb={manage} onClose={() => setManage(null)} onDone={done} />}
+      {residency && <ResidencyFeeSheet feeFor={feeFor} onClose={() => { setResidency(false); setParams((p) => { p.delete('residency'); return p }, { replace: true }) }} />}
       {help && <CasesHub start="new" category="payment" reference={help} subject="Problem with a bill payment" onClose={() => setHelp(null)} />}
     </div>
   )

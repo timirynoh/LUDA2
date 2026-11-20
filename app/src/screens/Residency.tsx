@@ -2,7 +2,9 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { CalendarClock, Check, ExternalLink, Lock, RotateCw, X } from 'lucide-react'
 import { useState } from 'react'
 import { Header, Ring } from '../components/ui'
-import { RESIDENCY_PORTAL_URL } from '../config'
+import { RESIDENCY_PORTAL_URL, WALLET } from '../config'
+import { Link } from 'react-router-dom'
+import { LIVE } from '../lib/live'
 import { useStore } from '../lib/store'
 
 const STEPS = [
@@ -45,6 +47,11 @@ export default function Residency() {
           <p className="mt-1 text-sm text-cyan-50/80">Log in, upload, track & print — without leaving Luda.</p>
           <button className="btn mt-4 w-full bg-white py-3.5 text-ink-950" onClick={() => setPortal(true)}><Lock size={16} /> {t('res.open')}</button>
         </div>
+
+        {LIVE && !WALLET && <Link to="/bills?residency=1" className="card flex items-center gap-4">
+          <div className="grid size-12 place-items-center rounded-2xl bg-mint-400/15 text-2xl">💳</div>
+          <div className="min-w-0 flex-1"><p className="font-semibold">Pay your permit fees with Luda</p><p className="text-xs text-slate-400">State hospital medicals and the tax office permit fee. Send us the payment page, we pay it and add the receipt.</p></div>
+        </Link>}
 
         <div className="card flex items-center gap-4">
           <div className="grid size-12 place-items-center rounded-2xl bg-cyan-500/15 text-cyan-300"><CalendarClock /></div>
