@@ -2,6 +2,8 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
+// @ts-expect-error plain JS build helper
+import seo from './seo/plugin.mjs'
 
 export default defineConfig(({ command, mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env }
@@ -19,7 +21,7 @@ export default defineConfig(({ command, mode }) => {
     // is served from an unknown folder, so it uses relative paths and a memory router.
     base: mode === 'embed' ? './' : '/',
     // version.json lets an open app notice that a newer version was published (Home shows 'Update Luda').
-    plugins: [react(), tailwindcss(), { name: 'luda-version', generateBundle() { this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version, sha }) }) } }],
+    plugins: [react(), tailwindcss(), seo(), { name: 'luda-version', generateBundle() { this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version, sha }) }) } }],
     define: { __VERSION__: JSON.stringify(version), __BUILD__: JSON.stringify(`${new Date().toISOString().slice(0, 16).replace('T', ' ')}${sha ? ' · ' + sha : ''}`) },
   }
 })

@@ -2,6 +2,7 @@
 // providers (Paystack, Flutterwave) and anyone else can read who runs Luda, what it sells, the prices and the policies.
 // The words live on the server (table `guides`, edited in Luda HQ → Guides & terms); the fees come from GET config.
 import { ArrowLeft } from 'lucide-react'
+import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { FeeList } from './LiveFees'
 import { GuideBody, useGuide } from './LiveGuides'
@@ -51,6 +52,8 @@ export function PublicPage({ path }: { path: string }) {
   const page = PUBLIC_PAGES.find((x) => x.path === (path === '/contact' ? '/about' : path))
   const { g } = useGuide(page?.slug ?? null)
   const title = g?.title ?? (page?.slug ? titleOf(path) : 'Fees')
+  // Search engines and browser tabs: each public page has its own title (the built HTML files carry the same).
+  useEffect(() => { document.title = `${title} – Luda` }, [title])
   return (
     <div className="pt-safe pb-safe flex min-h-dvh flex-col px-5 desk:min-h-[calc(100dvh-3rem)]">
       <header className="flex items-center justify-between py-4">
