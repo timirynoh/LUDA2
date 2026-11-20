@@ -3921,5 +3921,6 @@
 "Usually within 2 hours · fee from {} · receipt in the app": "Kwa kawaida ndani ya saa 2 · ada kuanzia {} · risiti ndani ya programu",
 " · 🎁 {} off your next payment": " · 🎁 punguzo la {} kwenye malipo yajayo",
 "🔒 Luda never holds your money. If we can't deliver, it goes back to your card or bank.": "🔒 Luda haishikilii pesa yako kamwe. Tusipoweza kukamilisha, inarudi kwenye kadi au benki yako.",
-"🔐 The 4-digit PIN you use to approve payments. Not your 6-digit sign-in code: that comes next.": "🔐 PIN ya tarakimu 4 unayotumia kuidhinisha malipo. Si msimbo wako wa kuingia wa tarakimu 6: huo unafuata."
+"🔐 The 4-digit PIN you use to approve payments. Not your 6-digit sign-in code: that comes next.": "🔐 PIN ya tarakimu 4 unayotumia kuidhinisha malipo. Si msimbo wako wa kuingia wa tarakimu 6: huo unafuata.",
+"Luda is having a short connection problem. Please try again in a minute.": "Luda ina tatizo dogo la muunganisho. Tafadhali jaribu tena baada ya dakika moja."
 }

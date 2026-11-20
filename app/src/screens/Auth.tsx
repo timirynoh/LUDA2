@@ -311,7 +311,7 @@ export function SignIn({ onBack, onSignUp }: { onBack: () => void; onSignUp: () 
       } catch (e) {
         setTries(tries + 1)
         const m = e instanceof Error ? e.message : 'Sign-in failed'
-        setErr(/wrong/i.test(m) && known.length > 1 ? `${m}. Check the account: you're signing in as ${id.includes('@') ? id : '@' + id.replace(/^@/, '')}.` : m)
+        setErr(/wrong (username|email|password)/i.test(m) && known.length > 1 ? `${m}. Check the account: you're signing in as ${id.includes('@') ? id : '@' + id.replace(/^@/, '')}.` : m)
       } finally { setBusy(false) }
       return
     }

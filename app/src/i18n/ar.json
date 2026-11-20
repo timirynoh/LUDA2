@@ -3929,5 +3929,6 @@
 "Usually within 2 hours · fee from {} · receipt in the app": "عادةً خلال ساعتين · الرسوم من {} · الإيصال في التطبيق",
 " · 🎁 {} off your next payment": " · 🎁 خصم {} على دفعتك التالية",
 "🔒 Luda never holds your money. If we can't deliver, it goes back to your card or bank.": "🔒 لا تحتفظ Luda بأموالك أبداً. إذا لم نتمكن من التنفيذ، تعود إلى بطاقتك أو بنكك.",
-"🔐 The 4-digit PIN you use to approve payments. Not your 6-digit sign-in code: that comes next.": "🔐 رقم PIN المكوّن من 4 أرقام الذي توافق به على المدفوعات. ليس رمز الدخول المكوّن من 6 أرقام: فهذا يأتي بعده."
+"🔐 The 4-digit PIN you use to approve payments. Not your 6-digit sign-in code: that comes next.": "🔐 رقم PIN المكوّن من 4 أرقام الذي توافق به على المدفوعات. ليس رمز الدخول المكوّن من 6 أرقام: فهذا يأتي بعده.",
+"Luda is having a short connection problem. Please try again in a minute.": "تواجه Luda مشكلة اتصال قصيرة. يرجى المحاولة مرة أخرى بعد دقيقة."
 }

@@ -3499,6 +3499,7 @@ export async function handleApi(req: Request, env: Env, d: Deps): Promise<Respon
     }
     console.error('api error', name, e)
     await logIt('api_error', e instanceof Error ? `${e.name}: ${e.message}` : String(e), 500)
+    if (e instanceof Error && /^Database (busy|unreachable)/.test(e.message)) return json({ error: 'Luda is having a short connection problem. Please try again in a minute.' }, 503, h)
     return json({ error: e instanceof Error && /exchange rate|Provider error|Paystack|Flutterwave|ID check/i.test(e.message) ? e.message : 'Something went wrong, please try again' }, 500, h)
   }
 }

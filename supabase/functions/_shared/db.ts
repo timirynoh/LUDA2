@@ -96,14 +96,42 @@ export interface Db {
 
 export const MONEY_ERRORS = ['insufficient_funds', 'account_frozen', 'not_available', 'pot_locked', 'too_many_pots', 'own_listing', 'not_found', 'own_post', 'name_taken', 'not_member', 'owner_cannot_leave', 'too_many_ads', 'too_many_methods', 'p2p_limits', 'p2p_method', 'appeal_too_early', 'not_enough_points', 'rewards_budget', 'already_invited', 'invite_too_late', 'too_many_fees', 'already_reviewed', 'too_soon', 'too_small', 'rate_moved', 'fx_daily_cap', 'already_applied', 'not_pending', 'not_active']
 
-export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
+/** Answers that mean Supabase's data API (PostgREST) is stuck or unreachable, not a problem with the request.
+ *  555 = the gateway gave up after 10 s (seen live on 2026-11-20 18:07–18:16: PostgREST lost its database
+ *  connection and only recovered after a reload message). */
+const STUCK = [502, 503, 504, 520, 522, 524, 555]
+/** Read-only SQL functions that are safe to send twice. */
+const SAFE_RPC = /^luda_(hit|app_key|guide|guides|help|discount|inbox_unread|inbox|fx|seen2?|todo|features_mine|market_list|flash_list|flash_card|presence|user_data_get|trader|statement|orders_mine|kyc_usage)$/
+let lastHeal = 0
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** Database over Supabase REST. `heal` asks PostgREST to reconnect (at most once a minute) when it is stuck. */
+export function restDb(url: string, serviceKey: string, f: Fetch = fetch, heal?: () => Promise<void>): Db {
   const base = `${url.replace(/\/$/, '')}/rest/v1`
   // Legacy service_role keys are JWTs (sent in both headers); newer `sb_secret_…` keys go in `apikey` only.
   const auth: Record<string, string> = serviceKey.startsWith('sb_') ? { apikey: serviceKey } : { apikey: serviceKey, authorization: `Bearer ${serviceKey}` }
   const h = (extra: Record<string, string> = {}) => ({ ...auth, 'content-type': 'application/json', ...extra })
   const q = encodeURIComponent
-  async function call(path: string, init: RequestInit = {}) {
-    const r = await f(`${base}/${path}`, { ...init, headers: h(init.headers as Record<string, string>) })
+  // Self-healing (v1.37.2): when PostgREST is stuck, ask it to reconnect, then try a safe request once more.
+  async function unstick() {
+    if (!heal || Date.now() - lastHeal < 60_000) return false
+    lastHeal = Date.now()
+    try { await heal(); await sleep(1500); return true } catch (e) { console.error('Luda: could not wake the database API', e); return false }
+  }
+  const safe = (path: string, init: RequestInit) => !init.method || init.method === 'GET' || SAFE_RPC.test(path.replace(/^rpc\//, '').split('?')[0])
+  async function call(path: string, init: RequestInit = {}, again = false): Promise<Response> {
+    let r: Response
+    try {
+      r = await f(`${base}/${path}`, { ...init, headers: h(init.headers as Record<string, string>) })
+    } catch (e) {
+      if ((await unstick()) && !again && safe(path, init)) return call(path, init, true)
+      throw new Error(`Database unreachable: ${String((e as Error)?.message ?? e).slice(0, 120)}`)
+    }
+    if (STUCK.includes(r.status)) {
+      await r.text().catch(() => '')
+      if ((await unstick()) && !again && safe(path, init)) return call(path, init, true)
+      throw new Error(`Database busy (${r.status})`)
+    }
     if (!r.ok) {
       const t = await r.text()
       const known = MONEY_ERRORS.find((m) => t.includes(m))
