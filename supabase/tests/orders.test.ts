@@ -141,9 +141,9 @@ test('texts follow pay-per-service: terms, policies and help never mention a wal
 })
 
 test('residency fees: state hospital / tax office link + screenshot, paid at checkout, the team pays it on the official page', async () => {
-  const LINK = 'https://online.vergi.gov.ct.tr/gvdos_online-vergi/index.jsp?tip=1&vergiNo=484076111&harcTip=1'
+  const LINK = 'https://online.vergi.gov.ct.tr/gvdos_online-vergi/index.jsp?tip=1&vergiNo=123456789&harcTip=1'
   const SHOT = { name: 'page.png', type: 'image/png', data: Buffer.from('fakepng').toString('base64') }
-  const FEE = { kind: 'bill', type: 'residency', biller: 'residency', provider: 'Tax office', account: '484076111', amountMinor: 1570_50, confirmed: true, details: { name: 'Ada Okafor', link: LINK } }
+  const FEE = { kind: 'bill', type: 'residency', biller: 'residency', provider: 'Tax office', account: '123456789', amountMinor: 1570_50, confirmed: true, details: { name: 'Ada Okafor', link: LINK } }
   const bad = async (body: any, re: RegExp) => { const r = await call('POST', 'checkout', { ...FEE, ...body, pin: '4826' }, T.ada); assert.equal(r.status, 400, JSON.stringify(r.j)); assert.match(r.j.error, re) }
   await bad({ files: [SHOT], details: { name: 'Ada' } }, /payment page link/)
   await bad({ files: [SHOT], details: { link: 'http://online.vergi.gov.ct.tr/x' } }, /https/)

@@ -76,7 +76,7 @@ export function ResidencyFeeSheet({ feeFor, onClose }: { feeFor: (amount: number
             </label>
             {url && !isLink(url) && <p className="text-xs text-rose-300">This doesn't look like a payment page link. It should start with https://</p>}
             {isLink(url) && !isGov(url) && <p className="rounded-2xl bg-gold-400/10 p-3 text-xs text-gold-100">⚠️ This isn't a gov.ct.tr address. Make sure you copied it from the official site; the team checks it before paying.</p>}
-            <label className="text-xs text-slate-400">Kimlik No, tax number or passport no. (as on the page)<input className="input mt-1" value={idNo} onChange={(e) => setIdNo(e.target.value)} placeholder="e.g. 484-076-111" /></label>
+            <label className="text-xs text-slate-400">Kimlik No, tax number or passport no. (as on the page)<input className="input mt-1" value={idNo} onChange={(e) => setIdNo(e.target.value)} placeholder="e.g. 123-456-789" /></label>
             <label className="text-xs text-slate-400">Full name<input className="input mt-1" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="As on your passport" /></label>
             <label className="text-xs text-slate-400">Total amount on the page (₺)<input className="input mt-1 text-lg font-bold" value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="e.g. 1570" inputMode="decimal" /></label>
             <div><p className="mb-1 text-xs text-slate-400">Screenshot of the payment page (required)</p><Attachments files={files} setFiles={(f) => setFiles(f.slice(0, 2))} /></div>
