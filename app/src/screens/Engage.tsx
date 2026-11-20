@@ -35,6 +35,27 @@ export function CheckinCard() {
   )
 }
 
+/** v1.36.0: one small rewards row on Home (level, XP, points, streak, daily spin) instead of check-in + quests cards. */
+export function RewardsRow() {
+  const { s, level: lv } = useStore()
+  const { rewards } = useLive()
+  const [open, setOpen] = useState(false)
+  const canSpin = LIVE ? !!rewards && !rewards.spunToday : s.spin.last !== today()
+  return (
+    <div className="card flex items-center gap-3 py-3">
+      <Link to="/rewards" className="flex min-w-0 flex-1 items-center gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-gold-400/15 text-2xl">{lv.emoji}</span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center justify-between gap-2 text-sm font-semibold"><span className="truncate">{lv.name} · {s.xp} XP</span><span className="shrink-0 text-xs text-gold-200">🪙 {s.points} · 🔥 {s.streak}</span></span>
+          <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-fg/10"><span className="block h-full rounded-full bg-gradient-to-r from-gold-300 to-amber-400" style={{ width: `${Math.round(lv.progress * 100)}%` }} /></span>
+        </span>
+      </Link>
+      {canSpin && <button onClick={() => setOpen(true)} className="chip shrink-0 bg-gradient-to-r from-yellow-300 to-orange-400 py-2 font-bold text-ink-950">🎡 Spin</button>}
+      {open && <SpinSheet onClose={() => setOpen(false)} />}
+    </div>
+  )
+}
+
 export function SpinSheet({ onClose }: { onClose: () => void }) {
   const { s, set, reward, addTx } = useStore()
   const { refresh, refreshRewards } = useLive()

@@ -13,7 +13,7 @@ import { FlashBubbles, FlashPop } from '../components/FlashBubbles'
 import { SaverCard, SaverSheet } from '../components/RideSaver'
 import { UnlockCard } from '../components/Verify'
 import { Avatar } from '../components/Avatar'
-import { CheckinCard, NewsPreview } from './Engage'
+import { CheckinCard, NewsPreview, RewardsRow } from './Engage'
 import { PromoStrip } from './Promos'
 import { WELCOME_STEPS } from '../lib/growth'
 import { ACTION_TIER, tierOf } from '../lib/access'
@@ -50,9 +50,40 @@ export default function Home() {
   const activeTrade = LIVE ? undefined : s.trades.find((x) => x.status === 'escrow' || x.status === 'meeting') // demo swaps only; live P2P orders show in To do
 
   // Saved shortcuts that no longer exist (wallet ones since v1.34.0) are skipped; empty spots get useful defaults.
-  const mine = s.shortcuts.filter((id) => ACTIONS.some((a) => a.id === id))
-  const ids = mine.length >= 4 ? mine : [...mine, ...['bills', 'transport', 'housing', 'flash'].filter((x) => !mine.includes(x))].slice(0, Math.max(4, mine.length))
+  // v1.36.0 (tidy Home): the payment card already has bus tickets and bills, so shortcuts don't repeat them.
+  const tidy = LIVE && !WALLET
+  const onCard = tidy ? ['bills', 'transport'] : []
+  const mine = s.shortcuts.filter((id) => ACTIONS.some((a) => a.id === id) && !onCard.includes(id))
+  const ids = mine.length >= 4 ? mine : [...mine, ...(tidy ? ['housing', 'jobs', 'market', 'flash'] : ['bills', 'transport', 'housing', 'flash']).filter((x) => !mine.includes(x))].slice(0, Math.max(4, mine.length))
   const actions = ids.map((id) => ACTIONS.find((a) => a.id === id)).filter((a) => a && (!a.admin || s.isAdmin)) as typeof ACTIONS
+
+  const shortcuts = (
+      <section data-tour="actions">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="label">{t('home.quick')}</p>
+          <button onClick={() => setEditing(true)} className="chip bg-fg/5 py-1.5 text-slate-300"><Pencil size={12} /> Edit</button>
+        </div>
+        <div className="grid grid-cols-4 gap-3 tab:grid-cols-8">
+          {actions.map(({ id, to, icon: Icon, key, c }, i) => (
+            <motion.div key={id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
+              <Link to={to} className="flex flex-col items-center gap-2 text-center">
+                <div className={`relative grid size-14 place-items-center rounded-2xl bg-gradient-to-br ${c} text-white shadow-lg transition active:scale-90`}>
+                  <Icon size={22} strokeWidth={2.2} />
+                  {(ACTION_TIER[id] ?? 0) > tierOf(s) && <span className="absolute -end-1 -top-1 grid size-5 place-items-center rounded-full bg-ink-900 text-slate-300 ring-2 ring-ink-950"><Lock size={10} /></span>}
+                </div>
+                <span className="text-[11px] leading-tight font-medium text-slate-300">{t(key)}</span>
+              </Link>
+            </motion.div>
+          ))}
+          {actions.length < MAX_SHORTCUTS && (!tidy || actions.length % 4 !== 0) && (
+            <button onClick={() => setEditing(true)} className="flex flex-col items-center gap-2 text-center">
+              <div className="grid size-14 place-items-center rounded-2xl border-2 border-dashed border-fg/15 text-slate-500"><Plus size={22} /></div>
+              <span className="text-[11px] font-medium text-slate-500">Add</span>
+            </button>
+          )}
+        </div>
+      </section>
+  )
 
   return (
     <div className="pt-safe flex flex-col gap-5 px-5">
@@ -65,7 +96,7 @@ export default function Home() {
         </Link>
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs text-slate-400 min-[380px]:text-sm">{t('home.hello')} {home.flag} · {city.name}</p>
-          <p className="truncate text-base font-bold min-[380px]:text-lg">{s.name} <span className="text-xs font-medium text-orange-300 min-[380px]:text-sm"><Flame size={12} className="inline" />{s.streak}</span> <span className="text-xs font-medium text-slate-400 max-[379px]:hidden min-[380px]:text-sm">· {level.emoji} {level.name}</span></p>
+          <p className="truncate text-base font-bold min-[380px]:text-lg">{s.name} <span className="text-xs font-medium text-orange-300 min-[380px]:text-sm"><Flame size={12} className="inline" />{s.streak}</span> {!tidy && <span className="text-xs font-medium text-slate-400 max-[379px]:hidden min-[380px]:text-sm">· {level.emoji} {level.name}</span>}</p>
         </div>
         <Link to="/search" data-tour="search" className="glass grid size-9 shrink-0 place-items-center rounded-2xl min-[380px]:size-10" aria-label="Search"><SearchIcon size={18} /></Link>
         <Link to="/inbox" data-tour="inbox" className="glass relative grid size-9 shrink-0 place-items-center rounded-2xl min-[380px]:size-10" aria-label="Notifications"><Bell size={18} />
@@ -76,7 +107,7 @@ export default function Home() {
 
       </div>
 
-      {s.sections.flash && <FlashBubbles />}
+      {!tidy && s.sections.flash && <FlashBubbles />}
 
       {/* v1.34.0: no wallet. Instead of a balance, the four things people pay for, then they pay directly. */}
       {LIVE && !WALLET ? (
@@ -91,13 +122,6 @@ export default function Home() {
               ))}
             </div>
             <p className="mt-3 text-xs text-emerald-100/80">Pay by card, bank transfer or USSD. Luda never holds your money.{(me?.profile.discountMinor ?? 0) > 0 ? ` 🎁 ₺${(me!.profile.discountMinor! / 100).toLocaleString()} off your next payment.` : ''}</p>
-            <div className="mt-3 flex items-center justify-between text-xs text-emerald-100/80">
-              <span>{t('home.level')} {level.idx} · {s.xp} / {level.next} XP</span>
-              <span className="font-semibold text-gold-200">🪙 {s.points} pts</span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/25">
-              <motion.div className="h-full rounded-full bg-gradient-to-r from-gold-300 to-amber-400" initial={{ width: 0 }} animate={{ width: `${level.progress * 100}%` }} transition={{ duration: 1 }} />
-            </div>
           </div>
         </motion.div>
       ) : <motion.div initial={{ scale: 0.97 }} animate={{ scale: 1 }} data-tour="balance"
@@ -126,11 +150,19 @@ export default function Home() {
       </motion.div>}
 
       <TodoCard />
+      {tidy ? <>
+        <OpportunityNudge />
+        {shortcuts}
+        <HomeBanners />
+        {s.sections.flash && <FlashBubbles />}
+        <RewardsRow />
+      </> : <>
       <HomeBanners />
       <OpportunityNudge />
       {s.sections.checkin && <CheckinCard />}
       <UnlockCard />
-      {s.sections.welcome && Date.now() - s.createdAt < 30 * 86_400_000 && s.welcomeDone.length < WELCOME_STEPS.length && (
+      </>}
+      {!tidy && s.sections.welcome && Date.now() - s.createdAt < 30 * 86_400_000 && s.welcomeDone.length < WELCOME_STEPS.length && (
         <Link to="/welcome" className="card flex items-center gap-3">
           <span className="text-2xl">🧳</span>
           <div className="flex-1"><p className="text-sm font-semibold">New in North Cyprus? Your welcome pack</p>
@@ -168,38 +200,13 @@ export default function Home() {
         </Link>
       )}
 
-      {/* quick actions: user-chosen */}
-      <section data-tour="actions">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="label">{t('home.quick')}</p>
-          <button onClick={() => setEditing(true)} className="chip bg-fg/5 py-1.5 text-slate-300"><Pencil size={12} /> Edit</button>
-        </div>
-        <div className="grid grid-cols-4 gap-3 tab:grid-cols-8">
-          {actions.map(({ id, to, icon: Icon, key, c }, i) => (
-            <motion.div key={id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
-              <Link to={to} className="flex flex-col items-center gap-2 text-center">
-                <div className={`relative grid size-14 place-items-center rounded-2xl bg-gradient-to-br ${c} text-white shadow-lg transition active:scale-90`}>
-                  <Icon size={22} strokeWidth={2.2} />
-                  {(ACTION_TIER[id] ?? 0) > tierOf(s) && <span className="absolute -end-1 -top-1 grid size-5 place-items-center rounded-full bg-ink-900 text-slate-300 ring-2 ring-ink-950"><Lock size={10} /></span>}
-                </div>
-                <span className="text-[11px] leading-tight font-medium text-slate-300">{t(key)}</span>
-              </Link>
-            </motion.div>
-          ))}
-          {actions.length < MAX_SHORTCUTS && (
-            <button onClick={() => setEditing(true)} className="flex flex-col items-center gap-2 text-center">
-              <div className="grid size-14 place-items-center rounded-2xl border-2 border-dashed border-fg/15 text-slate-500"><Plus size={22} /></div>
-              <span className="text-[11px] font-medium text-slate-500">Add</span>
-            </button>
-          )}
-        </div>
-      </section>
+      {!tidy && shortcuts}
 
       {s.sections.promos && (LIVE ? <BoardStrip kind="promo" title="🔥 Deals near you" to="/promos" /> : <PromoStrip />)}
       {s.sections.news && (LIVE ? <BoardStrip kind="news" title="📰 News" to="/news" /> : <NewsPreview />)}
 
       {/* rates */}
-      {s.sections.rates && <section className="card">
+      {!tidy && s.sections.rates && <section className="card">
         <div className="mb-3 flex items-center justify-between">
           <p className="label">{t('home.rates')}</p>
           <span className={`chip ${live ? 'bg-mint-400/15 text-mint-300' : 'bg-fg/5 text-slate-400'}`}>
@@ -217,7 +224,7 @@ export default function Home() {
       </section>}
 
       {/* quests */}
-      {s.sections.quests && <section>
+      {!tidy && s.sections.quests && <section>
         <div className="mb-3 flex items-center justify-between">
           <p className="label">{t('home.quests')}</p>
           <span className="text-xs text-slate-400">{quests.filter((q) => s.quests.includes(q.id)).length}/{quests.length}</span>

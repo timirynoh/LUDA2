@@ -140,7 +140,7 @@ export const QUESTS = [
   { id: 'flash', title: 'Post a Flash help request', xp: 40, to: '/flash' },
   { id: 'promo', title: 'Snap a promo in a shop', xp: 30, to: '/promos' },
   { id: 'ticket', title: 'Buy a bus ticket', xp: 50, to: '/transport' },
-]
+].filter((q) => WALLET || (q.id !== 'fx' && q.id !== 'p2p')) // no wallet / exchange since v1.34.0
 
 /** Extra details each provider needs before the Luda team can pay (what the official sites / bank transfers ask for). */
 export interface BillField { key: string; label: string; placeholder?: string; options?: string[]; optional?: boolean; tel?: boolean }

@@ -1,7 +1,7 @@
 import { useLive } from '../lib/liveStore'
 import { WALLET } from '../config'
 import { staffCan } from '../lib/live'
-import { BadgeCheck, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react'
+import { BadgeCheck, ChevronRight, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react'
 import { TourButton } from '../components/GuidedTour'
 import { Link, useNavigate } from 'react-router-dom'
 import { Avatar, avatarFrom } from '../components/Avatar'
@@ -53,69 +53,77 @@ export default function Profile() {
           {s.kyc.status === 'none' && <span className="btn-primary mt-2 w-full py-3 text-sm">Start KYC · +150 XP</span>}
         </button>
 
-        <div className="grid grid-cols-2 gap-2">
-          <Link to="/security" className="card flex items-center gap-3 py-3"><ShieldCheck className="text-mint-300" size={20} /><span className="text-sm font-semibold">Security Center</span></Link>
-          <Link to="/help" className="card flex items-center gap-3 py-3"><span className="text-lg">💬</span><span className="text-sm font-semibold">Help & Support</span></Link>
-          {LIVE && !WALLET ? <Link to="/payments" className="card flex items-center gap-3 py-3"><span className="text-lg">🧾</span><span className="text-sm font-semibold">My payments</span></Link> : <Link to="/wallet" className="card flex items-center gap-3 py-3"><span className="text-lg">💳</span><span className="text-sm font-semibold">Saved cards · {s.cards.length}</span></Link>}
-          <Link to="/disputes" className="card flex items-center gap-3 py-3"><span className="text-lg">🛡️</span><span className="text-sm font-semibold">My appeals</span></Link>
-        </div>
+        {/* v1.36.0: clear sections — places, account, preferences */}
+        <section className="card divide-y divide-fg/5 p-0">
+          {([
+            ...(LIVE && !WALLET ? [['/payments', '🧾', 'My payments', 'Receipts and refunds']] : [['/wallet', '💳', `Saved cards · ${s.cards.length}`, '']]),
+            ['/security', '🛡️', 'Security Center', 'PIN, fingerprint, sign-ins, freeze'],
+            ['/help', '💬', 'Help & Support', 'Questions and your requests'],
+            ['/disputes', '📨', 'My appeals', 'Problems you reported'],
+          ] as [string, string, string, string][]).map(([to, e, title, sub]) => (
+            <Link key={to} to={to} className="flex items-center gap-3 px-4 py-3.5">
+              <span className="text-xl">{e}</span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{title}</span>{sub && <span className="block text-xs text-slate-400">{sub}</span>}</span>
+              <ChevronRight size={16} className="text-slate-500 rtl:rotate-180" />
+            </Link>
+          ))}
+        </section>
 
         {s.account && (
           <section className="card grid gap-3">
             <p className="label">Account</p>
-            <div className="flex items-center justify-between text-sm"><span className="text-slate-400">Username</span><span className="font-semibold">@{s.account.username}</span></div>
-            <div className="flex items-center justify-between text-sm"><span className="text-slate-400">Email</span><span className="font-semibold">{s.account.email}</span></div>
+            <div className="flex items-center justify-between gap-3 text-sm"><span className="text-slate-400">Username</span><span className="truncate font-semibold">@{s.account.username}</span></div>
+            <div className="flex items-center justify-between gap-3 text-sm"><span className="text-slate-400">Email</span><span className="truncate font-semibold">{s.account.email}</span></div>
             <label className="flex items-center justify-between gap-3 text-sm">
-              <span><span className="block font-semibold">Ask for PIN when opening Luda</span><span className="text-xs text-slate-400">Recommended: protects your account if someone has your phone</span></span>
-              <input type="checkbox" className="size-5 accent-emerald-500" checked={s.lockOnOpen} onChange={(e) => set((p) => ({ ...p, lockOnOpen: e.target.checked }))} />
+              <span><span className="block font-semibold">Ask for my code when opening Luda</span><span className="text-xs text-slate-400">Recommended: protects your account if someone has your phone</span></span>
+              <input type="checkbox" className="size-5 shrink-0 accent-emerald-500" checked={s.lockOnOpen} onChange={(e) => set((p) => ({ ...p, lockOnOpen: e.target.checked }))} />
             </label>
             <label className="flex items-center justify-between gap-3 text-sm">
               <span className="font-semibold">Keep me signed in</span>
-              <input type="checkbox" className="size-5 accent-emerald-500" checked={s.account.stay} onChange={(e) => set((p) => ({ ...p, account: p.account ? { ...p.account, stay: e.target.checked } : p.account }))} />
+              <input type="checkbox" className="size-5 shrink-0 accent-emerald-500" checked={s.account.stay} onChange={(e) => set((p) => ({ ...p, account: p.account ? { ...p.account, stay: e.target.checked } : p.account }))} />
             </label>
-            <button className="btn-ghost py-2.5 text-sm" onClick={() => set((p) => ({ ...p, signedIn: false }))}>Sign out</button>
           </section>
         )}
 
-        <section className="card flex items-center justify-between gap-3">
-          <span><span className="block text-sm font-semibold">⚡ Flash help pop-ups</span><span className="text-xs text-slate-400">Max once per visit. Bubbles on Home always show open requests.</span></span>
-          <input type="checkbox" aria-label="Flash pop-ups" className="size-5 accent-emerald-500" checked={s.flashPop} onChange={(e) => set((p) => ({ ...p, flashPop: e.target.checked }))} />
-        </section>
-
-        <section className="card">
-          <p className="label mb-3">Theme</p>
-          <div className="grid grid-cols-3 gap-2">
-            {([['dark', 'Night', Moon], ['light', 'Day', Sun], ['system', 'Auto', Monitor]] as const).map(([v, label, Icon]) => (
-              <button key={v} onClick={() => set((p) => ({ ...p, theme: v }))}
-                className={`flex flex-col items-center gap-1 rounded-2xl p-3 text-xs font-semibold ${s.theme === v ? 'bg-mint-400/15 text-mint-200 ring-1 ring-mint-400/50' : 'bg-fg/[0.03] text-slate-400'}`}>
-                <Icon size={20} />{label}
-              </button>
-            ))}
+        <section className="card grid gap-4">
+          <p className="label">Preferences</p>
+          <div>
+            <p className="mb-2 text-xs text-slate-400">{t('profile.lang')}</p>
+            <div className="grid grid-cols-5 gap-2">
+              {LANGS.map((l) => (
+                <button key={l.code} onClick={() => set((p) => ({ ...p, lang: l.code }))}
+                  className={`flex flex-col items-center gap-1 rounded-2xl p-2 text-[11px] font-semibold ${s.lang === l.code ? 'bg-mint-400/15 text-mint-200 ring-1 ring-mint-400/50' : 'bg-fg/[0.03] text-slate-400'}`}>
+                  <span className="text-xl">{l.flag}</span>{l.native}
+                </button>
+              ))}
+            </div>
           </div>
-        </section>
-
-        <section className="card">
-          <p className="label mb-3">{t('profile.lang')}</p>
-          <div className="grid grid-cols-5 gap-2">
-            {LANGS.map((l) => (
-              <button key={l.code} onClick={() => set((p) => ({ ...p, lang: l.code }))}
-                className={`flex flex-col items-center gap-1 rounded-2xl p-2 text-[11px] font-semibold ${s.lang === l.code ? 'bg-mint-400/15 text-mint-200 ring-1 ring-mint-400/50' : 'bg-fg/[0.03] text-slate-400'}`}>
-                <span className="text-xl">{l.flag}</span>{l.native}
-              </button>
-            ))}
+          <div>
+            <p className="mb-2 text-xs text-slate-400">Theme</p>
+            <div className="grid grid-cols-3 gap-2">
+              {([['dark', 'Night', Moon], ['light', 'Day', Sun], ['system', 'Auto', Monitor]] as const).map(([v, label, Icon]) => (
+                <button key={v} onClick={() => set((p) => ({ ...p, theme: v }))}
+                  className={`flex items-center justify-center gap-1.5 rounded-2xl p-2.5 text-xs font-semibold ${s.theme === v ? 'bg-mint-400/15 text-mint-200 ring-1 ring-mint-400/50' : 'bg-fg/[0.03] text-slate-400'}`}>
+                  <Icon size={16} />{label}
+                </button>
+              ))}
+            </div>
           </div>
-        </section>
-
-        <section className="card grid gap-3">
-          <label className="grid gap-1"><span className="label">{t('profile.city')}</span>
-            <select className="input" value={s.city} onChange={(e) => set((p) => ({ ...p, city: e.target.value }))}>
-              {CITIES.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.en}</option>)}
-            </select>
-          </label>
-          <label className="grid gap-1"><span className="label">Home country</span>
-            <select className="input" value={s.country} onChange={(e) => set((p) => ({ ...p, country: e.target.value }))}>
-              {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.flag} {c.name}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="grid gap-1"><span className="text-xs text-slate-400">{t('profile.city')}</span>
+              <select className="input py-2.5 text-sm" value={s.city} onChange={(e) => set((p) => ({ ...p, city: e.target.value }))}>
+                {CITIES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-1"><span className="text-xs text-slate-400">Home country</span>
+              <select className="input py-2.5 text-sm" value={s.country} onChange={(e) => set((p) => ({ ...p, country: e.target.value }))}>
+                {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.flag} {c.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <label className="flex items-center justify-between gap-3">
+            <span><span className="block text-sm font-semibold">⚡ Flash help pop-ups</span><span className="text-xs text-slate-400">At most once per visit</span></span>
+            <input type="checkbox" aria-label="Flash pop-ups" className="size-5 shrink-0 accent-emerald-500" checked={s.flashPop} onChange={(e) => set((p) => ({ ...p, flashPop: e.target.checked }))} />
           </label>
         </section>
 
@@ -134,6 +142,7 @@ export default function Profile() {
         </section>}
 
         <TourButton />
+        {s.account && <button className="btn-ghost py-3 text-sm text-rose-300" onClick={() => set((p) => ({ ...p, signedIn: false }))}>Sign out</button>}
         {!LIVE && <button className="btn-ghost text-rose-300" onClick={() => (armed ? reset() : setArmed(true))}>{armed ? 'Tap again to confirm reset' : t('profile.reset')}</button>}
         <p className="text-center text-xs text-slate-500">Luda v{__VERSION__}{LIVE ? '' : ' · Demo'}</p>
       </div>

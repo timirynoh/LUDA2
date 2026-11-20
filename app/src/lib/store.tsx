@@ -141,7 +141,7 @@ export const initialState: State = {
   txs: [], xp: 0, points: 0, streak: 1, lastDay: today(),
   badges: [], quests: [], trades: [], savedBills: [], docs: [], permitExpiry: '', contacted: 0,
   savedHomes: [], viewings: [], myListings: [], connections: [],
-  theme: 'dark', shortcuts: WALLET ? ['deposit', 'convert', ESCROW ? 'p2p' : 'transport', 'bills'] : ['bills', 'transport', 'housing', 'flash'],
+  theme: 'dark', shortcuts: WALLET ? ['deposit', 'convert', ESCROW ? 'p2p' : 'transport', 'bills'] : ['housing', 'jobs', 'market', 'flash'],
   sections: { flash: true, nextClass: true, rates: true, quests: true, deadline: true, checkin: true, welcome: true, news: true, promos: true },
   phoneVerified: false, proofs: {}, isAdmin: false, reports: [],
   myJobs: [], applications: [], myEvents: [], rsvps: [],
