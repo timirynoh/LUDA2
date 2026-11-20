@@ -22,6 +22,8 @@ import { ResidencyFeeSheet } from '../components/ResidencyFees'
 
 const ICONS: Record<BillCategory, typeof Zap> = { electricity: Zap, water: Droplets, gas: Flame, internet: Wifi, mobile: Smartphone, rent: Home }
 const SERVER_TYPE: Record<BillCategory, string> = { electricity: 'electricity', water: 'water', gas: 'other', internet: 'internet', mobile: 'phone', rent: 'rent' }
+/** Short names so nothing is cut off: [title, subtitle] */
+const TILE: Record<string, [string, string]> = { kibtek: ['Electricity', 'KIB-TEK'], water: ['Water', 'Municipality'], lpg: ['Gas', 'LPG cylinder'], turkcell: ['Turkcell', 'Airtime · bills'], telsim: ['Telsim', 'Airtime · bills'], fiber: ['Internet', 'Home Wi-Fi'], rent: ['Rent', 'Bank transfer'] }
 const REMIND_DAYS = [0, 1, 5, 10, 15, 20, 25, 28]
 const isTopup = (kind?: string) => /top-up/i.test(kind ?? '')
 
@@ -47,6 +49,8 @@ export default function LiveBills() {
   const feeFor = (amount: number) => (fees?.billStepMinor && fees.billHighMinor && amount > fees.billStepMinor ? fees.billHighMinor : fee)
   const name = (id: string, n: string) => (id === 'water' ? `${city?.name ?? ''} Municipality Water`.trim() : n)
   const pending = (data?.bills ?? []).filter((b) => b.status === 'pending')
+  const finished = (data?.bills ?? []).filter((b) => b.status !== 'pending')
+  const [all, setAll] = useState(false)
   const saved = data?.saved ?? []
   const auto = data?.topup?.billers ?? []
 
@@ -62,17 +66,16 @@ export default function LiveBills() {
 
   return (
     <div className="pb-8">
-      <Header back title="Pay bills" sub={WALLET ? 'From your Lira wallet · receipt in the app' : 'Pay by card or bank · receipt in the app'} right={<HelpChip topic="bills" />} />
+      <Header back title="Pay bills" sub={WALLET ? 'From your Lira wallet · receipt in the app' : 'Electricity, water, phone, internet, rent'} right={<HelpChip topic="bills" />} />
       <div className="flex flex-col gap-4 px-5">
-        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-400 via-orange-500 to-rose-600 p-5 text-white">
-          <div className="absolute -end-8 -top-8 size-32 rounded-full bg-white/15 blur-2xl" />
-          {WALLET ? <>
-            <p className="text-xs font-semibold uppercase tracking-wide text-white/80">Lira wallet</p>
-            <p className="text-3xl font-extrabold">{lira(me?.balances.TRY ?? 0)}</p>
-          </> : <p className="text-2xl font-extrabold">Bills paid for you</p>}
-          <p className="mt-1 text-sm text-white/85">KIB-TEK, water, phone, internet and rent, paid for you by the Luda team. Service fee from {lira(fee)}. Usually paid within 2 hours.</p>
+        {/* v1.36.0: one compact header instead of a big banner + steps strip */}
+        <div className="card flex items-center gap-3 border-orange-400/20 bg-gradient-to-r from-orange-500/15 to-rose-500/10 py-3">
+          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-amber-400 to-rose-500 text-xl">⚡</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold">{WALLET ? `Lira wallet · ${lira(me?.balances.TRY ?? 0)}` : 'The Luda team pays it for you'}</p>
+            <p className="text-xs text-slate-400">Usually within 2 hours · fee from {lira(fee)} · receipt in the app</p>
+          </div>
         </div>
-        <Steps steps={[['🧾', 'Enter the bill details'], ['⚡', 'Luda pays it, usually within 2 hours'], ['✅', 'Receipt lands here']]} />
 
         {saved.length > 0 && <>
           <p className="label">Saved bills</p>
@@ -94,27 +97,33 @@ export default function LiveBills() {
           </div>
         </>}
 
-        <p className="label">Choose a bill</p>
-        <div className="grid grid-cols-2 gap-2.5 tab:grid-cols-3">
-          {BILLERS.map((b) => { const I = ICONS[b.category]; return (
-            <button key={b.id} onClick={() => setBiller(b.id)} className="card flex items-center gap-3 text-start">
-              <span className={`grid size-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${b.color} text-white`}><I size={20} /></span>
-              <span className="min-w-0"><span className="block truncate text-sm font-semibold">{name(b.id, b.name)}</span>
-                {auto.includes(b.id) ? <span className="block truncate text-[11px] text-mint-300">⚡ Instant top-up</span> : b.id === 'rent' ? <span className="block truncate text-[11px] text-slate-400">Bank transfer</span> : null}</span>
+        <p className="label">Pay a bill</p>
+        <div className="card grid grid-cols-3 gap-y-4 py-4 tab:grid-cols-4">
+          {BILLERS.map((b) => { const I = ICONS[b.category]; const [title, sub] = TILE[b.id] ?? [name(b.id, b.name), '']; return (
+            <button key={b.id} onClick={() => setBiller(b.id)} className="flex flex-col items-center gap-1.5 px-1 text-center">
+              <span className={`relative grid size-12 place-items-center rounded-2xl bg-gradient-to-br ${b.color} text-white shadow-md transition active:scale-90`}><I size={21} />
+                {auto.includes(b.id) && <span className="absolute -end-1 -top-1 rounded-full bg-mint-400 px-1 text-[9px] font-bold text-ink-950">⚡</span>}</span>
+              <span className="text-xs font-semibold leading-tight">{title}</span>
+              <span className="-mt-1 text-[10px] leading-tight text-slate-400">{b.id === 'water' ? (city?.name ?? sub) : sub}</span>
             </button>
           ) })}
+          {!WALLET && <button onClick={() => setResidency(true)} className="flex flex-col items-center gap-1.5 px-1 text-center">
+            <span className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-teal-400 to-cyan-700 text-white shadow-md transition active:scale-90"><Landmark size={21} /></span>
+            <span className="text-xs font-semibold leading-tight">Residency fees</span>
+            <span className="-mt-1 text-[10px] leading-tight text-slate-400">Hospital · Tax office</span>
+          </button>}
         </div>
 
-        {!WALLET && <button onClick={() => setResidency(true)} className="card flex items-center gap-3 text-start">
-          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-teal-400 to-cyan-700 text-white"><Landmark size={20} /></span>
-          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Residency fees</span><span className="block text-[11px] text-slate-400">State hospital medicals · tax office permit fee</span></span>
-          <span className="chip bg-mint-400/15 py-1 text-[11px] text-mint-200">New</span>
-        </button>}
-
-        <div className="flex items-center justify-between"><p className="label">My bills</p>{pending.length > 0 && <span className="text-xs text-gold-200">{pending.length} being paid</span>}</div>
-        {!data ? <p className="text-sm text-slate-500">Loading…</p> : data.bills.length === 0
-          ? <Empty emoji="🧾" title="No bills yet" sub="Pay your first bill above. You'll see its status and receipt here." />
-          : data.bills.map((b) => <BillCard key={b.id} b={b} footer={
+        {pending.length > 0 && <>
+          <p className="label">Being paid · {pending.length}</p>
+          {pending.map((b) => <BillCard key={b.id} b={b} footer={
+            <div className="flex items-center justify-between text-xs text-slate-500"><Ago iso={b.created_at} />
+              <button className="flex items-center gap-1 text-slate-400" onClick={() => setHelp(b.id)}><LifeBuoy size={13} /> Problem?</button></div>} />)}
+        </>}
+        <div className="flex items-center justify-between"><p className="label">History</p>{finished.length > 3 && <button className="text-xs text-mint-300" onClick={() => setAll(!all)}>{all ? 'Show less' : `See all ${finished.length}`}</button>}</div>
+        {!data ? <p className="text-sm text-slate-500">Loading…</p> : finished.length === 0
+          ? <Empty emoji="🧾" title={pending.length ? 'Nothing finished yet' : 'No bills yet'} sub="Paid bills and their receipts show here." />
+          : (all ? finished : finished.slice(0, 3)).map((b) => <BillCard key={b.id} b={b} footer={
             <div className="flex items-center justify-between text-xs text-slate-500"><Ago iso={b.created_at} />
               <button className="flex items-center gap-1 text-slate-400" onClick={() => setHelp(b.id)}><LifeBuoy size={13} /> Problem?</button></div>} />)}
       </div>
