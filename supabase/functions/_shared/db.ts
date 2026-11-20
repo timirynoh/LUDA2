@@ -193,7 +193,7 @@ export function restDb(url: string, serviceKey: string, f: Fetch = fetch): Db {
     },
     listDeposits(st, qs, n) {
       const s = (qs ?? '').replace(/[^\w@.-]/g, '')
-      return rows<PaymentRow>(`payments?purpose=eq.deposit${st ? `&status=eq.${q(st)}` : ''}${s ? `&or=(reference.ilike.*${q(s)}*,email.ilike.*${q(s)}*)` : ''}&order=created_at.desc&limit=${n}`)
+      return rows<PaymentRow>(`payments?purpose=in.(deposit,order)${st ? `&status=eq.${q(st)}` : ''}${s ? `&or=(reference.ilike.*${q(s)}*,email.ilike.*${q(s)}*)` : ''}&order=created_at.desc&limit=${n}`)
     },
     listWithdrawals: (st, n) => rows<WithdrawalRow>(`withdrawals?${st ? `status=eq.${q(st)}&` : ''}order=created_at.desc&limit=${n}`),
     async refundTicket(id) { return rpc('luda_refund_ticket', { p_ticket: id }) },

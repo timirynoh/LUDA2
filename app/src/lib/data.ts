@@ -1,3 +1,4 @@
+import { WALLET } from '../config'
 export type Lang = 'en' | 'tr' | 'fr' | 'sw' | 'ar'
 
 export const LANGS: { code: Lang; name: string; native: string; flag: string; rtl?: boolean }[] = [
@@ -125,7 +126,7 @@ export const BADGES: Record<string, { name: string; emoji: string; desc: string 
 export const QUESTS = [
   { id: 'phone', title: 'Verify your phone number', xp: 50, to: '/profile' },
   { id: 'verify', title: 'Verify your identity', xp: 150, to: '/profile' },
-  { id: 'deposit', title: 'Top up your wallet', xp: 50, to: '/wallet' },
+  { id: 'deposit', title: WALLET ? 'Top up your wallet' : 'Make your first payment', xp: 50, to: WALLET ? '/wallet' : '/payments' },
   { id: 'bill', title: 'Pay your first bill', xp: 80, to: '/bills' },
   { id: 'fx', title: 'Convert to Lira', xp: 40, to: '/exchange' },
   { id: 'p2p', title: 'Finish a safe P2P trade', xp: 200, to: '/exchange' },

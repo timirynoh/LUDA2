@@ -16,7 +16,7 @@ import { TicketCheck } from '../components/TicketCheck'
 import { useLive } from '../lib/liveStore'
 import { RatingsTab } from '../components/AdminRatings'
 import { ExchangersTab } from '../components/Exchanger'
-import { ESCROW } from '../config'
+import { ESCROW, WALLET } from '../config'
 import { MoneyTab } from '../components/AdminMoney'
 
 type Tab = 'overview' | 'money' | 'ratings' | 'exchangers' | 'bills' | 'cases' | 'disputes' | 'p2p' | 'users' | 'topups' | 'withdrawals' | 'content' | 'uni' | 'guides' | 'banners' | 'tickets' | 'team'
@@ -67,7 +67,7 @@ export default function LiveAdmin() {
   const allow = (t: Tab) => staffCan(st, TAB_AREA[t])
   const tabs = ([
     { v: 'overview', l: 'Home', i: HomeIcon }, { v: 'bills', l: 'Bills', i: Receipt, n: o?.billsPending }, { v: 'cases', l: 'Cases', i: Inbox, n: o?.openCases }, { v: 'ratings', l: 'Ratings', i: Star },
-    { v: 'money', l: 'Money report', i: Banknote }, { v: 'p2p', l: 'P2P disputes', i: Scale }, { v: 'exchangers', l: 'Exchangers', i: Award }, { v: 'disputes', l: 'Held money', i: Gavel }, { v: 'users', l: 'Users', i: Users }, { v: 'topups', l: 'Top-ups', i: ArrowDownToLine }, { v: 'withdrawals', l: 'Payouts', i: ArrowUpFromLine },
+    { v: 'money', l: 'Money report', i: Banknote }, { v: 'p2p', l: 'P2P disputes', i: Scale }, { v: 'exchangers', l: 'Exchangers', i: Award }, { v: 'disputes', l: 'Held money', i: Gavel }, { v: 'users', l: 'Users', i: Users }, { v: 'topups', l: WALLET ? 'Top-ups' : 'Payments', i: ArrowDownToLine }, { v: 'withdrawals', l: WALLET ? 'Payouts' : 'Refunds', i: ArrowUpFromLine },
     { v: 'content', l: 'Content', i: Newspaper }, { v: 'uni', l: 'Uni calendars', i: GraduationCap }, { v: 'guides', l: 'Guides & terms', i: BookOpen }, { v: 'tickets', l: 'Ticket check', i: ScanLine }, { v: 'banners', l: 'Banners', i: Megaphone }, { v: 'team', l: 'Team', i: UserCog },
   ] as { v: Tab; l: string; i: LucideIcon; n?: number }[]).filter((t) => allow(t.v) && (ESCROW || !['p2p', 'exchangers', 'disputes'].includes(t.v))) // escrow tabs hidden while paused
   const go = (t: Tab) => { setTab(t); void load() }
@@ -99,7 +99,7 @@ export default function LiveAdmin() {
         {tab === 'disputes' && <DisputesTab onChange={load} />}
         {tab === 'users' && <UsersTab onOpen={setUserId} />}
         {tab === 'topups' && <TopUps onOpen={setUserId} />}
-        {tab === 'withdrawals' && <Payouts onOpen={setUserId} />}
+        {tab === 'withdrawals' && (WALLET ? <Payouts onOpen={setUserId} /> : <Refunds />)}
       </div>
       {userId && <UserSheet id={userId} onClose={() => setUserId(null)} />}
     </div>
@@ -324,7 +324,7 @@ function BillPaySheet({ b, meName, onClose, onDone }: { b: AdminBill; meName: st
         <ReviewAndPin holdLabel={mode === 'pay' ? 'Hold to mark as paid' : 'Hold to refund'} onClose={() => setReview(false)} run={run}
           rows={mode === 'pay' ? [['Bill', b.provider], ['Number', b.account_ref], ['Amount paid', <b key="a">{lira(b.amount_minor)}</b>], ['Receipt', `${files.length} file(s)`], ['For', `@${b.username}`]]
             : [['Refund to', `@${b.username}`], ['Amount + fee', lira(Number(b.amount_minor) + Number(b.fee_minor))], ['Reason (sent to user)', note]]}
-          done={<Success title={mode === 'pay' ? 'Marked as paid ✅' : 'Refunded'} sub={mode === 'pay' ? `@${b.username} can now see the receipt.` : 'The full amount and fee are back in their wallet.'} onClose={onClose} />} />
+          done={<Success title={mode === 'pay' ? 'Marked as paid ✅' : 'Refunded'} sub={mode === 'pay' ? `@${b.username} can now see the receipt.` : (WALLET ? 'The full amount and fee are back in their wallet.' : 'The money is on its way back to their card or bank.')} onClose={onClose} />} />
       ) : (
         <div className="flex flex-col gap-4 pb-4">
           {autoRunning && <p className="rounded-2xl bg-sky-400/10 p-3 text-sm text-sky-200">📱 The automatic top-up is still running. Don’t pay this by hand; it updates itself within a minute.</p>}
@@ -629,7 +629,7 @@ function TopUps({ onOpen }: { onOpen: (id: string) => void }) {
       {msg && <p className="text-xs text-slate-300">{msg}</p>}{err && <p className="text-sm text-rose-300">{err}</p>}
       {data?.deposits.map((d) => (
         <div key={d.reference} className="glass rounded-2xl p-3 text-sm">
-          <div className="flex items-center justify-between gap-2"><p className="font-bold">{money(Number(d.credit_minor), d.credit_currency ?? 'NGN')}</p><Badge s={d.status} /></div>
+          <div className="flex items-center justify-between gap-2"><p className="font-bold">{d.purpose === 'order' ? <>{d.item?.label ?? 'Service'} <span className="text-xs font-normal text-slate-400">{money(Number(d.item?.total ?? 0), 'TRY')}</span></> : money(Number(d.credit_minor), d.credit_currency ?? 'NGN')}</p><Badge s={d.refund_status ? `refund ${d.refund_status}` : d.status} /></div>
           <p className="mt-0.5 text-xs text-slate-400">{d.provider} · charged {money(Number(d.amount_minor), d.currency)} · {when(d.created_at)}</p>
           <p className="selectable font-mono text-[11px] text-slate-500">{d.reference}</p>
           <div className="mt-2 flex gap-2">
@@ -639,6 +639,49 @@ function TopUps({ onOpen }: { onOpen: (id: string) => void }) {
         </div>
       ))}
       {data?.deposits.length === 0 && <p className="text-sm text-slate-500">Nothing here.</p>}
+    </div>
+  )
+}
+
+/** Refunds Paystack/Flutterwave refused (v1.34.0): send them back by hand, then note how. */
+function Refunds() {
+  const { data, err, load } = useLoad<{ refunds: { reference: string; provider: string; charge: number; currency: string; username: string; label: string; note: string | null; at: string }[] }>('admin-refunds')
+  const [open, setOpen] = useState<string | null>(null)
+  const [note, setNote] = useState('')
+  const r = data?.refunds.find((x) => x.reference === open)
+  const close = () => { setOpen(null); setNote('') }
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs text-slate-400">Payments for a service Luda couldn't deliver go back to the card or bank automatically. The ones below were refused by the payment company (or are still waiting): send the money back from the bank app, then write how.</p>
+      {err && <p className="text-sm text-rose-300">{err}</p>}
+      {data?.refunds.map((x) => (
+        <div key={x.reference} className="glass rounded-2xl p-3 text-sm">
+          <div className="flex items-center justify-between gap-2"><p className="font-bold">{money(Number(x.charge), x.currency)}</p><Badge s="to refund" /></div>
+          <p className="mt-0.5 text-xs text-slate-400">@{x.username} · {x.label} · {x.provider} · {when(x.at)}</p>
+          {x.note && <p className="text-xs text-slate-500">{x.note}</p>}
+          <p className="selectable font-mono text-[11px] text-slate-500">{x.reference}</p>
+          <button className="btn-primary mt-2 px-4 py-1.5 text-xs" onClick={() => setOpen(x.reference)}>I sent it back</button>
+        </div>
+      ))}
+      {data && data.refunds.length === 0 && <p className="rounded-3xl border border-dashed border-fg/10 py-10 text-center text-sm text-slate-400">No refunds waiting 🎉</p>}
+      {r && <Sheet open onClose={close} title="Refund sent">
+        <RefundDone r={r} note={note} setNote={setNote} onClose={close} onDone={() => void load()} />
+      </Sheet>}
+    </div>
+  )
+}
+
+function RefundDone({ r, note, setNote, onClose, onDone }: { r: { reference: string; charge: number; currency: string; username: string }; note: string; setNote: (v: string) => void; onClose: () => void; onDone: () => void }) {
+  const [review, setReview] = useState(false)
+  if (review) return <ReviewAndPin holdLabel="Hold to confirm" onClose={() => setReview(false)}
+    run={async (auth: Approval) => { await api('POST', 'admin-refund-done', { reference: r.reference, note, ...auth }); onDone() }}
+    rows={[['To', `@${r.username}`], ['Amount', money(Number(r.charge), r.currency)], ['How (sent to them)', note]]}
+    done={<Success title="Refund recorded ✅" sub={`@${r.username} was told.`} onClose={onClose} />} />
+  return (
+    <div className="flex flex-col gap-3 pb-4">
+      <p className="text-sm text-slate-300">Send <b>{money(Number(r.charge), r.currency)}</b> back to @{r.username} first, then write how (they'll see it).</p>
+      <input className="input" placeholder="e.g. Bank transfer to GTBank ••1234" value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} />
+      <button className="btn-primary py-4" disabled={note.trim().length < 4} onClick={() => setReview(true)}>Continue</button>
     </div>
   )
 }

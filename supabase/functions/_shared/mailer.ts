@@ -43,10 +43,10 @@ const first = (name: string) => { const w = name.trim().split(/\s+/)[0] || 'ther
 /** The four emails the owner picked. Plain English, short. */
 export const MAILS = {
   welcome: (v: { name: string }): Mail => ({
-    subject: 'Welcome to Luda 👋🏾', preheader: 'Your wallet, bus tickets, bills and help in North Cyprus, in one app.', icon: '👋🏾',
+    subject: 'Welcome to Luda 👋🏾', preheader: 'Bus tickets, bills, rent and help in North Cyprus, in one app.', icon: '👋🏾',
     title: `Welcome to Luda, ${first(v.name)}!`,
-    intro: 'Your account is ready. Top up your wallet, buy Girne ⇄ Lefkoşa bus tickets, pay bills, exchange Naira and lira, and find help near you, all in one app.',
-    rows: [['1. Set your payment PIN', 'keeps money safe'], ['2. Verify your ID', 'unlocks withdrawals'], ['3. Top up', 'Naira or lira']],
+    intro: 'Your account is ready. Buy Girne ⇄ Lefkoşa bus tickets, pay your bills and rent, top up your phone, and find housing, jobs and help near you, all in one app. You pay for each service when you use it, with your card or bank.',
+    rows: [['1. Set your payment PIN', 'approves every payment'], ['2. Verify your ID', 'unlocks selling and Flash'], ['3. Pay a bill or buy a ticket', 'card, bank or USSD']],
     button: ['Open Luda', '/'],
     note: 'Questions? Reply to this email or write to support@useluda.com. We never ask for your PIN or password.',
   }),
@@ -57,6 +57,13 @@ export const MAILS = {
     button: ['See my wallet', '/wallet'],
     note: "Didn't make this top-up? Freeze your wallet in Security and contact support@useluda.com.",
   }),
+  payment: (v: { amount: string; what: string; ref: string; when: string; ticket: boolean }): Mail => ({
+    subject: `Payment received: ${v.what}`.slice(0, 120), preheader: `${v.amount} paid for ${v.what}.`, icon: v.ticket ? '🎫' : '🧾',
+    title: 'Thanks, your payment is in', intro: v.ticket ? `You paid ${v.amount}. Your ticket is ready in the app (Transport): show its QR code to the driver.` : `You paid ${v.amount}. The Luda team is paying it now and will add the receipt in the app.`,
+    rows: [['For', v.what], ['Paid', v.amount], ['Date', v.when], ['Reference', v.ref]],
+    button: [v.ticket ? 'Open my ticket' : 'See my bill', v.ticket ? '/transport' : '/bills'],
+    note: "Didn't make this payment? Contact support@useluda.com right away. Luda never asks for your card details by email.",
+  }),
   withdrawal: (v: { amount: string; bank: string; account: string; ref: string; when: string }): Mail => ({
     subject: `Withdrawal sent: ${v.amount}`, preheader: `${v.amount} is on its way to ${v.bank}.`, icon: '🏦',
     title: 'Your withdrawal is on its way', intro: `We've sent ${v.amount} to your bank account. Most banks show it within minutes.`,
@@ -65,9 +72,9 @@ export const MAILS = {
     note: "Didn't ask for this? Freeze your wallet in Security right away and contact support@useluda.com.",
   }),
   kyc: (v: { name: string }): Mail => ({
-    subject: 'Your ID is verified ✅', preheader: 'Withdrawals, sending money, Market selling and Flash jobs are now unlocked.', icon: '🪪',
-    title: `You’re verified, ${first(v.name)}`, intro: 'Your ID check is complete. You can now withdraw to your bank, send money, sell on the Market and help on Flash.',
-    button: ['Open my wallet', '/wallet'],
+    subject: 'Your ID is verified ✅', preheader: 'Market selling, Flash jobs and posting are now unlocked.', icon: '🪪',
+    title: `You’re verified, ${first(v.name)}`, intro: 'Your ID check is complete. You can now sell on the Market, help on Flash, post homes and jobs, and create groups.',
+    button: ['Open Luda', '/'],
     note: 'One account per person: your ID is now linked to this account only.',
   }),
   staffCase: (v: { user: string; subject: string; ticket: string; preview: string; reply: boolean }): Mail => ({

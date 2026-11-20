@@ -54,9 +54,9 @@ export default function KycReturn() {
         {st === 'verified' ? <><CheckCircle2 size={56} className="text-mint-400" /><p className="text-xl font-extrabold">You're verified 🎉</p><p className="text-sm text-slate-400">{r?.name ? `Verified as ${r.name}. ` : ''}Withdrawals, sending money, selling and Flash jobs are now unlocked.</p></> :
           st === 'failed' ? <><XCircle size={56} className="text-rose-400" /><p className="text-lg font-bold">Not approved</p><p className="text-sm text-slate-400">{r?.message ?? 'Try again with a clear photo of a valid document.'}</p><Next /></> :
           gaveUp ? <><Clock size={56} className="text-gold-300" /><p className="text-lg font-bold">We couldn't confirm your ID yet</p>
-            <p className="text-sm text-slate-400">Your check didn't come back in time. If it is approved later, you'll see ✅ Verified in your wallet. If you didn't finish the photo and selfie, try again.</p><Next /></> :
+            <p className="text-sm text-slate-400">Your check didn't come back in time. If it is approved later, you'll see ✅ Verified on your profile. If you didn't finish the photo and selfie, try again.</p><Next /></> :
           <><Loader2 size={56} className="animate-spin text-violet-300" /><p className="text-lg font-bold">Checking your ID…</p><p className="text-sm text-slate-400">This usually takes under a minute. We'll wait up to 2 minutes.</p></>}
-        <Link to="/wallet" className="btn-ghost mt-2 w-full max-w-xs py-3 text-sm">Go to my wallet</Link>
+        <Link to="/" replace className="btn-ghost mt-2 w-full max-w-xs py-3 text-sm">Go to Home</Link>
         {appeal && <NewCaseSheet category="kyc" subject="My ID check didn't go through" onClose={() => setAppeal(false)} />}
       </div>
     </div>

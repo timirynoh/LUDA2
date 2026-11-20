@@ -395,7 +395,7 @@ export function ResetPassword({ onDone }: { onDone: () => void }) {
   }
   return (
     <AuthShell title="Choose a new password" sub="Then sign in with it." onBack={onDone}>
-      {done ? <div className="flex flex-col gap-3"><p className="text-sm text-mint-200">✅ Password changed. For your safety, withdrawals and sending are paused for 24 hours.</p><button className="btn-primary py-4" onClick={onDone}>Sign in</button></div> : (
+      {done ? <div className="flex flex-col gap-3"><p className="text-sm text-mint-200">✅ Password changed. Sign in with your new password.</p><button className="btn-primary py-4" onClick={onDone}>Sign in</button></div> : (
         <div className="flex flex-col gap-3">
           <input className="input" type="password" autoComplete="new-password" placeholder="New password" value={pw} onChange={(e) => { setPw(e.target.value); setErr('') }} />
           {pw && <p className="text-xs text-slate-400">{strength.label}</p>}{err && <p className="text-sm text-rose-300">{err}</p>}

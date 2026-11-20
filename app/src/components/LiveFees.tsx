@@ -1,6 +1,6 @@
 // "Fees" page: every number comes from the server (GET config), so the app can never show a fee the server doesn't charge.
 import { InfoTip } from './LiveGuides'
-import { ESCROW } from '../config'
+import { ESCROW, WALLET } from '../config'
 import { useEffect, useState } from 'react'
 import { Sheet } from './ui'
 import { liveConfig, money, type LiveConfig } from '../lib/live'
@@ -11,7 +11,14 @@ export function FeeList() {
   useEffect(() => { liveConfig().then(setCfg).catch(() => {}) }, [])
   const f = cfg?.fees
   const pct = (n?: number) => (n === undefined ? '…' : `${+(n * 100).toFixed(2)}%`)
-  const rows: [string, string, string][] = f ? [
+  const rows: [string, string, string][] = f && !WALLET ? [
+    ['💳', 'Paying in Naira', `No Luda fee. Prices are in lira; the Naira price includes ${pct(f.fxMargin)} for the exchange. Paystack’s small card/bank fee is shown at checkout`],
+    ['🌍', 'Paying in other currencies', 'Flutterwave’s fee, shown before you pay'],
+    ['🧾', 'Bill payment', f.billMinor !== undefined ? `${money(f.billMinor, 'TRY')} up to ${money(f.billStepMinor ?? 0, 'TRY')}, ${money(f.billHighMinor ?? 0, 'TRY')} above` : '…'],
+    ['🚌', 'Bus tickets', 'No booking fee'],
+    ['↩️', 'Refunds', 'Free. The money goes back to the card or bank you paid with'],
+    ['🛍️', 'Market and Flash', 'Free. Luda takes no payment or fee: you pay the seller or helper directly'],
+  ] : f ? [
     ['💳', 'Top up (Naira)', 'Free from Luda. Paystack adds its own small card/bank fee at checkout'],
     ['🌍', 'Top up (other currencies)', 'Flutterwave’s fee, shown before you pay'],
     ['🔁', 'Send to a Luda user', 'Free'],
@@ -29,7 +36,7 @@ export function FeeList() {
   ] : []
   return (
       <div className="flex flex-col gap-3">
-        <p className="flex items-start gap-2 text-sm text-slate-400"><span className="flex-1">Simple, student-friendly fees, all in lira. You always see the exact fee before you confirm.</span><InfoTip slug="tip-fees" /></p>
+        <p className="flex items-start gap-2 text-sm text-slate-400"><span className="flex-1">Simple, student-friendly fees. You always see the exact price before you pay.</span><InfoTip slug="tip-fees" /></p>
         {!cfg && <p className="text-sm text-slate-500">Loading…</p>}
         <div className="flex flex-col divide-y divide-fg/5 rounded-2xl bg-fg/[0.03]">
           {rows.map(([e, k, v]) => (

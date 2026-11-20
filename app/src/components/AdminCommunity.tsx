@@ -1,4 +1,5 @@
 // Luda HQ: Content (review reported/news posts, post as Luda Official), Banners (Home carousel), Team (owner gives staff roles by email).
+import { WALLET } from '../config'
 import { Eye, EyeOff, Megaphone, Pencil, Plus, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { BOARD, type BoardKind, type BoardPost } from '../lib/board'
@@ -73,7 +74,7 @@ function ReviewCard({ p, canAct, status, onReview }: { p: BoardPost; canAct: boo
 }
 
 /* ------------------------------- Banners ------------------------------- */
-const LINKS: [string, string][] = [['/transport', 'Bus tickets'], ['/bills', 'Pay bills'], ['/wallet', 'Wallet'], ['/exchange', 'Exchange'], ['/savings', 'Savings'], ['/market', 'Market'], ['/flash', 'Flash help'],
+const LINKS: [string, string][] = [['/transport', 'Bus tickets'], ['/bills', 'Pay bills'], ...(WALLET ? [['/wallet', 'Wallet'], ['/exchange', 'Exchange'], ['/savings', 'Savings']] as [string, string][] : [['/payments', 'My payments']] as [string, string][]), ['/market', 'Market'], ['/flash', 'Flash help'],
   ['/invite', 'Invite friends'], ['/housing', 'Housing'], ['/jobs', 'Jobs'], ['/community', 'Events'], ['/news', 'News'], ['/promos', 'Deals'], ['/chats', 'Chats'], ['/uni', 'University'], ['/residency', 'Residency']]
 type BannerRow = Banner & { active: boolean; starts_at: string | null; ends_at: string | null; sort: number }
 const blank: BannerRow = { id: '', title: '', body: '', cta: 'Open', link: '/transport', emoji: '✨', theme: 'mint', active: true, starts_at: null, ends_at: null, sort: 0 }
@@ -151,7 +152,7 @@ export const AREA_INFO: Record<Exclude<StaffArea, 'team'>, { label: string; view
   overview: { label: 'Home dashboard', view: 'See the to-do list and counts', edit: '—', full: '—' },
   users: { label: 'Users', view: 'Look up accounts', edit: 'Look up accounts', full: 'Also freeze / unfreeze accounts' },
   kyc: { label: 'ID checks', view: 'See ID check status', edit: 'Approve or reject IDs', full: 'Also reset someone’s ID check' },
-  money: { label: 'Top-ups & payouts', view: 'See top-ups, payouts and money totals', edit: 'Re-check stuck payments', full: 'Also refund bus tickets' },
+  money: WALLET ? { label: 'Top-ups & payouts', view: 'See top-ups, payouts and money totals', edit: 'Re-check stuck payments', full: 'Also refund bus tickets' } : { label: 'Payments & refunds', view: 'See payments, refunds and money totals', edit: 'Re-check payments, mark refunds sent', full: 'Also refund bus tickets' },
   bills: { label: 'Bills', view: 'See bills to pay', edit: 'Mark bills as paid (with receipt)', full: 'Also refund bills' },
   disputes: { label: 'Held money', view: 'See Market / Flash payments on hold', edit: 'See them', full: 'Decide disputes (pay or refund)' },
   cases: { label: 'Support cases', view: 'Read cases', edit: 'Reply to cases', full: 'Reply to cases' },
@@ -165,7 +166,7 @@ export const ROLE_PRESETS: { id: string; emoji: string; label: string; sub: stri
   { id: 'support', emoji: '🎧', label: 'Support', sub: 'Reply to support cases, look up accounts', roles: { overview: 'view', cases: 'edit', users: 'view' } },
   { id: 'kyc', emoji: '🪪', label: 'ID checker', sub: 'Approve or reject IDs sent to the team', roles: { overview: 'view', kyc: 'edit', cases: 'edit', users: 'view' } },
   { id: 'bills', emoji: '🧾', label: 'Bills team', sub: 'Pay bills on the official sites, upload receipts', roles: { overview: 'view', bills: 'edit', cases: 'view' } },
-  { id: 'payouts', emoji: '🏦', label: 'Payouts team', sub: 'Send withdrawals by hand with a receipt (no refunds)', roles: { overview: 'view', money: 'edit', cases: 'view' } },
+  { id: 'payouts', emoji: '🏦', label: WALLET ? 'Payouts team' : 'Payments team', sub: WALLET ? 'Send withdrawals by hand with a receipt (no refunds)' : 'Check payments and send refunds the bank refused', roles: { overview: 'view', money: 'edit', cases: 'view' } },
   { id: 'disputes', emoji: '⚖️', label: 'Disputes helper', sub: 'Take P2P disputes and message both sides (you decide)', roles: { overview: 'view', disputes: 'edit', cases: 'edit', users: 'view' } },
   { id: 'content', emoji: '📝', label: 'Content & banners', sub: 'Check posts, guides, uni calendars and banners', roles: { overview: 'view', content: 'edit', banners: 'edit' } },
   { id: 'driver', emoji: '🚌', label: 'Bus driver', sub: 'Only scan passengers’ tickets', roles: { tickets: 'edit' } },

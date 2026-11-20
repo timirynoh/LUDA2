@@ -56,7 +56,7 @@ export default function Promos() {
         <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-red-500 via-orange-600 to-amber-700 p-4 text-white">
           <span className="absolute -right-3 -bottom-5 text-7xl opacity-25">📸</span>
           <p className="font-extrabold">See a promo in a shop? Snap it!</p>
-          <p className="text-sm text-white/85">+{PROMO_POINTS.post} points per promo, +{PROMO_POINTS.confirm} every time someone confirms it's still there. Points turn into wallet credit.</p>
+          <p className="text-sm text-white/85">+{PROMO_POINTS.post} points per promo, +{PROMO_POINTS.confirm} every time someone confirms it's still there. Points turn into discounts on your payments.</p>
           <p className="mt-2 text-sm font-bold">🪙 You've earned {myPts} pts from promos</p>
         </div>
         <Segmented value={tab} onChange={setTab} options={[{ value: 'feed', label: `🔥 Near you · ${all.length}` }, { value: 'saved', label: `🔖 Saved` }, { value: 'mine', label: `📸 Mine · ${s.myPromos.length}` }]} />
@@ -77,7 +77,7 @@ export default function Promos() {
           {board.map((r, i) => (
             <div key={r.n} className={`flex items-center gap-3 rounded-xl px-2 py-1.5 ${r.me ? 'bg-mint-400/10' : ''}`}><span className={`w-5 text-center font-bold ${i < 3 ? 'text-gold-300' : 'text-slate-500'}`}>{i + 1}</span><span className="flex-1 text-sm font-semibold">{r.n}</span><span className="text-sm text-slate-400">{r.p} pts</span></div>
           ))}
-          <Link to="/rewards" className="mt-2 block text-center text-xs text-mint-300">Turn points into wallet credit ›</Link>
+          <Link to="/rewards" className="mt-2 block text-center text-xs text-mint-300">Turn points into discounts ›</Link>
         </section>
         <p className="text-center text-[11px] text-slate-500">Prices are shared by students. Check in store; promos end on their date or when people mark them gone.</p>
       </div>

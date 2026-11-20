@@ -1,4 +1,5 @@
 import { useLive } from '../lib/liveStore'
+import { WALLET } from '../config'
 import { staffCan } from '../lib/live'
 import { BadgeCheck, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react'
 import { TourButton } from '../components/GuidedTour'
@@ -55,7 +56,7 @@ export default function Profile() {
         <div className="grid grid-cols-2 gap-2">
           <Link to="/security" className="card flex items-center gap-3 py-3"><ShieldCheck className="text-mint-300" size={20} /><span className="text-sm font-semibold">Security Center</span></Link>
           <Link to="/help" className="card flex items-center gap-3 py-3"><span className="text-lg">💬</span><span className="text-sm font-semibold">Help & Support</span></Link>
-          <Link to="/wallet" className="card flex items-center gap-3 py-3"><span className="text-lg">💳</span><span className="text-sm font-semibold">Saved cards · {s.cards.length}</span></Link>
+          {LIVE && !WALLET ? <Link to="/payments" className="card flex items-center gap-3 py-3"><span className="text-lg">🧾</span><span className="text-sm font-semibold">My payments</span></Link> : <Link to="/wallet" className="card flex items-center gap-3 py-3"><span className="text-lg">💳</span><span className="text-sm font-semibold">Saved cards · {s.cards.length}</span></Link>}
           <Link to="/disputes" className="card flex items-center gap-3 py-3"><span className="text-lg">🛡️</span><span className="text-sm font-semibold">My appeals</span></Link>
         </div>
 
@@ -65,7 +66,7 @@ export default function Profile() {
             <div className="flex items-center justify-between text-sm"><span className="text-slate-400">Username</span><span className="font-semibold">@{s.account.username}</span></div>
             <div className="flex items-center justify-between text-sm"><span className="text-slate-400">Email</span><span className="font-semibold">{s.account.email}</span></div>
             <label className="flex items-center justify-between gap-3 text-sm">
-              <span><span className="block font-semibold">Ask for PIN when opening Luda</span><span className="text-xs text-slate-400">Recommended: protects your wallet if someone has your phone</span></span>
+              <span><span className="block font-semibold">Ask for PIN when opening Luda</span><span className="text-xs text-slate-400">Recommended: protects your account if someone has your phone</span></span>
               <input type="checkbox" className="size-5 accent-emerald-500" checked={s.lockOnOpen} onChange={(e) => set((p) => ({ ...p, lockOnOpen: e.target.checked }))} />
             </label>
             <label className="flex items-center justify-between gap-3 text-sm">

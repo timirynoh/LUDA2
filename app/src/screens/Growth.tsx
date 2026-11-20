@@ -28,7 +28,7 @@ function DemoInvite() {
   const { s, set, toast, reward } = useStore()
   const code = refCode(s)
   const [enter, setEnter] = useState('')
-  const msg = `Join me on Luda 🇳🇬🇬🇭🇿🇼: wallet, bills, bus tickets, houses, jobs & more for Africans in North Cyprus. Use my code ${code} and we both get ₺${REFERRAL.reward} 🎁`
+  const msg = `Join me on Luda 🇳🇬🇬🇭🇿🇼: bills, bus tickets, houses, jobs & more for Africans in North Cyprus. Use my code ${code} and we both get ₺${REFERRAL.reward} 🎁`
   const earned = paidCount(s) * REFERRAL.reward
   const thisMonth = s.referrals.filter((r) => r.stage === 'paid' && new Date(r.ts).getMonth() === new Date().getMonth()).length
   const share = () => {
@@ -192,11 +192,11 @@ function LiveInvite() {
   if (!info) return <div><Header back title="Invite & earn" /><p className="px-5 text-sm text-slate-500">{err || 'Loading…'}</p></div>
   const r = info.rules
   const link = `${location.origin}/?ref=${info.code}`
-  const share = `Join me on Luda, the app for Africans in North Cyprus. Sign up with my code ${info.code} and we both get ${tl(r.welcome)} after you verify and top up: ${link}`
+  const share = `Join me on Luda, the app for Africans in North Cyprus. Sign up with my code ${info.code} and we both get ${tl(r.welcome)} off after you verify and make your first payment: ${link}`
   const paid = info.invitees.filter((x) => x.paid).length
   const apply = async () => {
     setMsg('')
-    try { await api('POST', 'referral-apply', { code: enter }); setMsg(`Code applied. Your ${tl(r.welcome)} arrives after you verify your ID and top up.`); void load(); void refreshRewards() }
+    try { await api('POST', 'referral-apply', { code: enter }); setMsg(`Code applied. Your ${tl(r.welcome)} off arrives after you verify your ID and make your first payment.`); void load(); void refreshRewards() }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Try again') }
   }
   const step = (x: Invitee) => (x.paid ? 3 : x.verified && x.toppedUp ? 3 : x.verified ? 2 : 1)
@@ -215,7 +215,7 @@ function LiveInvite() {
         <div className="card text-sm">
           <p className="mb-2 font-semibold">How it works</p>
           <ol className="grid gap-1.5 text-slate-300">
-            <li>1. Your friend signs up with your link or code</li><li>2. They verify their ID and top up their wallet</li><li>3. Luda adds <b>{tl(r.reward)}</b> to your Lira wallet and <b>{tl(r.welcome)}</b> to theirs 🎉</li>
+            <li>1. Your friend signs up with your link or code</li><li>2. They verify their ID and make their first payment</li><li>3. Luda gives you <b>{tl(r.reward)}</b> off and them <b>{tl(r.welcome)}</b> off their next payments 🎉</li>
           </ol>
           <p className="mt-2 text-[11px] text-slate-500">Paid by Luda's server once per friend. Max {r.perMonthCap} paid invites a month (after that you get points). One ID = one account, so fake accounts never count.</p>
         </div>
@@ -228,7 +228,7 @@ function LiveInvite() {
           </div>
         )}
         {msg && <p className="rounded-2xl bg-fg/[0.03] p-3 text-sm text-slate-300">{msg}</p>}
-        {info.invitedBy && <p className="rounded-2xl bg-fg/[0.03] p-3 text-xs text-slate-400">Invited by <b>@{info.invitedBy}</b> · your {tl(r.welcome)} arrives after you verify your ID and top up.</p>}
+        {info.invitedBy && <p className="rounded-2xl bg-fg/[0.03] p-3 text-xs text-slate-400">Invited by <b>@{info.invitedBy}</b> · your {tl(r.welcome)} off arrives after you verify your ID and make your first payment.</p>}
         <section>
           <p className="label mb-2">Your invites</p>
           {info.invitees.length ? info.invitees.map((x) => {
@@ -237,7 +237,7 @@ function LiveInvite() {
             return (
               <div key={x.username} className="card mb-2">
                 <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-ink-700 text-xl">{c?.flag ?? '🌍'}</span><p className="flex-1 font-semibold" translate="no">{x.name} <span className="text-xs font-normal text-slate-500">@{x.username}</span></p>
-                  <span className={`chip ${x.paid ? 'bg-mint-400/15 text-mint-300' : 'bg-fg/5 text-slate-300'}`}>{x.paid ? 'Paid' : x.verified ? 'Needs a top-up' : 'Needs ID check'}</span></div>
+                  <span className={`chip ${x.paid ? 'bg-mint-400/15 text-mint-300' : 'bg-fg/5 text-slate-300'}`}>{x.paid ? 'Paid' : x.verified ? 'Needs a first payment' : 'Needs ID check'}</span></div>
                 <div className="mt-2 flex gap-1">{[1, 2, 3].map((i) => <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= n ? 'bg-mint-400' : 'bg-fg/10'}`} />)}</div>
               </div>
             )

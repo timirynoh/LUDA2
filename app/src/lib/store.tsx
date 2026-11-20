@@ -1,5 +1,5 @@
 import { setScreenLanguage } from './autoTranslate'
-import { ESCROW } from '../config'
+import { ESCROW, WALLET } from '../config'
 import { LIVE, api } from './live'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { BADGES, LANGS, LEVELS, type Lang } from './data'
@@ -141,7 +141,7 @@ export const initialState: State = {
   txs: [], xp: 0, points: 0, streak: 1, lastDay: today(),
   badges: [], quests: [], trades: [], savedBills: [], docs: [], permitExpiry: '', contacted: 0,
   savedHomes: [], viewings: [], myListings: [], connections: [],
-  theme: 'dark', shortcuts: ['deposit', 'convert', ESCROW ? 'p2p' : 'transport', 'bills'],
+  theme: 'dark', shortcuts: WALLET ? ['deposit', 'convert', ESCROW ? 'p2p' : 'transport', 'bills'] : ['bills', 'transport', 'housing', 'flash'],
   sections: { flash: true, nextClass: true, rates: true, quests: true, deadline: true, checkin: true, welcome: true, news: true, promos: true },
   phoneVerified: false, proofs: {}, isAdmin: false, reports: [],
   myJobs: [], applications: [], myEvents: [], rsvps: [],

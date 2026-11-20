@@ -1,3 +1,4 @@
+import { WALLET } from '../config'
 import { motion } from 'framer-motion'
 import { HomeBanners } from '../components/Banners'
 import { OpportunityNudge } from '../components/OpportunityNudge'
@@ -48,7 +49,10 @@ export default function Home() {
   const total = Object.entries(balances).reduce((a, [c, v]) => a + convert(rates, v, c, 'TRY'), 0)
   const activeTrade = LIVE ? undefined : s.trades.find((x) => x.status === 'escrow' || x.status === 'meeting') // demo swaps only; live P2P orders show in To do
 
-  const actions = s.shortcuts.map((id) => ACTIONS.find((a) => a.id === id)).filter((a) => a && (!a.admin || s.isAdmin)) as typeof ACTIONS
+  // Saved shortcuts that no longer exist (wallet ones since v1.34.0) are skipped; empty spots get useful defaults.
+  const mine = s.shortcuts.filter((id) => ACTIONS.some((a) => a.id === id))
+  const ids = mine.length >= 4 ? mine : [...mine, ...['bills', 'transport', 'housing', 'flash'].filter((x) => !mine.includes(x))].slice(0, Math.max(4, mine.length))
+  const actions = ids.map((id) => ACTIONS.find((a) => a.id === id)).filter((a) => a && (!a.admin || s.isAdmin)) as typeof ACTIONS
 
   return (
     <div className="pt-safe flex flex-col gap-5 px-5">
@@ -74,8 +78,29 @@ export default function Home() {
 
       {s.sections.flash && <FlashBubbles />}
 
-      {/* balance card */}
-      <motion.div initial={{ scale: 0.97 }} animate={{ scale: 1 }} data-tour="balance"
+      {/* v1.34.0: no wallet. Instead of a balance, the four things people pay for, then they pay directly. */}
+      {LIVE && !WALLET ? (
+        <motion.div initial={{ scale: 0.97 }} animate={{ scale: 1 }} data-tour="balance"
+          className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-500 via-emerald-700 to-emerald-950 p-5 text-white shadow-2xl shadow-emerald-900/40">
+          <div className="absolute -top-16 -right-10 size-56 rounded-full bg-gold-300/25 blur-3xl" />
+          <div className="relative">
+            <p className="text-sm font-medium text-emerald-100/80">What do you want to pay for?</p>
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {([['/transport', '🚌', 'Bus ticket'], ['/bills', '⚡', 'Bills'], ['/bills', '🏠', 'Rent'], ['/bills', '📱', 'Top-up']] as const).map(([to, e, l]) => (
+                <Link key={l} to={to} className="flex flex-col items-center gap-1 rounded-2xl bg-black/20 px-1 py-3 text-center backdrop-blur"><span className="text-2xl">{e}</span><span className="text-[11px] font-semibold leading-tight">{l}</span></Link>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-emerald-100/80">Pay by card, bank transfer or USSD. Nothing to top up.{(me?.profile.discountMinor ?? 0) > 0 ? ` 🎁 ₺${(me!.profile.discountMinor! / 100).toLocaleString()} off your next payment.` : ''}</p>
+            <div className="mt-3 flex items-center justify-between text-xs text-emerald-100/80">
+              <span>{t('home.level')} {level.idx} · {s.xp} / {level.next} XP</span>
+              <span className="font-semibold text-gold-200">🪙 {s.points} pts</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/25">
+              <motion.div className="h-full rounded-full bg-gradient-to-r from-gold-300 to-amber-400" initial={{ width: 0 }} animate={{ width: `${level.progress * 100}%` }} transition={{ duration: 1 }} />
+            </div>
+          </div>
+        </motion.div>
+      ) : <motion.div initial={{ scale: 0.97 }} animate={{ scale: 1 }} data-tour="balance"
         className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-500 via-emerald-700 to-emerald-950 p-6 text-white shadow-2xl shadow-emerald-900/40">
         <div className="absolute -top-16 -right-10 size-56 rounded-full bg-gold-300/25 blur-3xl" />
         <div className="absolute -bottom-20 -left-10 size-48 rounded-full bg-mint-300/20 blur-3xl" />
@@ -98,7 +123,7 @@ export default function Home() {
             <motion.div className="h-full rounded-full bg-gradient-to-r from-gold-300 to-amber-400" initial={{ width: 0 }} animate={{ width: `${level.progress * 100}%` }} transition={{ duration: 1 }} />
           </div>
         </div>
-      </motion.div>
+      </motion.div>}
 
       <TodoCard />
       <HomeBanners />

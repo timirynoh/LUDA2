@@ -17,7 +17,8 @@ async function call(method: string, route: string, body?: unknown, token?: strin
 }
 const T: Record<string, string> = {}
 const id: Record<string, string> = {}
-const TRY = async (u: string) => (await call('GET', 'me', undefined, T[u])).j.balances.TRY as number
+// v1.34.0: cash rewards are discounts on services (Luda holds no money), so 'TRY' here is the discount a person can use.
+const TRY = async (u: string) => (await call('GET', 'me', undefined, T[u])).j.profile.discountMinor as number
 const signup = async (u: string, name: string, ref?: string) => {
   const r = await call('POST', 'signup', { email: `${u}@x.com`, username: u, fullName: name, password: 'Lefkosa2026!', country: 'NG', ref })
   T[u] = r.j.session.access_token
@@ -52,8 +53,8 @@ test('daily spin: once a day, prize drawn by the server, cash only for verified 
     if (i === 0) assert.equal(s.streak, 7, 'streak continued from yesterday')
   }
   assert.ok(cashWin > 0, 'verified users can win cash')
-  const ledger = await q(`select amount_minor from ledger where user_id=$1 and kind='reward'`, [id.kemal])
-  assert.equal(Number(ledger.at(-1).amount_minor), cashWin, 'cash went into the real Lira wallet through the ledger')
+  const disc = await q(`select amount_minor from discount_events where user_id=$1 and ref like 'rw%' order by id`, [id.kemal])
+  assert.equal(Number(disc.at(-1).amount_minor), cashWin, 'the prize became a discount on services (no money held)')
   assert.ok((await call('GET', 'rewards', undefined, T.kemal)).j.badges.includes('streak7'))
 })
 
@@ -116,7 +117,7 @@ test('referrals: code at sign-up, both paid once when the friend verifies and to
   assert.equal((await call('POST', 'referral-apply', { code: 'LUDA-ZARA' }, T.ada)).status, 409)
 })
 
-test('money still adds up with rewards: wallets + savings pots + held escrow + fees = money in + rewards paid', async () => {
+test('money still adds up with rewards: wallets + savings pots + held escrow + fees = money in; rewards are discounts', async () => {
   const sum = async (sql: string) => Number((await q(sql))[0].s)
   const wallets = await sum(`select coalesce(sum(balance_minor),0) s from wallets`)
   const held = await sum(`select coalesce(sum(amount_minor),0) s from escrows where status='held'`)
@@ -125,5 +126,5 @@ test('money still adds up with rewards: wallets + savings pots + held escrow + f
   const inflow = await sum(`select coalesce(sum(amount_minor),0) s from ledger where kind in ('adjustment','reward','deposit')`)
   assert.equal(wallets + held + fees + pots, inflow)
   const paidRewards = await sum(`select coalesce(sum(cash_minor),0) s from reward_events`)
-  assert.equal(paidRewards, await sum(`select coalesce(sum(amount_minor),0) s from ledger where kind='reward'`), 'every reward ledger entry has its reward record')
+  assert.equal(paidRewards, await sum(`select coalesce(sum(amount_minor),0) s from discount_events where ref like 'rw%'`), 'every reward discount has its reward record (no money is paid out)')
 })

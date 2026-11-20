@@ -1,5 +1,5 @@
 import { Search as SearchIcon } from 'lucide-react'
-import { ESCROW } from '../config'
+import { ESCROW, WALLET } from '../config'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Header } from '../components/ui'
@@ -22,6 +22,7 @@ const EXTRA = [
   ...(ESCROW ? [{ label: 'P2P exchange / my ad', to: LIVE ? '/exchange?tab=p2p' : '/chats?tab=exchange', emoji: '🏪', kw: 'exchanger merchant ad exchange p2p naira lira dollar' }] : []),
   ...(LIVE ? [{ label: 'Terms & Conditions', to: '/terms', emoji: '📄', kw: 'terms conditions rules privacy policy' }, ...(ESCROW ? [{ label: 'How to record proof', to: '/guide/p2p-proof', emoji: '📹', kw: 'proof video appeal record screen statement' }] : [])]
     : [{ label: 'Saved cards', to: '/wallet', emoji: '💳', kw: 'card bank visa mastercard' }]),
+  ...(LIVE && !WALLET ? [{ label: 'My payments', to: '/payments', emoji: '🧾', kw: 'payment receipt refund history card paid order' }, { label: 'Verify my ID', to: '/payments?a=kyc', emoji: '🪪', kw: 'kyc id verify identity passport selfie' }] : []),
   { label: 'Notification settings', to: '/security', emoji: '🔔', kw: 'notification push alert' },
   { label: 'Daily spin', to: '/', emoji: '🎡', kw: 'spin wheel check-in daily reward' },
   { label: 'Promo Spotter', to: '/promos', emoji: '🔥', kw: 'promo discount cheap free sale market shop price' },

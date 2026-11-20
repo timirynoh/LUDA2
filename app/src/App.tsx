@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeftRight, Grid2x2, Home as HomeIcon, MessageCircle, Wallet as WalletIcon } from 'lucide-react'
+import { ArrowLeftRight, Grid2x2, Home as HomeIcon, MessageCircle, ReceiptText, Wallet as WalletIcon, Zap } from 'lucide-react'
+import { WALLET } from './config'
 import { Navigate, NavLink, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { Header, Toasts } from './components/ui'
 import { UnlockSheet, useTierCelebration } from './components/Verify'
@@ -60,6 +61,7 @@ const Jobs = lazy(() => import('./screens/Jobs'))
 const Transport = lazy(() => import('./screens/Transport'))
 const PayReturn = lazy(() => import('./screens/PayReturn'))
 const LiveWallet = lazy(() => import('./screens/LiveWallet'))
+const Payments = lazy(() => import('./screens/Payments'))
 const KycReturn = lazy(() => import('./screens/KycReturn'))
 const LiveAdmin = lazy(() => import('./screens/LiveAdmin'))
 const LiveExchange = lazy(() => import('./screens/LiveExchange'))
@@ -80,13 +82,26 @@ const NewsScreen = lazy(() => import('./screens/Engage').then((m) => ({ default:
 const LiveFlash = lazy(() => import('./screens/LiveFlash'))
 const LiveFlashJob = lazy(() => import('./screens/LiveFlash').then((m) => ({ default: m.LiveFlashJob })))
 
-const TABS = [
+// v1.34.0 (no wallet): Home · Bills · Payments · Chats · More. With WALLET on: Home · Wallet · Exchange · Chats · More.
+const TABS = WALLET ? [
   { to: '/', icon: HomeIcon, key: 'nav.home' },
   { to: '/wallet', icon: WalletIcon, key: 'nav.wallet' },
   { to: '/exchange', icon: ArrowLeftRight, key: 'nav.exchange' },
   { to: '/chats', icon: MessageCircle, key: 'nav.chats' },
   { to: '/more', icon: Grid2x2, key: 'nav.more' },
+] : [
+  { to: '/', icon: HomeIcon, key: 'nav.home' },
+  { to: '/bills', icon: Zap, key: 'nav.bills' },
+  { to: '/payments', icon: ReceiptText, key: 'nav.payments' },
+  { to: '/chats', icon: MessageCircle, key: 'nav.chats' },
+  { to: '/more', icon: Grid2x2, key: 'nav.more' },
 ]
+
+/** Old /wallet links (notifications, emails, bookmarks) land on My payments; '?a=kyc' still opens the ID check. */
+function WalletGone() {
+  const { search } = useLocation()
+  return <Navigate to={`/payments${new URLSearchParams(search).get('a') === 'kyc' ? '?a=kyc' : ''}`} replace />
+}
 
 export default function App() {
   const { s, t } = useStore()
@@ -161,8 +176,9 @@ export default function App() {
               <Suspense fallback={<ScreenLoading />}>
               <Routes location={loc}>
                 <Route path="/" element={<Home />} />
-                <Route path="/wallet" element={LIVE ? <LiveWallet /> : <Wallet />} />
-                <Route path="/exchange" element={LIVE ? <LiveExchange /> : <Exchange />} />
+                <Route path="/wallet" element={LIVE && !WALLET ? <WalletGone /> : LIVE ? <LiveWallet /> : <Wallet />} />
+                <Route path="/exchange" element={LIVE && !WALLET ? <Navigate to="/payments" replace /> : LIVE ? <LiveExchange /> : <Exchange />} />
+                <Route path="/payments" element={LIVE ? <Payments /> : <Navigate to="/wallet" replace />} />
                 <Route path="/nearby" element={<Nearby />} />
                 <Route path="/more" element={<More />} />
                 <Route path="/bills" element={LIVE ? <LiveBills /> : <Bills />} />
@@ -178,7 +194,7 @@ export default function App() {
                 {LIVE && <Route path="/flash/:id" element={<LiveFlashJob />} />}
                 <Route path="/security" element={<Security />} />
                 <Route path="/inbox" element={<Inbox />} />
-                <Route path="/statements" element={LIVE ? <LiveStatements /> : <Navigate to="/wallet" replace />} />
+                <Route path="/statements" element={LIVE && WALLET ? <LiveStatements /> : <Navigate to={LIVE ? '/payments' : '/wallet'} replace />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/help" element={<Help />} />
                 <Route path="/check" element={<TicketCheckPage />} />
@@ -186,8 +202,8 @@ export default function App() {
                 {(['/about', '/contact', '/fees', '/privacy', '/refunds', '/aml'] as const).map((p) => <Route key={p} path={p} element={<PolicyPage path={p} />} />)}
                 <Route path="/guide/:slug" element={<GuideRoute />} />
                 <Route path="/disputes" element={LIVE ? <Navigate to="/help" replace /> : <DisputeList />} />
-                <Route path="/send" element={LIVE ? <Navigate to="/wallet?a=send" replace /> : <SendScreen />} />
-                <Route path="/savings" element={LIVE ? <LiveSavings /> : <Savings />} />
+                <Route path="/send" element={LIVE ? <Navigate to={WALLET ? '/wallet?a=send' : '/payments'} replace /> : <SendScreen />} />
+                <Route path="/savings" element={LIVE && !WALLET ? <Navigate to="/payments" replace /> : LIVE ? <LiveSavings /> : <Savings />} />
                 <Route path="/market" element={LIVE ? <LiveMarket /> : <Market />} />
                 <Route path="/u/:name" element={<Person />} />
                 <Route path="/invite" element={<Invite />} />

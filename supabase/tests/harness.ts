@@ -74,7 +74,7 @@ export async function makeDb() {
     async caseMessages(ids) { return ids.length ? q(`select * from case_messages where case_id::text = any($1) order by id`, [ids]) : [] },
     async adminOverview() { return (await q(`select luda_admin_overview() r`))[0].r },
     async searchProfiles(qs, n) { const s = `%${qs}%`; return q<Profile>(`select * from profiles where $1 = '%%' or username ilike $1 or email ilike $1 or full_name ilike $1 or coalesce(phone,'') ilike $1 order by created_at desc limit ${n}`, [s]) },
-    async listDeposits(st, qs, n) { return (await q(`select * from payments where purpose='deposit' and ($1::text is null or status=$1) and ($2::text is null or reference ilike $2 or email ilike $2) order by created_at desc limit ${n}`, [st, qs ? `%${qs}%` : null])).map((r) => ({ ...r, amount_minor: Number(r.amount_minor), credit_minor: Number(r.credit_minor), fee_minor: Number(r.fee_minor) })) },
+    async listDeposits(st, qs, n) { return (await q(`select * from payments where purpose in ('deposit','order') and ($1::text is null or status=$1) and ($2::text is null or reference ilike $2 or email ilike $2) order by created_at desc limit ${n}`, [st, qs ? `%${qs}%` : null])).map((r) => ({ ...r, amount_minor: Number(r.amount_minor), credit_minor: Number(r.credit_minor), fee_minor: Number(r.fee_minor) })) },
     async listWithdrawals(st, n) { return (await q(`select * from withdrawals where ($1::text is null or status=$1) order by created_at desc limit ${n}`, [st])).map((r) => ({ ...r, amount_minor: Number(r.amount_minor), fee_minor: Number(r.fee_minor) })) },
     async refundTicket(id) { return money(async () => (await q(`select luda_refund_ticket($1::uuid) r`, [id]))[0].r) },
     async passkeys(u) { return (await q(`select * from passkeys where user_id=$1 order by created_at`, [u])).map((r) => ({ ...r, counter: Number(r.counter) })) },
@@ -111,6 +111,8 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     diditN: 0,
     topup: 'SUCCESSFUL' as string, // what the top-up partner answers: SUCCESSFUL | PROCESSING | 'refuse' (4xx) | 'down' (5xx)
     topups: new Map<string, { status: string; body: any }>(), // transaction id -> top-up
+    refunds: [] as { provider: string; tx: string }[],
+    refundReply: 'ok' as 'ok' | 'refuse',
     mails: [] as { key: string; to: string; from: string; reply_to: string; subject: string; html: string; text: string }[],
     mailDown: false,
   }
@@ -158,6 +160,7 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
         const ref = decodeURIComponent(url.pathname.split('/').pop()!), c = world.charges.get(ref) ?? { status: 'abandoned' }
         return ok({ status: true, data: { status: c.status, amount: c.amount ?? world.inits.get(ref), requested_amount: (c as any).requested, currency: c.currency ?? world.initCur.get(ref) ?? 'NGN', reference: ref, id: 4242 } })
       }
+      if (url.pathname === '/refund') { if (world.refundReply === 'refuse') return ok({ status: false, message: 'Refund not possible for this transaction' }, 400); world.refunds.push({ provider: 'paystack', tx: String(body.transaction) }); return ok({ status: true, data: { status: 'pending' } }) }
       if (url.pathname === '/bank') return ok({ status: true, data: [{ code: '058', name: 'Guaranty Trust Bank', active: true }, { code: '044', name: 'Access Bank', active: true }, { code: '50211', name: 'Kuda Bank', active: true }] })
       if (url.pathname === '/bank/resolve') {
         const name = world.accounts.get(`${url.searchParams.get('bank_code')}:${url.searchParams.get('account_number')}`)
@@ -174,6 +177,8 @@ export function fakeWorld(q: (sql: string, p?: unknown[]) => Promise<any[]>) {
     }
     // Flutterwave
     if (url.host === 'api.flutterwave.com') {
+      const rf = url.pathname.match(/^\/v3\/transactions\/([^/]+)\/refund$/)
+      if (rf) { if (world.refundReply === 'refuse') return ok({ status: 'error', message: 'Refund not possible' }, 400); world.refunds.push({ provider: 'flutterwave', tx: rf[1] }); return ok({ status: 'success', data: { status: 'pending' } }) }
       if (url.pathname === '/v3/payments') { world.inits.set(body.tx_ref, Math.round(body.amount * 100)); world.initCur.set(body.tx_ref, body.currency); return ok({ status: 'success', data: { link: `https://checkout.flutterwave.com/${body.tx_ref}` } }) }
       if (url.pathname === '/v3/banks/NG') return ok({ status: 'success', data: [{ id: 1, code: '058', name: 'GTBank Plc' }, { id: 2, code: '044', name: 'Access Bank' }, { id: 3, code: '090267', name: 'Kuda Microfinance Bank' }, { id: 4, code: '50211', name: 'Some Other Bank' }] })
       if (url.pathname === '/v3/accounts/resolve') { const nm = world.flwAccounts.get(`${body.account_bank}:${body.account_number}`); return nm ? ok({ status: 'success', data: { account_name: nm } }) : ok({ status: 'error', message: 'Sorry, recipient account could not be validated' }, 400) }
@@ -255,6 +260,7 @@ export const ENV: Env = {
   APP_URL: 'https://luda.test', SUPABASE_URL: 'https://proj.supabase.co', AUTH_KEY: 'anon',
   PAYSTACK_SECRET_KEY: 'sk_live_test', FLW_SECRET_KEY: 'FLWSECK-x', FLW_SECRET_HASH: 'flwhash',
   FX_FIXED_RATE: '40', FX_MARGIN: '0.01', FX_TRY_RATES: '{"GHS":0.4,"USD":0.025,"KES":3.2}', DOJAH_APP_ID: 'app', DOJAH_SECRET_KEY: 'sec', PAYSTACK_CUSTOMER_PAYS_FEE: 'false', SERVICE_KEY: 'svc_key', DIDIT_API_KEY: 'didit_key', DIDIT_WORKFLOW_ID: 'wf_free_kyc', DIDIT_WEBHOOK_SECRET: 'didit_secret', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_VERIFY_SID: 'VA1',
+  WALLET_ENABLED: 'true', // the old wallet flows keep their tests while the live app has no wallet (tests/orders.test.ts checks pay-per-service)
   ESCROW_ENABLED: 'true', // the escrow flows keep their tests while the live service is paused (tests/escrow.test.ts checks the paused mode)
 }
 

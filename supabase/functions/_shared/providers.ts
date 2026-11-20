@@ -68,6 +68,23 @@ export async function verifyPayment(p: Provider, reference: string, k: Keys, f: 
   return { ok: d.status === 'successful', status: String(d.status ?? 'unknown'), amountMinor: Math.round(Number(d.amount ?? 0) * 100), currency: String(d.currency ?? ''), reference: String(d.tx_ref ?? ''), providerTxId: String(d.id ?? '') }
 }
 
+/**
+ * Sends a payment back to the customer's card/bank (v1.34.0: Luda keeps no balances, so an order that can't be
+ * delivered is refunded at the provider). Paystack: POST /refund {transaction}. Flutterwave: POST /transactions/:id/refund.
+ * Returns true when the provider accepted the refund; throws with the provider's message otherwise.
+ */
+export async function refundPayment(p: Provider, a: { reference: string; providerTxId?: string | null; amountMinor?: number }, k: Keys, f: Fetch = fetch): Promise<boolean> {
+  if (p === 'paystack') {
+    const j = await call(f, `${PAYSTACK}/refund`, need(k.PAYSTACK_SECRET_KEY, 'PAYSTACK_SECRET_KEY'), { method: 'POST', body: { transaction: a.providerTxId || a.reference, ...(a.amountMinor ? { amount: a.amountMinor } : {}) } })
+    if (j.status === false) throw new Error(String(j.message ?? 'Paystack refused the refund'))
+    return true
+  }
+  if (!a.providerTxId) throw new Error('No Flutterwave transaction id for this payment')
+  const j = await call(f, `${FLW}/transactions/${encodeURIComponent(a.providerTxId)}/refund`, need(k.FLW_SECRET_KEY, 'FLW_SECRET_KEY'), { method: 'POST', body: a.amountMinor ? { amount: a.amountMinor / 100 } : {} })
+  if (j.status && j.status !== 'success') throw new Error(String(j.message ?? 'Flutterwave refused the refund'))
+  return true
+}
+
 const enc = new TextEncoder()
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('')
 const b64 = (b: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(b)))

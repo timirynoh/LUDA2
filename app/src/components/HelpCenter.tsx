@@ -1,6 +1,7 @@
 // Help Center (v1.19.0, owner: 'like professional apps: structured, nice, an easy flow'). Search first, then your
 // open requests, quick actions, topics and articles. Articles come from the server (Luda HQ edits them), each one asks
 // "Was this helpful?", and "No" leads straight to a message to the Luda team with the topic already filled in.
+import { WALLET } from '../config'
 import { LegalLinks } from './PublicPages'
 import { ChevronDown, ChevronRight, FileText, MessageCircle, Search, ShieldAlert, ShieldCheck, ThumbsDown, ThumbsUp, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -140,7 +141,7 @@ export function HelpCenter() {
         <div className="relative mt-4">
           <Search size={18} className="absolute start-4 top-1/2 -translate-y-1/2 text-slate-500" />
           <input className="w-full rounded-2xl bg-white py-3.5 ps-11 pe-10 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-4 focus:ring-white/30"
-            placeholder="Search: top-up, withdraw, bills, ID…" value={q} onChange={(e) => setQ(e.target.value)} />
+            placeholder={WALLET ? 'Search: top-up, withdraw, bills, ID…' : 'Search: payment, refund, bills, ID…'} value={q} onChange={(e) => setQ(e.target.value)} />
           {q && <button className="absolute end-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-500" onClick={() => setQ('')} aria-label="Clear"><X size={16} /></button>}
         </div>
       </div>
@@ -177,7 +178,7 @@ export function HelpCenter() {
         <section className="grid grid-cols-2 gap-2">
           <button className="card flex flex-col items-start gap-2 py-4" onClick={() => setContact({ category: 'other' })}><span className="grid size-10 place-items-center rounded-2xl bg-mint-400/15 text-mint-300"><MessageCircle size={20} /></span><span className="text-sm font-semibold">Message us</span><span className="-mt-1 text-[11px] text-slate-500">Reply here in the app</span></button>
           <button className="card flex flex-col items-start gap-2 py-4" onClick={() => setHub({ start: 'list' })}><span className="grid size-10 place-items-center rounded-2xl bg-sky-400/15 text-sky-300"><FileText size={20} /></span><span className="text-sm font-semibold">My requests</span><span className="-mt-1 text-[11px] text-slate-500">{active.length ? `${active.length} open` : 'Track your requests'}</span></button>
-          <Link to="/security" className="card flex flex-col items-start gap-2 py-4"><span className="grid size-10 place-items-center rounded-2xl bg-violet-400/15 text-violet-300"><ShieldCheck size={20} /></span><span className="text-sm font-semibold">Security</span><span className="-mt-1 text-[11px] text-slate-500">Freeze wallet, sign-ins</span></Link>
+          <Link to="/security" className="card flex flex-col items-start gap-2 py-4"><span className="grid size-10 place-items-center rounded-2xl bg-violet-400/15 text-violet-300"><ShieldCheck size={20} /></span><span className="text-sm font-semibold">Security</span><span className="-mt-1 text-[11px] text-slate-500">{WALLET ? 'Freeze wallet, sign-ins' : 'Freeze payments, sign-ins'}</span></Link>
           <button className="card flex flex-col items-start gap-2 py-4" onClick={() => setContact({ category: 'other', subject: 'Report a scam' })}><span className="grid size-10 place-items-center rounded-2xl bg-rose-500/15 text-rose-300"><ShieldAlert size={20} /></span><span className="text-sm font-semibold">Report a scam</span><span className="-mt-1 text-[11px] text-slate-500">Someone asked for money?</span></button>
         </section>
 

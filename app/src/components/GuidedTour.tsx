@@ -5,15 +5,25 @@ import { Compass, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../lib/store'
+import { WALLET } from '../config'
 
 interface Step { target: string; title: string; text: string; emoji: string }
-const STEPS: Step[] = [
-  // Owner, 2026-11-18 (v1.33.1): no separate 'top up' step; topping up is shown only as the way to pay bills.
+// v1.34.0 (no wallet): pay for each service directly. The old wallet tour is kept for when WALLET is switched on.
+const STEPS: Step[] = WALLET ? [
   { target: '[data-tour="actions"]', emoji: '⚡', title: 'Shortcuts', text: 'Your favourite actions. Tap Edit to choose which ones show here.' },
   { target: '[data-tour="nav/wallet"]', emoji: '🧾', title: 'Pay your bills', text: 'Top up your wallet here, then pay electricity, water, internet, phone or rent. The Luda team pays them for you and adds the receipt.' },
   { target: '[data-tour="nav/exchange"]', emoji: '💱', title: 'Exchange', text: 'Change Naira to Lira (and back) at a clear rate, shown before you confirm.' },
   { target: '[data-tour="nav/chats"]', emoji: '💬', title: 'Chats', text: 'Join groups for your country, university, church or mosque. Verified members can start their own.' },
   { target: '[data-tour="nav/more"]', emoji: '🧭', title: 'Everything else', text: 'Bus tickets, bills, housing, jobs, events, news, savings, market and residency help live here.' },
+  { target: '[data-tour="search"]', emoji: '🔎', title: 'Search', text: 'Looking for something? Search finds any feature fast.' },
+  { target: '[data-tour="inbox"]', emoji: '🔔', title: 'Notifications', text: 'Payments, replies from support and updates land here.' },
+] : [
+  { target: '[data-tour="balance"]', emoji: '💳', title: 'Pay for what you need', text: 'Bus tickets, bills, rent and phone top-ups. Pick one, see the price, and pay by card, bank transfer or USSD. Nothing to top up.' },
+  { target: '[data-tour="actions"]', emoji: '⚡', title: 'Shortcuts', text: 'Your favourite actions. Tap Edit to choose which ones show here.' },
+  { target: '[data-tour="nav/bills"]', emoji: '🧾', title: 'Bills', text: 'Electricity, water, internet, phone or rent. The Luda team pays them on the official sites and adds the receipt.' },
+  { target: '[data-tour="nav/payments"]', emoji: '📄', title: 'My payments', text: 'Everything you paid for, with receipts. If something can’t be delivered, the money goes back to your card or bank.' },
+  { target: '[data-tour="nav/chats"]', emoji: '💬', title: 'Chats', text: 'Join groups for your country, university, church or mosque. Verified members can start their own.' },
+  { target: '[data-tour="nav/more"]', emoji: '🧭', title: 'Everything else', text: 'Bus tickets, housing, jobs, events, news, market, Flash help and residency help live here.' },
   { target: '[data-tour="search"]', emoji: '🔎', title: 'Search', text: 'Looking for something? Search finds any feature fast.' },
   { target: '[data-tour="inbox"]', emoji: '🔔', title: 'Notifications', text: 'Payments, replies from support and updates land here.' },
 ]

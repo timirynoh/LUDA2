@@ -1,3 +1,4 @@
+import { WALLET } from '../config'
 import { Droplets, ExternalLink, Home, Receipt, Smartphone, Wifi, Zap, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Pill, ago, lira } from './LiveKit'
@@ -25,7 +26,7 @@ export function BillCard({ b, footer }: { b: { id: string; claimed_at?: string |
       <div className="flex flex-wrap items-center gap-2">
         {b.status === 'pending' && <Pill tone="wait">{b.claimed_at ? 'Paying now' : 'Received'}</Pill>}
         {b.status === 'paid' && <Pill tone="ok">{b.auto?.status === 'paid' ? 'Topped up automatically' : 'Paid'}</Pill>}
-        {b.status === 'refunded' && <Pill tone="back">Refunded to wallet</Pill>}
+        {b.status === 'refunded' && <Pill tone="back">{WALLET ? 'Refunded to wallet' : 'Refunded to your card'}</Pill>}
         {(b.receiptUrls ?? []).filter(Boolean).map((u, i) => <a key={i} href={u!} target="_blank" rel="noreferrer" className="chip bg-fg/[0.06] text-slate-200"><ExternalLink size={12} /> Receipt{i ? ` ${i + 1}` : ''}</a>)}
       </div>
       {b.status === 'refunded' && b.note && <p className="text-xs text-slate-400">Reason: {b.note}</p>}

@@ -19,6 +19,15 @@ export const OVERPASS_API = 'https://overpass-api.de/api/interpreter'
  */
 export const ESCROW = false
 
+/**
+ * Wallet (balances, top-ups, withdrawals, sending, converting, savings pots) is closed since v1.34.0 (owner,
+ * 2026-11-20: the business registration doesn't allow holding money). Every service is paid directly at checkout.
+ * To bring it back: set this to true AND the server secret WALLET_ENABLED=true.
+ */
+export const WALLET = false
+/** Where people verify their ID (the wallet used to host it). */
+export const KYC_LINK = WALLET ? '/wallet?a=kyc' : '/payments?a=kyc'
+
 /** Fee charged on P2P trades (0.5%). */
 export const P2P_FEE = 0.005
 

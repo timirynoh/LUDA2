@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ESCROW } from '../config'
+import { ESCROW, WALLET } from '../config'
 import { Bell, Bookmark, Heart, Pin, Plus, Share2, Trophy } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Header, Sheet } from '../components/ui'
@@ -27,7 +27,7 @@ export function CheckinCard() {
     <>
       {!done && <motion.button initial={{ scale: 0.97 }} animate={{ scale: 1 }} onClick={() => setOpen(true)} className="relative flex items-center gap-4 overflow-hidden rounded-3xl bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 p-4 text-start text-ink-950">
         <motion.span className="text-4xl" animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 6, ease: 'linear' }}>🎡</motion.span>
-        <div className="flex-1"><p className="font-extrabold">Daily check-in</p><p className="text-sm font-medium text-ink-950/80">Spin to win XP, points or cash · 🔥 {s.streak}-day streak</p></div>
+        <div className="flex-1"><p className="font-extrabold">Daily check-in</p><p className="text-sm font-medium text-ink-950/80">{WALLET ? 'Spin to win XP, points or cash' : 'Spin to win XP, points or discounts'} · 🔥 {s.streak}-day streak</p></div>
         <span className="chip bg-ink-950 py-2 text-white">Spin</span>
       </motion.button>}
       {open && <SpinSheet onClose={() => setOpen(false)} />}
@@ -53,7 +53,7 @@ export function SpinSheet({ onClose }: { onClose: () => void }) {
         setRot(360 * 6 + (360 - r.index * seg - seg / 2))
         setTimeout(() => {
           setWon(r.index); setSpinning(false)
-          setNote(r.cash ? `₺${r.cash / 100} added to your Lira wallet 🎉` : r.swapped ? 'This month\'s cash prizes are all given out, so you got points instead.' : r.verifiedOnlyCash ? 'Verify your ID to win cash prizes too.' : '')
+          setNote(r.cash ? `₺${r.cash / 100} off your next payment 🎉` : r.swapped ? 'This month\'s cash prizes are all given out, so you got points instead.' : r.verifiedOnlyCash ? 'Verify your ID to win cash prizes too.' : '')
           void refresh(); void refreshRewards()
         }, 3600)
       } catch (e) { setSpinning(false); setNote(e instanceof Error ? e.message : 'Try again') }
@@ -259,7 +259,7 @@ function LiveChallenges() {
   const me = COUNTRIES.find((c) => c.code === s.country)
   const claim = async (id: string) => {
     setMsg('')
-    try { const r = await api<{ cash: number; points: number }>('POST', 'challenge-claim', { id }); setMsg(r.cash ? `₺${r.cash / 100} added to your Lira wallet 🎉` : `+${r.points} points 🎉`); void refresh(); void refreshRewards() }
+    try { const r = await api<{ cash: number; points: number }>('POST', 'challenge-claim', { id }); setMsg(r.cash ? `₺${r.cash / 100} off your next payment 🎉` : `+${r.points} points 🎉`); void refresh(); void refreshRewards() }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Try again') }
   }
   return (

@@ -1,7 +1,10 @@
-// Live mode: pay for a bus / airport ticket from the Luda wallet (Lira, or Naira at today's rate).
+// Live mode: pay for a bus ticket. Since v1.34.0 it's paid directly at checkout (no wallet); the old wallet payment
+// stays below for when WALLET is switched back on.
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ReviewAndPin, errMsg } from './LiveMoney'
+import { DirectPay } from './Checkout'
+import { WALLET } from '../config'
 import { Success } from './ui'
 import { api, money, type Cur, type LiveTicket } from '../lib/live'
 import { useLive } from '../lib/liveStore'
@@ -26,6 +29,19 @@ export function LiveTicketPay({ order, total, ready, onDone }: { operator: strin
   const cost = cur === 'TRY' ? Math.round(total * 100) : rate ? Math.ceil(total * 100 * rate.ngnPerTry * (1 + rate.margin)) : 0
   const bal = me?.balances[cur] ?? 0
   const enough = cost > 0 && bal >= cost
+
+  const rowsFor: [string, string][] = [['Trip', `${order.from} → ${order.to}`], ['When', `${order.date} · ${order.time}${order.return ? ` (return ${order.returnDate} · ${order.returnTime})` : ''}`], ['Passengers', String(order.pax)]]
+  // v1.34.0: no wallet. The ticket is paid directly at checkout and issued when the payment is confirmed.
+  if (!WALLET) {
+    if (review) return <DirectPay body={{ kind: 'ticket', item: order }} rows={rowsFor} onClose={() => setReview(false)} />
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between rounded-2xl bg-fg/[0.04] p-3"><span className="text-sm text-slate-300">Ticket price</span><b className="text-lg">{money(Math.round(total * 100), 'TRY')}</b></div>
+        <p className="text-[11px] text-slate-500">Pay with your card, bank transfer or USSD. Your ticket appears straight after.</p>
+        <button className="btn-primary py-4" disabled={!ready} onClick={() => { if (allow('ticket')) setReview(true) }}>Continue to payment</button>
+      </div>
+    )
+  }
 
   if (review) return (
     <ReviewAndPin

@@ -6,7 +6,7 @@
 import { BadgeCheck, Banknote, Camera, ChevronRight, LifeBuoy, Lock, MapPin, Plus, Send, ShieldCheck, Video, Zap } from 'lucide-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
-import { ESCROW } from '../config'
+import { ESCROW, KYC_LINK } from '../config'
 import { Empty, Pill, Tabs, ago, lira, toMinor, useApi } from '../components/LiveKit'
 import { LiveKyc, ReviewAndPin, errMsg } from '../components/LiveMoney'
 import { Attachments, CasesHub, type Upload } from '../components/LiveSupport'
@@ -72,7 +72,7 @@ export default function LiveFlash() {
           {!data ? <p className="text-sm text-slate-500">Loading…</p> : board.length === 0
             ? <Empty emoji="⚡" title="No open requests right now" sub="Need a plumber, a hand moving, an errand? Ask, agree a price in the chat, and pay only when it's done." action={<button className="btn-primary mt-2 px-5 py-3" onClick={() => setPost(true)}><Plus size={16} /> Ask for help</button>} />
             : <>
-              {me && me.profile.kyc !== 'verified' && <Link to="/wallet" className="flex items-center gap-3 rounded-2xl border border-mint-400/30 bg-mint-400/[0.08] p-3 text-start"><Lock size={18} className="shrink-0 text-mint-300" /><span className="flex-1 text-sm"><b>{`Paid jobs waiting: ${board.length}`}</b><br /><span className="text-xs text-slate-400">Verify your ID once (about 2 minutes) to chat, send your price and get paid.</span></span><span className="text-xs font-bold text-mint-300">Verify</span></Link>}
+              {me && me.profile.kyc !== 'verified' && <Link to={KYC_LINK} className="flex items-center gap-3 rounded-2xl border border-mint-400/30 bg-mint-400/[0.08] p-3 text-start"><Lock size={18} className="shrink-0 text-mint-300" /><span className="flex-1 text-sm"><b>{`Paid jobs waiting: ${board.length}`}</b><br /><span className="text-xs text-slate-400">Verify your ID once (about 2 minutes) to chat, send your price and get paid.</span></span><span className="text-xs font-bold text-mint-300">Verify</span></Link>}
               {[['near', board.filter((j) => !j.city || j.city === s.city)], ['far', board.filter((j) => j.city && j.city !== s.city)]].map(([k, list]) => (list as Job[]).length > 0 && (
                 <div key={k as string} className="flex flex-col gap-2">
                   <p className="label">{k === 'near' ? `📍 In ${cityName(s.city) || 'your city'}` : '🚗 Other cities · can you get there?'}</p>
@@ -162,7 +162,7 @@ function PostSheet({ onClose, onDone }: { onClose: () => void; onDone: (id: stri
             <button key={v} onClick={() => setPay(v)} className={`rounded-2xl p-3 text-start ${pay === v ? 'bg-mint-400/15 ring-1 ring-mint-400/50' : 'bg-fg/[0.05]'}`}><p className="text-sm font-semibold">{l}</p><p className="mt-1 text-[11px] text-slate-400">{sub}</p></button>
           ))}
         </div>
-        <p className="text-xs text-slate-500">Nothing leaves your wallet now.</p>
+        <p className="text-xs text-slate-500">You pay nothing now.</p>
         </> : <p className="rounded-2xl bg-fg/[0.05] p-3 text-xs text-slate-300">💵 You pay the helper in cash when the job is done. Only pay once the work is finished.</p>}
         {err && <p className="text-sm text-rose-300">{err}</p>}
         <button className="btn-primary py-4" disabled={busy || pct !== null || title.trim().length < 5 || b < 20_00} onClick={() => void submit()}>{busy ? 'Posting…' : 'Post request'}</button>

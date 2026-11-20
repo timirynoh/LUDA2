@@ -1,4 +1,7 @@
-import { ESCROW } from '../config'
+import { ESCROW, WALLET } from '../config'
+
+/** Shortcuts that only exist with a wallet (closed since v1.34.0: every service is paid directly). */
+const NO_WALLET = ['deposit', 'withdraw', 'convert', 'send', 'savings']
 import { Flame, MapPin, MessageCircle, Wrench, Send, PiggyBank, ShoppingBag, Tag, Newspaper, Trophy, UserPlus, Megaphone, Luggage, ArrowDownLeft, ArrowUpRight, Briefcase, Building2, Bus, Gift, GraduationCap, Handshake, House, Repeat, ShieldCheck, Users, UtensilsCrossed, Zap, type LucideIcon } from 'lucide-react'
 
 export interface Action { id: string; to: string; icon: LucideIcon; key: string; c: string; admin?: boolean }
@@ -32,5 +35,5 @@ export const ACTIONS: Action[] = ([
   { id: 'residency', to: '/residency', icon: Building2, key: 'act.residency', c: 'from-teal-300 to-cyan-600' },
   { id: 'rewards', to: '/rewards', icon: Gift, key: 'act.rewards', c: 'from-violet-400 to-indigo-600' },
   { id: 'admin', to: '/admin', icon: ShieldCheck, key: 'act.admin', c: 'from-slate-500 to-slate-700', admin: true },
-] as Action[]).filter((a) => ESCROW || a.id !== 'p2p') // P2P is paused with the other escrow services
+] as Action[]).filter((a) => (ESCROW || a.id !== 'p2p') && (WALLET || !NO_WALLET.includes(a.id))) // P2P paused; no wallet since v1.34.0
 export const MAX_SHORTCUTS = 8

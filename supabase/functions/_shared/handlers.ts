@@ -17,7 +17,7 @@ import { TopupRefused, mobileNumber, topupCheck, topupMaxMinor, topupOperatorLis
 import { decodeFile, MAX_VIDEO_BYTES, putFile, signedUrl, uploadUrl, VIDEO_TYPES } from './storage.ts'
 import { checkCode, normPhone, sendCode, smsEnabled, type SmsEnv } from './sms.ts'
 import { MAILS, mailEnabled, sendMail, type Mail, type MailEnv } from './mailer.ts'
-import { checkWebhook, initCheckout, verifyPayment, webhookEvent, type Fetch, type Keys, type Provider } from './providers.ts'
+import { checkWebhook, initCheckout, refundPayment, verifyPayment, webhookEvent, type Fetch, type Keys, type Provider } from './providers.ts'
 
 export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv, TopupEnv, MailEnv {
   APP_URL: string
@@ -37,11 +37,17 @@ export interface Env extends Keys, FeeEnv, FxEnv, KycEnv, SmsEnv, DiditEnv, Topu
   REWARDS_MONTHLY_CAP?: string // ₺ of cash rewards per month for everyone (default 5,000); after that prizes become points
   FX_TRY_DAY_CAP?: string // ₺ of lira one person can buy with Instant per 24 h (default 5,000)
   ADMIN_EMAILS?: string // comma-separated Luda account emails that can open the owner's admin page
+  WALLET_ENABLED?: string // 'true' turns the old wallet back on (top-ups, balances, withdrawals, sending). Off since v1.34.0: pay per service.
   ESCROW_ENABLED?: string // 'true' turns escrow services back on (P2P, Exchanger bond, Market buy, Flash pay through Luda). Off since v1.33.0.
 }
 
 /** Escrow services are paused until the owner turns them back on (v1.33.0). Open items can still be finished or refunded. */
 export const escrowOn = (env: Pick<Env, 'ESCROW_ENABLED'>) => env.ESCROW_ENABLED === 'true'
+/** No wallet since v1.34.0 (owner: Luda can't hold money): every service is paid at checkout, one order at a time. */
+export const walletOn = (env: Pick<Env, 'WALLET_ENABLED'>) => env.WALLET_ENABLED === 'true'
+function needWallet(env: Env) {
+  if (!walletOn(env)) throw new Fail('Luda no longer keeps a balance. Pay for each service directly at checkout.', 403)
+}
 function needEscrow(env: Env) {
   if (!escrowOn(env)) throw new Fail('This service is paused for now. It will be back soon.', 403)
 }
@@ -212,7 +218,7 @@ async function kycSync(p: Profile, env: Env, d: Deps): Promise<{ status: Profile
     }
     throw e
   }
-  await notifyUser(env, d, p.user_id, { emoji: '🪪', title: 'Your ID is verified', body: 'Withdrawals, sending money, Market selling and Flash jobs are now unlocked', url: '/wallet', tag: 'kyc-verified', cat: 'security' })
+  await notifyUser(env, d, p.user_id, { emoji: '🪪', title: 'Your ID is verified', body: 'Market selling, Flash jobs and posting are now unlocked', url: '/', tag: 'kyc-verified', cat: 'security' })
   await mailUser(env, d, p.user_id, `kyc:${p.user_id}`, () => MAILS.kyc({ name: legal }))
   return { status: 'verified' }
 }
@@ -507,7 +513,11 @@ export async function finalizeDeposit(reference: string, env: Env, d: Deps, sour
   const v = await verifyPayment(p.provider, reference, env, d.fetch)
   await d.db.log(reference, source, v)
   if (!v.ok) {
-    if (v.status === 'failed' && p.status === 'pending') { await d.db.settle(reference, 'failed', v.providerTxId); return { ...p, status: 'failed' } }
+    if (v.status === 'failed' && p.status === 'pending') {
+      await d.db.settle(reference, 'failed', v.providerTxId)
+      if (p.purpose === 'order' && p.user_id) await d.db.fn('luda_discount_release', { p_user: p.user_id, p_ref: reference }).catch(() => {})
+      return { ...p, status: 'failed' }
+    }
     return p
   }
   // Paid at least what we asked (a provider may add its own fee on top) in the same currency → credit as quoted.
@@ -517,11 +527,167 @@ export async function finalizeDeposit(reference: string, env: Env, d: Deps, sour
     await d.db.log(reference, 'mismatch', { expected: { amount: p.amount_minor, currency: p.currency }, got: v })
     return { ...p, status: 'mismatch' }
   }
+  if (p.purpose === 'order') {
+    const r = await d.db.fn<{ already?: boolean }>('luda_order_paid', { p_reference: reference, p_tx: v.providerTxId })
+    await d.db.log(reference, 'paid', { providerTxId: v.providerTxId, order: true })
+    if (!r?.already) await fulfilOrder(reference, env, d)
+    return { ...p, status: 'paid' }
+  }
   await d.db.depositPaid(reference, v.providerTxId)
   await d.db.log(reference, 'paid', { providerTxId: v.providerTxId })
   if (p.user_id) await pushUser(env, d, p.user_id, { title: '💰 Top-up received', body: `${fmtMoney(p.credit_minor ?? p.amount_minor, p.credit_currency ?? p.currency)} added to your wallet`, url: '/wallet', tag: `dep:${reference}`, cat: 'money' })
   if (p.user_id) await mailUser(env, d, p.user_id, `topup:${reference}`, () => MAILS.topup({ amount: fmtMoney(p.credit_minor ?? p.amount_minor, p.credit_currency ?? p.currency), ref: reference, when: cyWhen() }))
   return { ...p, status: 'paid' }
+}
+
+
+/* ------------------------------ pay per service (v1.34.0) ------------------------------ */
+// Luda keeps no balances. A person picks a service, sees the price, pays it at checkout (Paystack/Flutterwave) and the
+// order is delivered in the same request as the provider's confirmation: a bus ticket is issued, a bill/rent/top-up goes
+// to the Luda team's queue. Inside the ledger the money passes straight through (order_pay in, service out, zero left).
+// If a service can't be delivered, the money goes back to the card/bank through the provider's refund API.
+
+export type OrderKind = 'ticket' | 'bill'
+interface BillSpec { type: string; provider: string; account: string; amount: number; biller: string | null; details: Record<string, string>; op?: { id: number; country: string }; phone: string | null }
+
+/** Same checks as before for a bill, rent or mobile top-up. */
+function billSpec(body: Record<string, any>, env: Env): BillSpec {
+  const type = String(body.type ?? '')
+  if (!BILL_TYPES.includes(type)) throw new Fail('Pick what kind of bill it is')
+  const provider = clean(body.provider, 60, 'who the bill is from (e.g. KIB-TEK)', 2)
+  const account = cleanText(body.account, 40).replace(/\s+/g, '')
+  if (!/^[\w\-+./]{3,40}$/.test(account)) throw new Fail('Enter the customer / subscriber number from the bill')
+  const amount = lira(body.amountMinor, 10, 20_000, 'The bill amount')
+  const biller = /^[a-z]{2,12}$/.test(String(body.biller ?? '')) ? String(body.biller) : null
+  const details = billDetails(body.details)
+  if (type === 'rent' && (!details.landlord || !details.iban || !details.period)) throw new Fail("Add the landlord's name, their IBAN and the rent month")
+  const op = type === 'phone' && biller && /top-up/i.test(details.kind ?? '') ? topupOperators(env)[biller] : undefined
+  const phone = op ? mobileNumber(account) : null
+  if (op && !phone) throw new Fail('Enter the mobile number like 0533 123 45 67')
+  if (op && amount > topupMaxMinor(env)) throw new Fail(`Top-ups can be up to ${tl(topupMaxMinor(env))} at a time`)
+  if (body.confirmed !== true) throw new Fail('Please confirm the bill details are correct')
+  return { type, provider, account, amount, biller, details, op, phone }
+}
+
+const BILL_WORD: Record<string, string> = { electricity: 'Electricity bill', water: 'Water bill', internet: 'Internet bill', phone: 'Mobile', rent: 'Rent', other: 'Bill' }
+
+/** Puts a bill in the team's queue (paid for from the order that just came in), plus saved bill and auto top-up. */
+async function placeBill(env: Env, d: Deps, userId: string, spec: BillSpec, files: string[], extra: { save?: boolean; label?: string; remind?: number | null; orderRef?: string }) {
+  const fee = billFee(spec.amount, env)
+  const eta = billEta(d.now?.() ?? new Date())
+  const bill = await d.db.fn<Record<string, unknown>>('luda_bill_create', { p_user: userId, p_type: spec.type, p_provider: spec.provider, p_account: spec.account, p_amount: spec.amount, p_fee: fee, p_files: files, p_details: spec.details, p_eta: eta.toISOString() }).catch(featureErr)
+  const id = String(bill.id)
+  await d.db.log(id, 'bill_new', { user: userId, type: spec.type, amount: spec.amount, fee, biller: spec.biller, order: extra.orderRef ?? null })
+  if (extra.orderRef) await d.db.fn('luda_bill_order', { p_bill: id, p_ref: extra.orderRef })
+  if (spec.biller) await d.db.fn('luda_bill_set_biller', { p_bill: id, p_biller: spec.biller })
+  if (spec.biller && extra.save) {
+    const remind = extra.remind ?? null
+    await d.db.fn('luda_saved_bill_save', { p_user: userId, p_biller: spec.biller, p_type: spec.type, p_provider: spec.provider, p_account: spec.account,
+      p_details: Object.fromEntries(Object.entries(spec.details).filter(([k]) => k !== 'period' && k !== 'reference')), p_label: extra.label ?? '',
+      p_amount: spec.amount, p_remind: remind !== null && remind >= 0 && remind <= 28 ? remind : null, p_paid: true }).catch(() => null)
+  }
+  let status = 'pending', auto: string | null = null
+  if (spec.op && spec.phone) {
+    auto = await runTopup(env, d, id, spec.op, spec.amount, spec.phone)
+    if (auto === 'paid') status = 'paid'
+  }
+  return { bill: { ...bill, id, biller: spec.biller, status, auto: auto ? { status: auto } : null, files: undefined, user_id: undefined }, fee }
+}
+
+/** What an order costs, in lira (kuruş), and what it is. Nothing is stored. */
+function priceOrder(body: Record<string, any>, env: Env, d: Deps, p: Profile) {
+  const kind = String(body.kind ?? '') as OrderKind
+  if (kind === 'ticket') {
+    const priced = priceTicket({ ...(body.item ?? {}), holder: p.full_name }, d.now?.() ?? new Date())
+    const selling = (env.SELL_OPERATORS ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+    if (selling.length && !selling.includes(priced.item.operatorId)) throw new Fail('Online tickets for this company are coming soon')
+    const total = costIn('TRY', priced.amount, 1, 0)
+    return { kind, label: priced.label, total, fee: 0, spec: { ticket: { ...priced.item, label: priced.label }, base: priced.amount } as Record<string, unknown> }
+  }
+  if (kind === 'bill') {
+    const spec = billSpec(body, env), fee = billFee(spec.amount, env)
+    const label = `${spec.type === 'phone' && spec.op ? 'Mobile top-up' : BILL_WORD[spec.type] ?? 'Bill'} · ${spec.provider}`
+    return { kind, label, total: spec.amount + fee, fee, spec: { bill: spec, save: body.save === true, label: cleanText(body.label, 40), remind: body.remind === undefined ? null : int(body.remind) } as Record<string, unknown> }
+  }
+  throw new Fail('Pick what you want to pay for')
+}
+
+/** Lira price → what the person pays at checkout, in the currency of the chosen payment method. */
+async function chargeFor(tryMinor: number, provider: Provider, cur: string, env: Env, d: Deps) {
+  const flag = (v: string | undefined, def: boolean) => (v === undefined || v === '' ? def : /^(1|true|yes)$/i.test(v))
+  const providerAddsFee = provider === 'paystack' ? flag(env.PAYSTACK_CUSTOMER_PAYS_FEE, true) : flag(env.FLW_CUSTOMER_PAYS_FEE, false)
+  let amount: number, rate: number, paymentOptions: string | undefined
+  if (cur === 'NGN') {
+    rate = await ngnPerTry(env, d.fetch)
+    amount = Math.ceil((tryMinor * rate * (1 + margin(env))) / 100) * 100 // whole naira
+  } else {
+    if (!FOREIGN[cur] || !foreignEnabled(env).includes(cur)) throw new Fail('Paying in that currency is not available')
+    if (provider !== 'flutterwave') throw new Fail(`${FOREIGN[cur].name} payments go through Flutterwave`)
+    rate = await perTry(cur, env, d.fetch)
+    amount = Math.ceil(tryMinor * rate * (1 + margin(env)))
+    paymentOptions = FOREIGN[cur].options
+  }
+  const estFee = cur === 'NGN' ? depositFee(amount, env) : foreignFee(amount, env)
+  const fee = providerAddsFee ? 0 : estFee
+  return { amount, fee, charge: amount + fee, rate, providerAddsFee, estFee, paymentOptions }
+}
+
+/** Delivers a paid order exactly once. Anything that can't be delivered is refunded to the card/bank. */
+export async function fulfilOrder(reference: string, env: Env, d: Deps) {
+  const p = await d.db.get(reference)
+  if (!p || p.purpose !== 'order' || p.status !== 'paid' || !p.user_id) return null
+  const it = (p.item ?? {}) as Record<string, any>
+  if (it.result || (p as PaymentRow & { done_at?: string | null }).done_at || (p as PaymentRow & { refund_status?: string | null }).refund_status) return it.result ?? null
+  if (!(await d.db.hit(`fulfil:${reference}`, 1, 60).catch(() => true))) return null
+  const disc = int(it.discount)
+  try {
+    // Luda's own discount (from rewards) joins the payment, so the service is paid in full.
+    if (disc > 0) await d.db.post([{ user_id: p.user_id, currency: 'TRY', amount_minor: disc, kind: 'discount', ref: reference, meta: { note: 'Reward discount used' } }])
+    let result: Record<string, unknown>
+    if (it.kind === 'ticket') {
+      const t = await d.db.buyTicket(p.user_id, 'TRY', int(it.total), Number(it.base), ticketCode(), { ...it.ticket, orderRef: reference })
+      await d.db.fn('luda_ticket_order', { p_ticket: t.id, p_ref: reference })
+      result = { ticketId: t.id, code: t.code }
+    } else if (it.kind === 'bill') {
+      const r = await placeBill(env, d, p.user_id, it.bill as BillSpec, it.files ?? [], { save: it.save, label: it.label, remind: it.remind, orderRef: reference })
+      result = { billId: r.bill.id, auto: r.bill.auto ?? null }
+    } else throw new Error('unknown order')
+    await d.db.fn('luda_order_done', { p_reference: reference, p_result: result })
+    await d.db.log(reference, 'order_done', result)
+    const paid = fmtMoney(p.amount_minor, p.currency)
+    await notifyUser(env, d, p.user_id, { emoji: it.kind === 'ticket' ? '🎫' : '🧾', title: `Paid ${paid}: ${it.label}`, body: it.kind === 'ticket' ? 'Your ticket is ready in Transport' : 'The Luda team is paying it now. The receipt follows.', url: it.kind === 'ticket' ? '/transport' : '/bills', tag: `order:${reference}`, cat: 'money' })
+    await mailUser(env, d, p.user_id, `order:${reference}`, () => MAILS.payment({ amount: paid, what: String(it.label), ref: reference, when: cyWhen(), ticket: it.kind === 'ticket' }))
+    return result
+  } catch (e) {
+    await d.db.log(reference, 'order_failed', { error: String((e as Error)?.message ?? e).slice(0, 200) })
+    await refundOrder(reference, env, d, 'We could not complete this order, so your money is on its way back.')
+    return null
+  }
+}
+
+/**
+ * Sends an order's money back to the card/bank. Called when delivery fails, a bill can't be paid, or a ticket is
+ * refunded. The order's lira (back from the service) leaves the pass-through again and the reward discount is returned.
+ */
+export async function refundOrder(reference: string, env: Env, d: Deps, why: string) {
+  const p = await d.db.get(reference) as (PaymentRow & { refund_status?: string | null }) | null
+  if (!p || p.purpose !== 'order' || p.status !== 'paid' || !p.user_id || p.refund_status) return
+  const it = (p.item ?? {}) as Record<string, any>
+  const back = Number((await d.db.balances(p.user_id)).TRY ?? 0)
+  await d.db.fn('luda_order_refund_out', { p_reference: reference, p_user: p.user_id, p_amount: Math.min(back, int(it.total)), p_note: why })
+  await d.db.fn('luda_discount_release', { p_user: p.user_id, p_ref: reference }).catch(() => {})
+  const paid = fmtMoney(p.amount_minor, p.currency)
+  try {
+    await refundPayment(p.provider, { reference, providerTxId: p.provider_tx_id }, env, d.fetch)
+    await d.db.fn('luda_order_refund_set', { p_reference: reference, p_status: 'refunded', p_note: why })
+    await d.db.log(reference, 'order_refunded', { why })
+    await notifyUser(env, d, p.user_id, { emoji: '↩️', title: `Refund on its way: ${paid}`, body: `${it.label}. ${why} It usually reaches your card or bank in 5–10 business days.`, url: '/payments', tag: `refund:${reference}`, cat: 'money' })
+  } catch (e) {
+    // The provider refused or is unreachable: the Luda team sends it by hand (HQ → Payouts → Refunds to send).
+    await d.db.fn('luda_order_refund_set', { p_reference: reference, p_status: 'failed', p_note: `${why} (provider: ${String((e as Error)?.message ?? e).slice(0, 120)})` })
+    await d.db.log(reference, 'order_refund_failed', { error: String((e as Error)?.message ?? e).slice(0, 200) })
+    await notifyUser(env, d, p.user_id, { emoji: '↩️', title: `Refund on its way: ${paid}`, body: `${it.label}. ${why} The Luda team is sending it back to you.`, url: '/payments', tag: `refund:${reference}`, cat: 'money' })
+  }
 }
 
 /* ------------------------------ daily health check ------------------------------ */
@@ -542,7 +708,10 @@ export async function closeStalePayments(env: Env, d: Deps) {
     let v
     try { v = await verifyPayment(p.provider, ref, env, d.fetch) } catch (e) {
       // The provider has no such payment (the checkout was never opened or has expired): close it.
-      if (/ 404:| 400:|not found|no transaction/i.test(String((e as Error)?.message ?? e))) { await d.db.settle(ref, 'failed'); await d.db.log(ref, 'stale_closed', { reason: String((e as Error).message).slice(0, 160) }); out.closed++ }
+      if (/ 404:| 400:|not found|no transaction/i.test(String((e as Error)?.message ?? e))) {
+        await d.db.settle(ref, 'failed'); await d.db.log(ref, 'stale_closed', { reason: String((e as Error).message).slice(0, 160) }); out.closed++
+        if (p.purpose === 'order' && p.user_id) await d.db.fn('luda_discount_release', { p_user: p.user_id, p_ref: ref }).catch(() => {})
+      }
       continue
     }
     if (v.ok) { const r = await finalizeDeposit(ref, env, d, 'stale-check'); if (r?.status === 'paid') out.credited++; continue }
@@ -739,11 +908,11 @@ export const jobEmoji = (text: string) => JOB_EMOJI.find(([r]) => r.test(text))?
 /* ------------------------- rewards (all on the server) ------------------------- */
 // Same prizes the app's wheel shows. The server draws the prize; the phone only animates it.
 export const SPIN = [
-  { label: '10 XP', xp: 10, weight: 24 }, { label: '50 pts', points: 50, weight: 18 }, { label: '25 XP', xp: 25, weight: 18 }, { label: '₺5', cash: 5_00, weight: 10 },
-  { label: '100 pts', points: 100, weight: 12 }, { label: '50 XP', xp: 50, weight: 10 }, { label: '₺20', cash: 20_00, weight: 3 }, { label: '200 pts', points: 200, weight: 5 },
+  { label: '10 XP', xp: 10, weight: 24 }, { label: '50 pts', points: 50, weight: 18 }, { label: '25 XP', xp: 25, weight: 18 }, { label: '₺5 off', cash: 5_00, weight: 10 },
+  { label: '100 pts', points: 100, weight: 12 }, { label: '50 XP', xp: 50, weight: 10 }, { label: '₺20 off', cash: 20_00, weight: 3 }, { label: '200 pts', points: 200, weight: 5 },
 ] as { label: string; xp?: number; points?: number; cash?: number; weight: number }[]
 const QUEST_XP: Record<string, number> = { phone: 50, verify: 150, deposit: 50, bill: 80, fx: 40, p2p: 200, chat: 30, flash: 40, ticket: 50 }
-const REDEEM = [{ id: 'r5', pts: 500, cash: 5_00, label: '₺5 wallet credit' }, { id: 'r20', pts: 1500, cash: 20_00, label: '₺20 wallet credit' }, { id: 'r40', pts: 3000, cash: 40_00, label: '₺40 wallet credit' }]
+const REDEEM = [{ id: 'r5', pts: 500, cash: 5_00, label: '₺5 off a payment' }, { id: 'r20', pts: 1500, cash: 20_00, label: '₺20 off a payment' }, { id: 'r40', pts: 3000, cash: 40_00, label: '₺40 off a payment' }]
 const CHALLENGES = [
   { id: 'c-bills', goal: 3, key: 'billsMonth', prize: { points: 300, xp: 100 }, prizeLabel: '300 pts' },
   { id: 'c-save', goal: 1_000_00, key: 'potSavedMonth', prize: { cash: 20_00, xp: 100 }, prizeLabel: '₺20 bonus' },
@@ -860,7 +1029,7 @@ async function boardBlock(p: Profile, kind: BoardKind, official: boolean, d: Dep
   const r = BOARD_RULES[kind]
   if (official) return null
   if (r.staffOnly) return 'Only the Luda team adds these.'
-  if (r.kyc && p.kyc_status !== 'verified') return 'Verify your ID first (Wallet → Verify). It keeps fake posts and scammers out.'
+  if (r.kyc && p.kyc_status !== 'verified') return 'Verify your ID first (My payments → Verify your ID). It keeps fake posts and scammers out.'
   if (r.minAgeDays && p.created_at && Date.now() - Date.parse(p.created_at) < r.minAgeDays * 86400e3) return `Your account must be at least ${r.minAgeDays} days old to post news.`
   const c = await d.db.fn<{ live: number; recent: number }>('luda_board_count', { p_user: p.user_id, p_kind: kind, p_since: new Date(Date.now() - 86400e3).toISOString() })
   if (r.maxLive && c.live >= r.maxLive) return `You can have ${r.maxLive} active posts here. Remove an old one first.`
@@ -881,7 +1050,7 @@ const BANNER_THEMES = ['mint', 'sunset', 'ocean', 'grape', 'gold', 'night']
 
 const routes: Record<string, Route> = {
   /* ---- public ---- */
-  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env), fxMargin: margin(env), ...featureFees(env) }, escrow: escrowOn(env), push: (await vapid(d).catch(() => null))?.publicKey ?? null }),
+  'GET config': async ({ env, d }) => ({ google: await googleEnabled(env, d), sms: smsEnabled(env), didit: diditEnabled(env), providers: providers(env), foreign: env.FLW_SECRET_KEY ? foreignEnabled(env) : [], payouts: !!env.PAYSTACK_SECRET_KEY, kyc: kycEnabled(env) || diditEnabled(env), nin: kycEnabled(env), limits: LIMITS, fees: { withdraw: withdrawFee(env), fxMargin: margin(env), ...featureFees(env) }, escrow: escrowOn(env), wallet: walletOn(env), push: (await vapid(d).catch(() => null))?.publicKey ?? null }),
 
   'GET username': async ({ d, url }) => {
     const u = (url.searchParams.get('u') ?? '').toLowerCase()
@@ -936,7 +1105,7 @@ const routes: Record<string, Route> = {
     try { session = await signIn(email, String(body.password ?? ''), authEnv(env), d.fetch) } catch (e) { throw new Fail(e instanceof Error ? e.message : 'Sign-in failed', 401) }
     const who = await d.db.profileByEmail(email).catch(() => null)
     if (who) await d.db.fn('luda_sign_in_log', { p_user: who.user_id, p_how: 'password', p_device: deviceOf(req) }).catch(() => {})
-    if (who) await notifyUser(env, d, who.user_id, { emoji: '🔐', title: `New sign-in on ${deviceOf(req)}`, body: 'Not you? Freeze your wallet in Security and change your password', url: '/security', tag: `signin:${Date.now()}`, cat: 'security' })
+    if (who) await notifyUser(env, d, who.user_id, { emoji: '🔐', title: `New sign-in on ${deviceOf(req)}`, body: 'Not you? Freeze your payments in Security and change your password', url: '/security', tag: `signin:${Date.now()}`, cat: 'security' })
     return { session }
   },
 
@@ -985,7 +1154,7 @@ const routes: Record<string, Route> = {
     const staffOf = await permsOf(p, env, d)
     const [balances, history, tickets, withdrawals, deposits] = await Promise.all([d.db.balances(p.user_id), d.db.history(p.user_id, 40), d.db.tickets(p.user_id, 30), d.db.withdrawals(p.user_id, 20), d.db.deposits(p.user_id, 20)])
     return {
-      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null, university: p.university ?? null, hasPasscode: !!p.passcode_hash, inboxUnread: await d.db.fn<number>('luda_inbox_unread', { p_user: p.user_id }).catch(() => 0), termsVersion: Number(p.terms_version ?? 0), termsCurrent: Number((await d.db.fn<{ version?: number } | null>('luda_guide', { p_slug: 'terms' }).catch(() => null))?.version ?? 0) },
+      profile: { username: p.username, fullName: p.full_name, email: p.email, kyc: p.kyc_status, kycName: p.kyc_name, hasPin: !!p.pin_hash, isAdmin: !!staffOf, staff: staffOf, kycTriesLeft: kycTriesLeft(p), kycStartedAt: p.kyc_started_at ?? null, frozen: p.frozen, frozenBy: p.frozen_by ?? null, phone: p.phone ? p.phone.slice(0, 4) + '•••' + p.phone.slice(-3) : null, phoneVerified: !!p.phone_verified_at, moneyHoldUntil: p.money_hold_until ?? null, university: p.university ?? null, hasPasscode: !!p.passcode_hash, inboxUnread: await d.db.fn<number>('luda_inbox_unread', { p_user: p.user_id }).catch(() => 0), discountMinor: int(await d.db.fn<number>('luda_discount', { p_user: p.user_id }).catch(() => 0)), termsVersion: Number(p.terms_version ?? 0), termsCurrent: Number((await d.db.fn<{ version?: number } | null>('luda_guide', { p_slug: 'terms' }).catch(() => null))?.version ?? 0) },
       // Every top-up attempt with its status (pending / paid / failed / mismatch), so the app can show all of them.
       deposits: deposits.map((x) => ({ reference: x.reference, provider: x.provider, status: x.status, chargeMinor: Number(x.amount_minor), currency: x.currency, feeMinor: Number(x.fee_minor ?? 0), creditMinor: Number(x.credit_minor ?? 0), creditCurrency: x.credit_currency ?? 'NGN', createdAt: x.created_at, paidAt: x.paid_at ?? null })),
       fx: await d.db.fn('luda_fx', { p_user: p.user_id }).catch(() => null),
@@ -1030,7 +1199,87 @@ const routes: Record<string, Route> = {
 
   // Top up: Naira (Paystack / Flutterwave) → Naira wallet; other currencies (Flutterwave) → Lira wallet.
   // The user always pays the provider fee on top, so the quoted amount lands in full.
+  /* ---------- pay per service (v1.34.0) ---------- */
+  // Price + checkout for ONE service. `quote: true` only prices it (shown before the person pays).
+  'POST checkout': async ({ req, env, d, body }) => {
+    const p = await me(req, env, d)
+    // `payWith` = Paystack/Flutterwave (`provider` is the bill's company, e.g. KIB-TEK).
+    const provider = (body.payWith ?? 'paystack') as Provider
+    if (!providers(env).includes(provider)) throw new Fail('That payment method is not available')
+    const cur = String(body.currency ?? 'NGN').toUpperCase()
+    const o = priceOrder(body, env, d, p)
+    const have = int(await d.db.fn<number>('luda_discount', { p_user: p.user_id }).catch(() => 0))
+    const maxDisc = Math.max(0, o.total - 10_00) // at least ₺10 is always paid at checkout
+    const discount = body.useDiscount === false ? 0 : Math.min(have, maxDisc)
+    const c = await chargeFor(o.total - discount, provider, cur, env, d)
+    const quote = { label: o.label, kind: o.kind, totalTry: o.total, feeTry: o.fee, discountTry: discount, discountAvailable: have, currency: cur, amountMinor: c.amount, feeMinor: c.fee, chargeMinor: c.charge, providerAddsFee: c.providerAddsFee, estFeeMinor: c.estFee, provider }
+    if (body.quote === true) return quote
+    await verifyAuth(p, body, env, d)
+    await limit(d, `order:${p.user_id}`, 30, 86400, 'You can make up to 30 payments a day')
+    noHold(p, d)
+    const reference = newRef('ord')
+    const files = o.kind === 'bill' ? await storeFiles(env, d, p.user_id, 'bills', body.files) : []
+    const held = discount > 0 ? int(await d.db.fn<number>('luda_discount_hold', { p_user: p.user_id, p_max: discount, p_ref: reference })) : 0
+    const credit = o.total - held
+    const c2 = held === discount ? c : await chargeFor(credit, provider, cur, env, d)
+    const item = { type: 'order', kind: o.kind, label: o.label, total: o.total, fee: o.fee, discount: held, files, ...o.spec }
+    await d.db.insert({ reference, provider, purpose: 'order', status: 'pending', amount_minor: c2.charge, currency: cur, base_amount: o.total / 100, base_currency: 'TRY', fx_rate: c2.rate,
+      email: p.email, item, user_id: p.user_id, fee_minor: c2.fee, credit_minor: credit, credit_currency: 'TRY' })
+    const callbackUrl = `${env.APP_URL.replace(/\/$/, '')}/pay/return?provider=${provider}&ref=${reference}&order=1`
+    let checkoutUrl: string
+    try {
+      checkoutUrl = await initCheckout(provider, { reference, amountMinor: c2.charge, currency: cur, email: p.email, callbackUrl, title: `Luda: ${o.label}`.slice(0, 60), meta: { purpose: 'order', kind: o.kind, username: p.username }, paymentOptions: c2.paymentOptions }, env, d.fetch)
+    } catch (e) {
+      await d.db.settle(reference, 'failed')
+      if (held) await d.db.fn('luda_discount_release', { p_user: p.user_id, p_ref: reference }).catch(() => {})
+      throw new Fail(`Could not open the payment page: ${String((e as Error)?.message ?? e).slice(0, 120)}`, 502)
+    }
+    await d.db.log(reference, 'init', { provider, cur, charge: c2.charge, total: o.total, discount: held, kind: o.kind })
+    return { ...quote, discountTry: held, amountMinor: c2.amount, feeMinor: c2.fee, chargeMinor: c2.charge, reference, checkoutUrl }
+  },
+
+  // Back from the payment page: confirm with the provider and return what the order became.
+  'GET order': async ({ req, env, d, url }) => {
+    const p = await me(req, env, d)
+    const ref = url.searchParams.get('ref') ?? ''
+    const row = await d.db.get(ref)
+    if (!row || row.user_id !== p.user_id || row.purpose !== 'order') throw new Fail('Unknown payment', 404)
+    await finalizeDeposit(ref, env, d, 'verify')
+    if ((await d.db.get(ref))?.status === 'paid') await fulfilOrder(ref, env, d).catch(() => null)
+    const o = await d.db.get(ref) as PaymentRow & { refund_status?: string | null; done_at?: string | null }
+    const it = (o.item ?? {}) as Record<string, any>
+    return { reference: ref, status: o.status, kind: it.kind, label: it.label, chargeMinor: o.amount_minor, currency: o.currency, totalTry: it.total, discountTry: it.discount ?? 0, result: it.result ?? null, refund: o.refund_status ?? null, provider: o.provider }
+  },
+
+  // 'My payments': every order with its status (and any refund).
+  'GET orders': async ({ req, env, d }) => {
+    const p = await me(req, env, d)
+    let list = await d.db.fn<Record<string, any>[]>('luda_orders_mine', { p_user: p.user_id })
+    // Self-heal: a paid order that wasn't delivered (e.g. the server stopped mid-way) is delivered now.
+    const stuck = list.filter((o) => o.status === 'paid' && !o.doneAt && !o.refund).slice(0, 3)
+    for (const o of stuck) await fulfilOrder(o.reference, env, d).catch(() => null)
+    if (stuck.length) list = await d.db.fn<Record<string, any>[]>('luda_orders_mine', { p_user: p.user_id })
+    return { orders: list.map((o) => ({ ...o, item: { ...o.item, bill: o.item?.bill ? { type: o.item.bill.type, provider: o.item.bill.provider, account: o.item.bill.account } : undefined } })), discount: int(await d.db.fn<number>('luda_discount', { p_user: p.user_id }).catch(() => 0)) }
+  },
+
+  // Luda HQ → Refunds the provider refused: the team sends them by hand, then marks them done.
+  'GET admin-refunds': async ({ req, env, d }) => { await staff(req, env, d, 'money', 'view'); return { refunds: await d.db.fn('luda_refunds_waiting', {}) } },
+  'POST admin-refund-done': async ({ req, env, d, body }) => {
+    const a = await staff(req, env, d, 'money', 'edit')
+    const ref = String(body.reference ?? '')
+    const note = cleanText(body.note, 200)
+    if (!note) throw new Fail('Say how it was sent back (e.g. "Bank transfer to GTBank ••1234")')
+    await verifyAuth(a, body, env, d)
+    const o = await d.db.get(ref) as (PaymentRow & { refund_status?: string | null }) | null
+    if (!o || o.purpose !== 'order' || !['pending', 'failed'].includes(String(o.refund_status))) throw new Fail('This refund is not waiting', 409)
+    await d.db.fn('luda_order_refund_set', { p_reference: ref, p_status: 'refunded', p_note: `${note} (by @${a.username})` })
+    await d.db.log(ref, 'admin_refund_done', { by: a.username, note })
+    if (o.user_id) await notifyUser(env, d, o.user_id, { emoji: '↩️', title: `Refund sent: ${fmtMoney(o.amount_minor, o.currency)}`, body: note, url: '/payments', tag: `refund:${ref}:done`, cat: 'money' })
+    return { ok: true }
+  },
+
   'POST deposit': async ({ req, env, d, body }) => {
+    needWallet(env)
     const p = await me(req, env, d)
     const provider = body.provider as Provider
     if (!providers(env).includes(provider)) throw new Fail('That payment method is not available')
@@ -1095,6 +1344,7 @@ const routes: Record<string, Route> = {
     return { ...q, rate: mid, margin: m, fx: await d.db.fn('luda_fx', { p_user: p.user_id }) }
   },
   'POST convert': async ({ req, env, d, body }) => {
+    needWallet(env)
     const p = await me(req, env, d)
     const from = body.from, to = body.to, amount = int(body.amountMinor)
     if (!isCur(from) || !isCur(to) || from === to) throw new Fail('Pick two different currencies')
@@ -1112,6 +1362,7 @@ const routes: Record<string, Route> = {
 
   // Bus / airport ticket paid from the wallet (Lira, or Naira at today's rate).
   'POST ticket': async ({ req, env, d, body }) => {
+    needWallet(env)
     const p = await me(req, env, d)
     const cur = body.currency
     if (!isCur(cur)) throw new Fail('Pick a wallet')
@@ -1138,6 +1389,7 @@ const routes: Record<string, Route> = {
   },
 
   'POST send': async ({ req, env, d, body }) => {
+    needWallet(env)
     const p = await me(req, env, d)
     needKyc(p, 'send money'); noHold(p, d)
     const cur = body.currency, amount = int(body.amountMinor)
@@ -1577,6 +1829,8 @@ const routes: Record<string, Route> = {
       case 'ticket-refund': {
         const r = await d.db.refundTicket(String(body.ticketId ?? '')).catch((e) => moneyMsg(e))
         if (!r.ok) throw new Fail('This ticket was already refunded or used')
+        const ref = await d.db.fn<string | null>('luda_ticket_order_ref', { p_ticket: String(body.ticketId ?? '') }).catch(() => null)
+        if (ref) await refundOrder(ref, env, d, reason || 'Your ticket was cancelled')
         break
       }
       default: throw new Fail('Unknown action')
@@ -1587,6 +1841,7 @@ const routes: Record<string, Route> = {
 
   /* ---------------- savings pots ---------------- */
   'POST pot-create': async ({ req, env, d, body }) => {
+    needWallet(env)
     const p = await me(req, env, d)
     const name = clean(body.name, 40, 'a name for your pot', 2), emoji = cleanText(body.emoji, 8) || '🎯'
     const cur = body.currency === 'NGN' ? 'NGN' : 'TRY', goal = int(body.goalMinor ?? 0)
@@ -1599,6 +1854,7 @@ const routes: Record<string, Route> = {
   },
 
   'POST pot-move': async ({ req, env, d, body }) => {
+    needWallet(env)
     const p = await me(req, env, d)
     const amt = int(body.amountMinor)
     if (!amt || Math.abs(amt) > 100_000_000_00 || amt % 100) throw new Fail('Enter an amount in whole Naira or Lira')
@@ -1639,43 +1895,14 @@ const routes: Record<string, Route> = {
   },
 
   'POST bill-create': async ({ req, env, d, body }) => {
+    needWallet(env)
     const p = await me(req, env, d)
-    const type = String(body.type ?? '')
-    if (!BILL_TYPES.includes(type)) throw new Fail('Pick what kind of bill it is')
-    const provider = clean(body.provider, 60, 'who the bill is from (e.g. KIB-TEK)', 2)
-    const account = cleanText(body.account, 40).replace(/\s+/g, '')
-    if (!/^[\w\-+./]{3,40}$/.test(account)) throw new Fail('Enter the customer / subscriber number from the bill')
-    const amount = lira(body.amountMinor, 10, 20_000, 'The bill amount')
-    const biller = /^[a-z]{2,12}$/.test(String(body.biller ?? '')) ? String(body.biller) : null
-    const details = billDetails(body.details)
-    if (type === 'rent' && (!details.landlord || !details.iban || !details.period)) throw new Fail("Add the landlord's name, their IBAN and the rent month")
-    // Automatic top-up: prepaid TL for an operator the owner switched on, to a valid mobile number.
-    const op = type === 'phone' && biller && /top-up/i.test(details.kind ?? '') ? topupOperators(env)[biller] : undefined
-    const phone = op ? mobileNumber(account) : null
-    if (op && !phone) throw new Fail('Enter the mobile number like 0533 123 45 67')
-    if (op && amount > topupMaxMinor(env)) throw new Fail(`Top-ups can be up to ${tl(topupMaxMinor(env))} at a time`)
-    if (body.confirmed !== true) throw new Fail('Please confirm the bill details are correct')
+    const spec = billSpec(body, env)
     await verifyAuth(p, body, env, d)
     await limit(d, `bill:${p.user_id}`, 10, 86400, 'You can send up to 10 bills a day')
-    const fee = billFee(amount, env)
     const files = await storeFiles(env, d, p.user_id, 'bills', body.files)
-    const eta = billEta(d.now?.() ?? new Date())
-    const bill = await d.db.fn<Record<string, unknown>>('luda_bill_create', { p_user: p.user_id, p_type: type, p_provider: provider, p_account: account, p_amount: amount, p_fee: fee, p_files: files, p_details: details, p_eta: eta.toISOString() }).catch(featureErr)
-    await d.db.log(String(bill.id), 'bill_new', { user: p.username, type, amount, fee, biller })
-    const id = String(bill.id)
-    if (biller) await d.db.fn('luda_bill_set_biller', { p_bill: id, p_biller: biller })
-    if (biller && body.save === true) {
-      const remind = body.remind === undefined ? null : int(body.remind)
-      await d.db.fn('luda_saved_bill_save', { p_user: p.user_id, p_biller: biller, p_type: type, p_provider: provider, p_account: account,
-        p_details: Object.fromEntries(Object.entries(details).filter(([k]) => k !== 'period' && k !== 'reference')), p_label: cleanText(body.label, 40),
-        p_amount: amount, p_remind: remind !== null && remind >= 0 && remind <= 28 ? remind : null, p_paid: true }).catch(() => null)
-    }
-    let status = 'pending', auto: string | null = null
-    if (op && phone) {
-      auto = await runTopup(env, d, id, op, amount, phone)
-      if (auto === 'paid') status = 'paid'
-    }
-    return { bill: { ...bill, biller, status, auto: auto ? { status: auto } : null, files: undefined, user_id: undefined } }
+    const r = await placeBill(env, d, p.user_id, spec, files, { save: body.save === true, label: cleanText(body.label, 40), remind: body.remind === undefined ? null : int(body.remind) })
+    return { bill: r.bill }
   },
 
   /* ---------------- marketplace ---------------- */
@@ -1940,6 +2167,8 @@ const routes: Record<string, Route> = {
     const r = await d.db.fn<{ ok: boolean }>('luda_bill_settle', { p_bill: id, p_paid: paid, p_note: note || 'Paid by the Luda team', p_receipt: receipt })
     if (!r.ok) throw new Fail('This bill was already handled', 409)
     await d.db.log(id, paid ? 'admin_bill_paid' : 'admin_bill_refunded', { by: a.username, note })
+    // Paid at checkout (no wallet): the money goes back to the card/bank it came from.
+    if (!paid) { const ref = await d.db.fn<string | null>('luda_bill_order_ref', { p_bill: id }).catch(() => null); if (ref) await refundOrder(ref, env, d, `The Luda team could not pay this bill: ${note}`) }
     await d.db.fn('luda_mark_handled', { p_kind: 'bill', p_id: id, p_staff: a.username })
     const owner = await d.db.fn<string | null>('luda_bill_user', { p_bill: id }).catch(() => null)
     if (owner && paid) await notifyUser(env, d, owner, { emoji: '🧾', title: 'Your bill is paid', body: 'The receipt is in Bills. Tell us how it went', url: `/bills?rate=bill:${id}`, tag: `bill:${id}`, cat: 'money' })
@@ -2017,6 +2246,7 @@ const routes: Record<string, Route> = {
   },
 
   'POST withdraw': async ({ req, env, d, body }) => {
+    needWallet(env)
     const p = await me(req, env, d)
     needKyc(p, 'withdraw'); noHold(p, d)
     if (!env.PAYSTACK_SECRET_KEY) throw new Fail('Withdrawals are not switched on yet', 503)
@@ -2659,8 +2889,10 @@ const routes: Record<string, Route> = {
     await limit(d, `help-ip:${clientIp(req)}`, 300, 600)
     const articles = await d.db.fn<{ topic?: string }[]>('luda_help', {})
     // P2P is paused with the other escrow services: its topic and articles are hidden (kept on the server).
-    if (escrowOn(env)) return { topics: HELP_TOPICS, articles }
-    return { topics: HELP_TOPICS.filter((t) => t.id !== 'p2p'), articles: articles.filter((a) => a.topic !== 'p2p') }
+    // No wallet (v1.34.0): the Withdrawals topic is hidden and 'Wallet & top-ups' becomes 'Payments & refunds'.
+    const hide = [...(escrowOn(env) ? [] : ['p2p']), ...(walletOn(env) ? [] : ['withdraw'])]
+    const topics = HELP_TOPICS.filter((t) => !hide.includes(t.id)).map((t) => (t.id === 'wallet' && !walletOn(env) ? { ...t, emoji: '💳', title: 'Payments & refunds' } : t))
+    return { topics, articles: articles.filter((a) => !hide.includes(String(a.topic))) }
   },
   'POST help-vote': async ({ req, env, d, body }) => {
     const p = await me(req, env, d)
@@ -3014,12 +3246,12 @@ async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
   const sym: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€', GBP: '£', NGN: '₦' }
   const amt = (minor: number, cur: string) => `${sym[cur] ?? ''}${(Number(minor) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
   const items: TodoItem[] = []
-  if (p.frozen) items.push({ key: 'frozen', emoji: '🧊', title: 'Your account is on hold', sub: 'Money can\'t leave your wallet until it\'s unfrozen', to: '/security', level: 'urgent' })
+  if (p.frozen) items.push({ key: 'frozen', emoji: '🧊', title: 'Your account is on hold', sub: 'Payments are paused until it\'s unfrozen', to: '/security', level: 'urgent' })
   if (p.pin_hash && !p.passcode_hash) items.push({ key: 'passcode', emoji: '🔐', title: 'New: set your 6-digit sign-in code', sub: 'Unlock Luda with 6 digits; your 4-digit PIN is now only for payments', to: '/security?a=passcode', level: 'urgent' })
   if (!p.pin_hash) items.push({ key: 'pin', emoji: '🔢', title: 'Set your payment PIN', sub: 'You need it to move money', to: '/security', level: 'action' })
-  if (p.kyc_status === 'pending') items.push({ key: 'kyc-pending', emoji: '🪪', title: 'Your ID check is in progress', sub: 'We\'ll tell you as soon as it\'s done', to: '/wallet?a=kyc', level: 'info' })
+  if (p.kyc_status === 'pending') items.push({ key: 'kyc-pending', emoji: '🪪', title: 'Your ID check is in progress', sub: 'We\'ll tell you as soon as it\'s done', to: '/payments?a=kyc', level: 'info' })
   else if (p.kyc_status !== 'verified' && (await d.db.userCases(p.user_id, 20).catch(() => [])).some((c) => c.reference === 'kyc-manual' && (c.status === 'open' || c.status === 'waiting_user'))) items.push({ key: 'kyc-manual', emoji: '🪪', title: 'Your ID is with the Luda team', sub: 'We\'ll tell you as soon as it\'s checked', to: '/help', level: 'info' })
-  else if (p.kyc_status !== 'verified') items.push({ key: 'kyc', emoji: '🪪', title: 'Verify your ID', sub: 'Unlocks withdrawals, P2P, Market selling, Flash jobs and cash prizes', to: '/wallet?a=kyc', level: 'action' })
+  else if (p.kyc_status !== 'verified') items.push({ key: 'kyc', emoji: '🪪', title: 'Verify your ID', sub: 'Unlocks Market selling, Flash jobs, posting and prizes', to: '/payments?a=kyc', level: 'action' })
   if (smsEnabled(env) && !p.phone_verified_at) items.push({ key: 'phone', emoji: '📱', title: 'Verify your phone number', sub: 'Keeps your account safe', to: '/security', level: 'action' })
   for (const o of t.p2p ?? []) {
     const lira = amt(o.amount, o.asset), to = `/p2p/${o.id}`
@@ -3061,6 +3293,11 @@ async function todoItems(p: Profile, env: Env, d: Deps): Promise<TodoItem[]> {
       if (c.claimed_by && Date.parse(c.claimed_at ?? '') > Date.now() - 30 * 60e3) continue
       items.push({ key: `staffpay:${w.reference}`, emoji: '🏦', title: `Pay withdrawal: ${amt(w.amount_minor, w.currency)} to ${w.account_name}`, sub: `${w.bank_name ?? ''} ••${w.account_number.slice(-4)} · Luda HQ → Payouts`, to: '/admin?tab=withdrawals', level: 'urgent' })
     }
+  }
+  if (sp && can(sp, 'money', 'edit')) {
+    // Refunds the payment provider refused: the team sends them back by hand (Luda HQ → Payouts → Refunds to send).
+    const waiting = await d.db.fn<{ reference: string; charge: number; currency: string; username: string; label: string }[]>('luda_refunds_waiting', {}).catch(() => [])
+    for (const x of waiting.slice(0, 5)) items.push({ key: `staffrefund:${x.reference}`, emoji: '↩️', title: `Refund to send: ${fmtMoney(x.charge, x.currency)} to @${x.username}`, sub: `${x.label ?? 'Order'} · Luda HQ → Payouts`, to: '/admin?tab=withdrawals', level: 'urgent' })
   }
   if (sp && can(sp, 'money', 'view')) {
     const h = await d.db.fn<{ id: number; at: string; problems: HealthProblem[] } | null>('luda_health_last', {}).catch(() => null)

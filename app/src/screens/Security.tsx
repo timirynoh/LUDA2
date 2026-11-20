@@ -1,3 +1,4 @@
+import { WALLET } from '../config'
 import { Download, EyeOff, Fingerprint, History, KeyRound, Lock, ShieldCheck, Smartphone, Snowflake, Timer, Trash2, Wallet } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Header, PinPad, Sheet } from '../components/ui'
@@ -38,7 +39,7 @@ export default function Security() {
   const { refresh } = useLive()
   const score = [s.phoneVerified, s.verified, s.lockOnOpen, LIVE ? bioOn() : sec.twoStep, !!s.account].filter(Boolean).length
   // Live: freezing is done on the server, so it stops every phone and every payment at once.
-  const freezeLive = async () => { try { await api('POST', 'freeze', {}); await refresh(); notify('🧊', 'You froze your wallet. All payments are blocked'); toast({ title: 'Wallet frozen. No money can leave', emoji: '🧊' }) } catch (e) { toast({ title: e instanceof Error ? e.message : 'Could not freeze', emoji: '⚠️' }) } }
+  const freezeLive = async () => { try { await api('POST', 'freeze', {}); await refresh(); notify('🧊', WALLET ? 'You froze your wallet. All payments are blocked' : 'You froze your payments. Nothing can be paid from your account'); toast({ title: 'Wallet frozen. No money can leave', emoji: '🧊' }) } catch (e) { toast({ title: e instanceof Error ? e.message : 'Could not freeze', emoji: '⚠️' }) } }
 
   const exportData = async () => {
     // Secrets (PIN/password hashes, salts) are never included. Live: the server's copy of your account comes first.
@@ -67,19 +68,19 @@ export default function Security() {
         <button onClick={() => (sec.frozen ? setSheet('unfreeze') : LIVE ? void freezeLive() : (setSec({ frozen: true }), notify('🧊', 'You froze your wallet. All payments are blocked'), toast({ title: 'Wallet frozen. No money can leave', emoji: '🧊' })))}
           className={`flex items-center gap-4 rounded-3xl p-4 text-start ${sec.frozen ? 'bg-sky-500/20 ring-2 ring-sky-400' : 'bg-rose-500/10'}`}>
           <Snowflake size={32} className={sec.frozen ? 'text-sky-300' : 'text-rose-300'} />
-          <div className="flex-1"><p className="font-bold">{sec.frozen ? 'Wallet is frozen' : 'Freeze my wallet'}</p><p className="text-xs text-slate-400">{sec.frozen ? 'Tap to unfreeze (password needed)' : 'Lost your phone or something feels wrong? Block all payments instantly.'}</p></div>
+          <div className="flex-1"><p className="font-bold">{sec.frozen ? (WALLET ? 'Wallet is frozen' : 'Payments are frozen') : (WALLET ? 'Freeze my wallet' : 'Freeze my payments')}</p><p className="text-xs text-slate-400">{sec.frozen ? 'Tap to unfreeze (password needed)' : 'Lost your phone or something feels wrong? Block all payments instantly.'}</p></div>
         </button>
 
         <section className="card divide-y divide-fg/5 py-1">
-          <Row icon={<Lock size={18} />} title="PIN when opening Luda" sub="Protects your wallet if someone has your phone"><Toggle label="PIN on open" on={s.lockOnOpen} onChange={(v) => set((p) => ({ ...p, lockOnOpen: v }))} /></Row>
+          <Row icon={<Lock size={18} />} title="PIN when opening Luda" sub="Protects your account if someone has your phone"><Toggle label="PIN on open" on={s.lockOnOpen} onChange={(v) => set((p) => ({ ...p, lockOnOpen: v }))} /></Row>
           <Row icon={<Timer size={18} />} title="Auto-lock when inactive" sub={`Asks "are you still there?" after ${sec.autoLockMin} min`}>
             <select className="input w-auto py-2 text-sm" value={sec.autoLockMin} onChange={(e) => setSec({ autoLockMin: +e.target.value })} aria-label="Auto-lock minutes">
               {[1, 3, 5, 10, 30].map((m) => <option key={m} value={m}>{m} min</option>)}</select>
           </Row>
           {!LIVE && <Row icon={<Smartphone size={18} />} title="2-step sign-in" sub="SMS code needed when signing in with your password"><Toggle label="2-step" on={sec.twoStep} onChange={(v) => { if (v && !s.phoneVerified) return toast({ title: 'Verify your phone first', emoji: '📱' }); setSec({ twoStep: v }) }} /></Row>}
           <Row icon={<EyeOff size={18} />} title="Privacy screen" sub="Covers Luda when you switch apps, so the app preview shows no balances or chats. Phones don't let websites block screenshots; the Luda store app will."><Toggle label="Privacy screen" on={sec.privacyScreen !== false} onChange={(v) => setSec({ privacyScreen: v })} /></Row>
-          <Row icon={<EyeOff size={18} />} title="Hide balances by default" sub="Tap the eye to show them"><Toggle label="Hide balances" on={sec.hideBalances} onChange={(v) => setSec({ hideBalances: v })} /></Row>
-          {LIVE ? <Row icon={<Wallet size={18} />} title="Daily limits" sub="Set by Luda: withdraw up to ₦1,000,000 and send up to ₦500,000 / ₺20,000 a day after identity check" /> :
+          {(!LIVE || WALLET) && <Row icon={<EyeOff size={18} />} title="Hide balances by default" sub="Tap the eye to show them"><Toggle label="Hide balances" on={sec.hideBalances} onChange={(v) => setSec({ hideBalances: v })} /></Row>}
+          {LIVE ? (WALLET ? <Row icon={<Wallet size={18} />} title="Daily limits" sub="Set by Luda: withdraw up to ₦1,000,000 and send up to ₦500,000 / ₺20,000 a day after identity check" /> : null) :
           <Row icon={<Wallet size={18} />} title="Daily withdrawal limit" sub={`Max ${fmt(sec.dailyWithdraw, 'TRY')} can leave per day`}>
             <select className="input w-auto py-2 text-sm" value={sec.dailyWithdraw} onChange={(e) => setSec({ dailyWithdraw: +e.target.value })} aria-label="Daily limit">
               {[5000, 10000, 20000, 50000, 100000].map((m) => <option key={m} value={m}>₺{m.toLocaleString()}</option>)}</select>
@@ -97,13 +98,13 @@ export default function Security() {
           {LIVE ? <LiveSignIns /> : s.logins.length ? s.logins.slice(0, 6).map((l) => (
             <div key={l.ts} className="flex items-center justify-between py-1.5 text-sm"><span>{l.how} · <span className="text-slate-400">{l.device}</span></span><span className="text-xs text-slate-500">{new Date(l.ts).toLocaleString()}</span></div>
           )) : <p className="text-sm text-slate-400">No sign-ins recorded yet.</p>}
-          <p className="mt-2 text-[11px] text-slate-500">Don't recognise one? Freeze your wallet and change your password.</p>
+          <p className="mt-2 text-[11px] text-slate-500">Don't recognise one? Freeze your payments and change your password.</p>
         </section>
 
         <section className="card divide-y divide-fg/5 py-1">
           <p className="label pt-2 pb-1">Your data</p>
           <Row icon={<Download size={18} />} title="Download my data" sub="Everything Luda stores about you (no passwords)"><button className="chip bg-fg/5 py-2 text-slate-300" onClick={exportData}>Download</button></Row>
-          <Row icon={<Trash2 size={18} />} title={LIVE ? 'Close my account' : 'Delete my account'} sub={LIVE ? 'Done with the Luda team, after you withdraw your money' : 'Permanently removes your data from this phone'}><button className="chip bg-rose-500/15 py-2 text-rose-300" onClick={() => setSheet('delete')}>{LIVE ? 'How' : 'Delete'}</button></Row>
+          <Row icon={<Trash2 size={18} />} title={LIVE ? 'Close my account' : 'Delete my account'} sub={LIVE ? 'Done with the Luda team' : 'Permanently removes your data from this phone'}><button className="chip bg-rose-500/15 py-2 text-rose-300" onClick={() => setSheet('delete')}>{LIVE ? 'How' : 'Delete'}</button></Row>
         </section>
         <p className="pb-2 text-center text-[11px] text-slate-500">{LIVE ? '🔐 Your PIN, sign-in code and password are kept only as protected hashes on Luda\'s server, never on your phone. Timetable photos never leave your phone.' : '🔐 PIN & password are stored only as salted hashes. Your timetable photos never leave your phone.'}</p>
       </div>
@@ -112,7 +113,7 @@ export default function Security() {
       {sheet === 'passcode' && <PasscodeSheet onClose={() => setSheet(null)} />}
       {sheet === 'password' && (LIVE ? <LivePasswordSheet onClose={() => setSheet(null)} /> : <PasswordSheet mode="change" onClose={() => setSheet(null)} />)}
       {sheet === 'unfreeze' && (LIVE ? <LiveUnfreeze onClose={() => setSheet(null)} /> : <PasswordSheet mode="unfreeze" onClose={() => setSheet(null)} />)}
-      {sheet === 'delete' && (LIVE ? <Sheet open onClose={() => setSheet(null)} title="Close my account"><p className="text-sm text-slate-300">Your account holds money, so closing it is done with the Luda team: they'll help you withdraw your balance first, then delete your data. Go to <b>Help</b> and choose "Close my account".</p></Sheet> : <PasswordSheet mode="delete" onClose={() => setSheet(null)} onDone={reset} />)}
+      {sheet === 'delete' && (LIVE ? <Sheet open onClose={() => setSheet(null)} title="Close my account"><p className="text-sm text-slate-300">{WALLET ? 'Your account holds money, so closing it is done with the Luda team: they\'ll help you withdraw your balance first, then delete your data.' : 'Closing your account is done with the Luda team: they check nothing is still being paid for you, then delete your data.'} Go to <b>Help</b> and choose "Close my account".</p></Sheet> : <PasswordSheet mode="delete" onClose={() => setSheet(null)} onDone={reset} />)}
     </div>
   )
 }
@@ -159,9 +160,9 @@ function LiveUnfreeze({ onClose }: { onClose: () => void }) {
   if (me?.profile.frozenBy === 'admin') return <Sheet open onClose={onClose} title="Account on hold"><p className="text-sm text-slate-300">The Luda team put your account on hold to protect it. Contact support from <b>Help</b> to lift it.</p></Sheet>
   const go = async (pin: string) => {
     setErr('')
-    try { await api('POST', 'freeze', { freeze: false, pin }); await refresh(); notify('✅', 'Wallet unfrozen'); toast({ title: 'Wallet unfrozen', emoji: '✅' }); onClose() } catch (e) { setErr(e instanceof Error ? e.message : 'Try again') }
+    try { await api('POST', 'freeze', { freeze: false, pin }); await refresh(); notify('✅', WALLET ? 'Wallet unfrozen' : 'Payments unfrozen'); toast({ title: WALLET ? 'Wallet unfrozen' : 'Payments unfrozen', emoji: '✅' }); onClose() } catch (e) { setErr(e instanceof Error ? e.message : 'Try again') }
   }
-  return <Sheet open onClose={onClose} title="Unfreeze wallet"><div className="flex flex-col items-center gap-3"><p className="text-sm text-slate-300">Enter your PIN to unfreeze</p><PinPad error={err} onDone={go} /></div></Sheet>
+  return <Sheet open onClose={onClose} title={WALLET ? 'Unfreeze wallet' : 'Unfreeze payments'}><div className="flex flex-col items-center gap-3"><p className="text-sm text-slate-300">Enter your PIN to unfreeze</p><PinPad error={err} onDone={go} /></div></Sheet>
 }
 
 /** Live: change password on the server (needs the current one). */
@@ -214,7 +215,7 @@ function ChangePin({ onClose, forgot: startForgot }: { onClose: () => void; forg
   if (hold) return (
     <Sheet open onClose={onClose} title="New PIN set">
       <div className="flex flex-col gap-3 pb-4 text-center"><p className="text-4xl">🔑</p><p className="font-bold">Your new payment PIN is ready</p>
-        <p className="text-sm text-slate-300">For your safety, withdrawals and sending money are paused for 24 hours. Everything else works now.</p>
+        <p className="text-sm text-slate-300">{WALLET ? 'For your safety, withdrawals and sending money are paused for 24 hours. Everything else works now.' : 'Your new PIN works now. We’ve let you know by notification in case it wasn’t you.'}</p>
         <button className="btn-primary py-3.5" onClick={onClose}>Done</button></div>
     </Sheet>
   )
@@ -225,7 +226,7 @@ function ChangePin({ onClose, forgot: startForgot }: { onClose: () => void; forg
           <p className="text-sm text-slate-300">Forgot your 4-digit PIN? Enter your Luda account password to choose a new one.</p>
           <input className="input" type="password" autoComplete="current-password" placeholder="Password" value={pw} onChange={(e) => setPw(e.target.value)} />
           {err && <p className="text-xs text-rose-300">{err}</p>}
-          <p className="text-xs text-slate-500">For your safety, withdrawals and sending pause for 24 hours after a reset. Signed up with Google and have no password? Contact the Luda team in Help.</p>
+          <p className="text-xs text-slate-500">{WALLET ? 'For your safety, withdrawals and sending pause for 24 hours after a reset. ' : ''}Signed up with Google and have no password? Contact the Luda team in Help.</p>
           <button className="btn-primary py-3.5" disabled={!pw}>Continue</button>
         </form>
       ) : (
@@ -249,15 +250,15 @@ function PasswordSheet({ mode, onClose, onDone }: { mode: 'change' | 'unfreeze' 
       const acc = await makeAccount(s.account!.email, s.account!.username, next, s.account!.stay)
       set((p) => ({ ...p, account: acc })); notify('🔐', 'Your password was changed'); toast({ title: 'Password changed', emoji: '🔐' })
     } else if (mode === 'unfreeze') {
-      set((p) => ({ ...p, security: { ...p.security, frozen: false } })); notify('✅', 'Wallet unfrozen'); toast({ title: 'Wallet unfrozen', emoji: '✅' })
+      set((p) => ({ ...p, security: { ...p.security, frozen: false } })); notify('✅', 'Payments unfrozen'); toast({ title: 'Payments unfrozen', emoji: '✅' })
     } else onDone?.()
     onClose()
   }
-  const title = mode === 'change' ? 'Change password' : mode === 'unfreeze' ? 'Unfreeze wallet' : 'Delete account'
+  const title = mode === 'change' ? 'Change password' : mode === 'unfreeze' ? 'Unfreeze payments' : 'Delete account'
   return (
     <Sheet open onClose={onClose} title={title}>
       <div className="flex flex-col gap-3">
-        {mode === 'delete' && <p className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-200">This removes your account, wallet history, posts and chats from this phone. It can't be undone.</p>}
+        {mode === 'delete' && <p className="rounded-2xl bg-rose-500/10 p-3 text-sm text-rose-200">This removes your account, payment history, posts and chats from this phone. It can't be undone.</p>}
         {s.account ? <input className="input" type="password" placeholder="Current password" value={pw} onChange={(e) => { setPw(e.target.value); setErr('') }} /> : <p className="text-sm text-slate-400">Confirm to continue.</p>}
         {mode === 'change' && <input className="input" type="password" placeholder="New password" value={next} onChange={(e) => { setNext(e.target.value); setErr('') }} />}
         {err && <p className="text-sm text-rose-300">{err}</p>}

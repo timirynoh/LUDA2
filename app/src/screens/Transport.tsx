@@ -119,7 +119,7 @@ function TicketSheet({ tk, onClose }: { tk: Ticket; onClose: () => void }) {
         {tk.returnDate && <p className="text-xs text-slate-600">Return: {new Date(tk.returnDate + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · {tk.returnTime}</p>}
         <p className="text-xs text-slate-500">Show this QR to the driver · paid {fmt(tk.total, 'TRY')} · saved {fmt(tk.saved, 'TRY')}</p>
       </div>
-      {tk.payRef ? <p className="mt-3 text-center text-xs text-slate-400">Paid from your Luda wallet. To cancel, contact Luda support from Help.</p> :
+      {tk.payRef ? <p className="mt-3 text-center text-xs text-slate-400">Paid. To cancel, contact the Luda team from Help.</p> :
       <button className="btn-ghost mt-3 w-full text-sm text-rose-300" disabled={tooLate} onClick={refund}>{tooLate ? `Refunds close ${SAVER.noRefundMinutes} min before departure` : 'Cancel & refund'}</button>}
       {!tooLate && tk.saved > 0 && <p className="mt-2 text-center text-[11px] text-slate-500">Refunded Saver tickets still count toward your limits. {Math.max(0, refundsLeft - 1)} refund{refundsLeft - 1 === 1 ? '' : 's'} left this month before Saver pauses.</p>}
     </Sheet>

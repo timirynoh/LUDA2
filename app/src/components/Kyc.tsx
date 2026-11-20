@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import { WALLET } from '../config'
 import { BadgeCheck, Camera, Check, Clock, IdCard, Lock, ShieldCheck, XCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { COUNTRIES } from '../lib/data'
@@ -146,7 +147,7 @@ function LiveKycStatus() {
     <div className={`flex items-center gap-3 rounded-2xl border p-3 ${ok ? 'border-mint-400/40 bg-mint-400/10 text-mint-300' : 'border-gold-400/40 bg-gold-400/10 text-gold-300'}`}>
       {ok ? <BadgeCheck /> : <ShieldCheck />}
       <div className="flex-1"><p className="text-sm font-bold">{ok ? 'Identity verified' : s.kyc.status === 'pending' ? 'ID check in progress' : 'Identity not verified'}</p>
-        <p className="text-xs text-slate-400">{ok ? 'Withdrawals and sending money are unlocked.' : 'You can top up and pay for things. Verify your ID (passport, national ID or residence permit + selfie) to withdraw and send.'}</p></div>
+        <p className="text-xs text-slate-400">{WALLET ? (ok ? 'Withdrawals and sending money are unlocked.' : 'You can top up and pay for things. Verify your ID (passport, national ID or residence permit + selfie) to withdraw and send.') : (ok ? 'Market selling, Flash jobs and posting are unlocked.' : 'You can pay for services without it. Verify your ID (passport, national ID or residence permit + selfie) to sell, help on Flash and post.')}</p></div>
     </div>
   )
 }

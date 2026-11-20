@@ -1,7 +1,7 @@
 // Live: a gentle reminder for people who haven't verified their ID yet: "there are paid jobs / offers waiting for you".
 // Owner's rule 8 (no nagging): at most once per visit, never on the first visit (the tour shows then), and
 // "Don't remind me" turns it off for good.
-import { ESCROW } from '../config'
+import { ESCROW, KYC_LINK } from '../config'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ShieldCheck, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -53,7 +53,7 @@ export function OpportunityNudge() {
           <p className="mt-2 text-xs text-slate-400">Verify your ID once (about 2 minutes) to sell, take Flash jobs and withdraw.</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button className="btn-ghost py-2.5 text-xs" onClick={() => close(true)}>Don't remind me</button>
-            <Link to="/wallet" onClick={() => close(false)} className="btn-primary py-2.5 text-xs">Verify now</Link>
+            <Link to={KYC_LINK} onClick={() => close(false)} className="btn-primary py-2.5 text-xs">Verify now</Link>
           </div>
         </motion.div>
       )}

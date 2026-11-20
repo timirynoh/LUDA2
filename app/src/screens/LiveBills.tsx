@@ -1,4 +1,5 @@
-// Live: bill pay. The bill amount + service fee leaves the Lira wallet (held), then either the top-up partner sends
+// Live: bill pay. Since v1.34.0 (no wallet) every bill/rent/top-up is paid directly at checkout; the team pays it and
+// adds the receipt, or the money goes back to the card. Before that: the bill amount + service fee left the Lira wallet (held), then either the top-up partner sends
 // it automatically (prepaid mobile TL, when switched on) or the Luda team pays it on the official site / by bank
 // transfer and posts the receipt here. If it can't be paid, everything comes back. v1.22.0: saved bills (on the
 // server, so they follow the account) with a monthly reminder and two-tap pay, and a simpler rent flow.
@@ -8,6 +9,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Ago, BillCard } from '../components/LiveBillCard'
 import { Empty, Steps, lira, toMinor, useApi } from '../components/LiveKit'
 import { ReviewAndPin, errMsg } from '../components/LiveMoney'
+import { DirectPay } from '../components/Checkout'
+import { WALLET } from '../config'
 import { Attachments, CasesHub, type Upload } from '../components/LiveSupport'
 import { Header, Sheet, Success } from '../components/ui'
 import { BILLERS, BILL_FIELDS, CITIES, type BillCategory } from '../lib/data'
@@ -57,12 +60,14 @@ export default function LiveBills() {
 
   return (
     <div className="pb-8">
-      <Header back title="Pay bills" sub="From your Lira wallet · receipt in the app" right={<HelpChip topic="bills" />} />
+      <Header back title="Pay bills" sub={WALLET ? 'From your Lira wallet · receipt in the app' : 'Pay by card or bank · receipt in the app'} right={<HelpChip topic="bills" />} />
       <div className="flex flex-col gap-4 px-5">
         <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-400 via-orange-500 to-rose-600 p-5 text-white">
           <div className="absolute -end-8 -top-8 size-32 rounded-full bg-white/15 blur-2xl" />
-          <p className="text-xs font-semibold uppercase tracking-wide text-white/80">Lira wallet</p>
-          <p className="text-3xl font-extrabold">{lira(me?.balances.TRY ?? 0)}</p>
+          {WALLET ? <>
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/80">Lira wallet</p>
+            <p className="text-3xl font-extrabold">{lira(me?.balances.TRY ?? 0)}</p>
+          </> : <p className="text-2xl font-extrabold">Bills paid for you</p>}
           <p className="mt-1 text-sm text-white/85">KIB-TEK, water, phone, internet and rent, paid for you by the Luda team. Service fee from {lira(fee)}. Usually paid within 2 hours.</p>
         </div>
         <Steps steps={[['🧾', 'Enter the bill details'], ['⚡', 'Luda pays it, usually within 2 hours'], ['✅', 'Receipt lands here']]} />
@@ -148,12 +153,16 @@ function PaySheet({ billerId, label, auto, maxAuto, prefill, feeFor, onClose, on
   const instant = auto && isTopup(details.kind)
   const amount = toMinor(amt), fee = feeFor(amount), total = amount + fee, bal = me?.balances.TRY ?? 0
   const missing = spec.fields.filter((f) => !f.optional && !(details[f.key] ?? '').trim())
-  const ok = account.replace(/\s/g, '').length >= 3 && amount >= 10_00 && amount % 100 === 0 && total <= bal && !missing.length && (!instant || amount <= maxAuto)
+  const ok = account.replace(/\s/g, '').length >= 3 && amount >= 10_00 && amount % 100 === 0 && (!WALLET || total <= bal) && !missing.length && (!instant || amount <= maxAuto)
   const filled = spec.fields.filter((f) => (details[f.key] ?? '').trim()).map((f) => [f.label, details[f.key].trim()] as [string, string])
   const eta = instant ? 'in seconds' : etaText()
   return (
     <Sheet open onClose={onClose} title={label}>
-      {step === 'pay' ? (
+      {step === 'pay' && !WALLET ? (
+        <DirectPay onClose={() => setStep('check')}
+          body={{ kind: 'bill', type: SERVER_TYPE[b.category], biller: billerId, provider: label, account: account.replace(/\s/g, ''), amountMinor: amount, details: cleanDetails(details), confirmed: true, save, label: name.trim(), remind, files: files.map(({ name: n, type, data }) => ({ name: n, type, data })) }}
+          rows={[['Bill', label], [spec.account, account], ['Bill amount', lira(amount)], ['Ready', instant ? '⚡ Instant' : eta]]} />
+      ) : step === 'pay' ? (
         <ReviewAndPin holdLabel={`Hold to pay ${lira(total)}`} onClose={() => setStep('check')}
           rows={[['Bill', label], [spec.account, account], ['Bill amount', lira(amount)], ['Service fee', lira(fee)], ['From Lira wallet', <b key="t">{lira(total)}</b>], ['Ready', instant ? '⚡ Instant' : eta]]}
           warning="If the bill can't be paid, the full amount and the fee come back to your wallet automatically."
@@ -201,7 +210,7 @@ function PaySheet({ billerId, label, auto, maxAuto, prefill, feeFor, onClose, on
             <div className="flex justify-between px-4 py-2.5"><span className="text-slate-400">Total</span><b className="text-mint-300">{lira(total)}</b></div>
             <div className="flex justify-between px-4 py-2.5"><span className="text-slate-400">Ready</span><span className="text-mint-200">⚡ {eta}</span></div>
           </div>}
-          {amount > 0 && total > bal && <NotEnough bal={bal} />}
+          {WALLET && amount > 0 && total > bal && <NotEnough bal={bal} />}
           <SaveBox save={save} setSave={setSave} remind={remind} setRemind={setRemind} label={name} setLabel={setName} />
           <button className="btn-primary py-4" disabled={!ok} onClick={() => setStep('check')}>{missing.length ? `Fill in: ${missing[0].label}` : 'Review details'}</button>
         </div>
@@ -223,11 +232,15 @@ function QuickPay({ sb, auto, feeFor, onClose, onDone, onEdit }: { sb: SavedBill
   const [month, setMonth] = useState(months()[0])
   const amount = toMinor(amt), fee = feeFor(amount), total = amount + fee, bal = me?.balances.TRY ?? 0
   const instant = auto && isTopup(sb.details.kind)
-  const ok = amount >= 10_00 && amount % 100 === 0 && total <= bal
+  const ok = amount >= 10_00 && amount % 100 === 0 && (!WALLET || total <= bal)
   const title = sb.label || sb.provider
   return (
     <Sheet open onClose={onClose} title={`Pay ${title}`}>
-      {step === 'pay' ? (
+      {step === 'pay' && !WALLET ? (
+        <DirectPay onClose={() => setStep('amount')}
+          body={{ kind: 'bill', type: sb.type, biller: sb.biller, provider: sb.provider, account: sb.account, amountMinor: amount, details: rent ? { ...sb.details, period: month } : sb.details, confirmed: true, save: true }}
+          rows={[['Bill', sb.provider], ['Number', `••${sb.account.slice(-4)}`], ...(rent ? [['Landlord', sb.details.landlord ?? ''], ['Month', month]] as [string, string][] : []), ['Bill amount', lira(amount)]]} />
+      ) : step === 'pay' ? (
         <ReviewAndPin holdLabel={`Hold to pay ${lira(total)}`} onClose={() => setStep('amount')}
           rows={[['Bill', sb.provider], ['Number', `••${sb.account.slice(-4)}`], ...(rent ? [['Landlord', sb.details.landlord ?? ''], ['Month', month]] as [string, string][] : []), ['Bill amount', lira(amount)], ['Service fee', lira(fee)], ['From Lira wallet', <b key="t">{lira(total)}</b>]]}
           warning="If the bill can't be paid, the full amount and the fee come back to your wallet automatically."
@@ -250,7 +263,7 @@ function QuickPay({ sb, auto, feeFor, onClose, onDone, onEdit }: { sb: SavedBill
           <label className="text-xs text-slate-400">Amount on the bill (₺){sb.amount_minor ? <span className="text-slate-500"> · last time {lira(sb.amount_minor)}</span> : null}
             <input className="input mt-1 text-2xl font-extrabold" value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="e.g. 640" inputMode="numeric" autoFocus={!sb.amount_minor} /></label>
           {amount > 0 && <p className="text-xs text-slate-400">Service fee {lira(fee)} · total <b className="text-mint-300">{lira(total)}</b> · {instant ? '⚡ instant' : `ready ${etaText()}`}</p>}
-          {amount > 0 && total > bal && <NotEnough bal={bal} />}
+          {WALLET && amount > 0 && total > bal && <NotEnough bal={bal} />}
           <button className="btn-primary py-4" disabled={!ok} onClick={() => setStep('pay')}>Pay {amount ? lira(total) : ''}</button>
         </div>
       )}
@@ -307,11 +320,15 @@ function RentSheet({ saved, feeFor, onClose, onDone }: { saved: SavedBill | null
   const [label, setLabel] = useState(saved?.label ?? '')
   const raw = iban.replace(/\s+/g, '').toUpperCase(), ibanOk = /^TR\d{24}$/.test(raw)
   const amount = toMinor(amt), fee = feeFor(amount), total = amount + fee, bal = me?.balances.TRY ?? 0
-  const ok = landlord.trim().length >= 3 && ibanOk && flat.trim().length >= 3 && amount >= 10_00 && amount % 100 === 0 && total <= bal
+  const ok = landlord.trim().length >= 3 && ibanOk && flat.trim().length >= 3 && amount >= 10_00 && amount % 100 === 0 && (!WALLET || total <= bal)
   const description = desc.trim() || `Rent ${month}`
   return (
     <Sheet open onClose={onClose} title="Pay rent">
-      {step === 'pay' ? (
+      {step === 'pay' && !WALLET ? (
+        <DirectPay onClose={() => setStep('check')}
+          body={{ kind: 'bill', type: 'rent', biller: 'rent', provider: 'Rent', account: flat.replace(/\s/g, ''), amountMinor: amount, details: { landlord: landlord.trim(), iban: raw, period: month, reference: description }, confirmed: true, save, label: label.trim(), remind }}
+          rows={[['To', landlord], ['IBAN', fmtIban(raw)], ['Month', month], ['Rent', lira(amount)], ['Ready', etaText()]]} />
+      ) : step === 'pay' ? (
         <ReviewAndPin holdLabel={`Hold to pay ${lira(total)}`} onClose={() => setStep('check')}
           rows={[['To', landlord], ['IBAN', fmtIban(raw)], ['Month', month], ['Rent', lira(amount)], ['Service fee', lira(fee)], ['From Lira wallet', <b key="t">{lira(total)}</b>], ['Ready', etaText()]]}
           warning="If the transfer can't be made, the full amount and the fee come back to your wallet automatically."
@@ -347,7 +364,7 @@ function RentSheet({ saved, feeFor, onClose, onDone }: { saved: SavedBill | null
           <label className="text-xs text-slate-400">Rent amount (₺)<input className="input mt-1 text-lg font-bold" value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="e.g. 8000" inputMode="numeric" /></label>
           <label className="text-xs text-slate-400">Payment description <span className="text-slate-500">(optional)</span><input className="input mt-1" maxLength={60} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={`Rent ${month}`} /></label>
           {amount > 0 && <p className="text-xs text-slate-400">Service fee {lira(fee)} · total <b className="text-mint-300">{lira(total)}</b> · ready {etaText()}</p>}
-          {amount > 0 && total > bal && <NotEnough bal={bal} />}
+          {WALLET && amount > 0 && total > bal && <NotEnough bal={bal} />}
           <SaveBox save={save} setSave={setSave} remind={remind} setRemind={setRemind} label={label} setLabel={setLabel} />
           <button className="btn-primary py-4" disabled={!ok} onClick={() => setStep('check')}>Review details</button>
         </div>

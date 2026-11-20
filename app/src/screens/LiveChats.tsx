@@ -1,4 +1,5 @@
 // Live group chats: real groups and real members from the server. Anyone signed in can join; verified people can create.
+import { KYC_LINK } from '../config'
 import { BadgeCheck, ChevronRight, Plus, Search, ShieldCheck, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -69,7 +70,7 @@ export default function LiveChats() {
         {data && <div className="rounded-3xl border border-mint-400/20 bg-mint-400/[0.06] p-4">
           <div className="flex items-center gap-3"><BadgeCheck className="shrink-0 text-mint-300" />
             <div className="min-w-0 flex-1"><p className="text-sm font-bold">Start your own group</p><p className="text-xs text-slate-400">{data.canCreate ? 'Anyone can join. You can remove messages in your group.' : data.why}</p></div>
-            {data.canCreate ? <button className="btn-primary shrink-0 px-4 py-2.5 text-sm" onClick={() => setCreating(true)}><Plus size={16} /> Create</button> : <Link to="/wallet" className="flex shrink-0 items-center text-xs font-semibold text-mint-300">Verify <ChevronRight size={14} /></Link>}
+            {data.canCreate ? <button className="btn-primary shrink-0 px-4 py-2.5 text-sm" onClick={() => setCreating(true)}><Plus size={16} /> Create</button> : <Link to={KYC_LINK} className="flex shrink-0 items-center text-xs font-semibold text-mint-300">Verify <ChevronRight size={14} /></Link>}
           </div>
           <ul className="mt-3 flex flex-col gap-1 text-xs text-slate-300">
             <li>✓ Anyone signed in can join groups and chat.</li>

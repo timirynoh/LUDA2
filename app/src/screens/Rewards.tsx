@@ -11,9 +11,9 @@ import { useLive } from '../lib/liveStore'
 import { useStore } from '../lib/store'
 
 const REDEEM = [
-  { pts: 500, label: '₺5 wallet credit', tl: 5 },
+  { pts: 500, label: '₺5 off a payment', tl: 5 },
   { pts: 1500, label: '₺20 off your next bill', tl: 20 },
-  { pts: 3000, label: '₺40 wallet credit', tl: 40 },
+  { pts: 3000, label: '₺40 off a payment', tl: 40 },
 ]
 
 export default function Rewards() {
@@ -22,7 +22,7 @@ export default function Rewards() {
   const [pick, setPick] = useState<{ id: string; pts: number; cash: number; label: string } | null>(null)
   const liveRedeem = async (o: { id: string; label: string }) => {
     setPick(null)
-    try { await api('POST', 'rewards-redeem', { id: o.id }); toast({ title: `${o.label} added to your Lira wallet`, emoji: '🎁' }); void refresh(); void refreshRewards() }
+    try { await api('POST', 'rewards-redeem', { id: o.id }); toast({ title: `${o.label}: used at your next checkout`, emoji: '🎁' }); void refresh(); void refreshRewards() }
     catch (e) { toast({ title: e instanceof Error ? e.message : 'Try again', emoji: '⚠️' }) }
   }
   const me = COUNTRIES.find((c) => c.code === s.country)!
@@ -142,11 +142,11 @@ function InviteCard() {
   if (LIVE) {
     const code = rewards?.referral.code ?? `LUDA-${(s.account?.username ?? '').toUpperCase()}`
     const link = `${location.origin}/?ref=${code}`
-    const msg = `Join me on Luda, the app for Africans in North Cyprus. Sign up with my code ${code} and we both get ₺50 after you verify and top up: ${link}`
+    const msg = `Join me on Luda, the app for Africans in North Cyprus. Sign up with my code ${code} and we both get ₺50 off after you verify and make your first payment: ${link}`
     return (
       <section className="card bg-gradient-to-br from-gold-400/15 to-transparent">
         <p className="font-bold">🎁 Invite friends</p>
-        <p className="mt-1 text-sm text-slate-400">You both get <b>₺50</b> in your wallets when your friend verifies their ID and tops up. Only real, verified people count.</p>
+        <p className="mt-1 text-sm text-slate-400">You both get <b>₺50</b> off your next payments when your friend verifies their ID and makes their first payment. Only real, verified people count.</p>
         <div className="mt-3 flex items-center gap-2 rounded-2xl border border-dashed border-gold-400/40 bg-gold-400/5 p-3"><span className="selectable flex-1 font-mono text-lg font-bold tracking-widest" translate="no">{code}</span><button className="chip bg-fg/10 py-2" onClick={async () => { try { await navigator.clipboard.writeText(msg); toast({ title: 'Invite copied', emoji: '📋' }) } catch { toast({ title: code, emoji: '🎁' }) } }}>Copy</button></div>
         <a href={`https://wa.me/?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" className="btn-primary mt-3 w-full py-3 text-sm">Share on WhatsApp</a>
       </section>
@@ -155,7 +155,7 @@ function InviteCard() {
   const base = (s.account?.username ?? s.name ?? 'friend').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'FRIEND'
   const num = String((base.split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % 90) + 10)
   const code = s.referral || `LUDA-${base}${num}`
-  const msg = `Join me on Luda, the app for Africans in North Cyprus: wallet, bills, bus tickets, houses, jobs & more. Use my code ${code} for 100 bonus XP 🎁`
+  const msg = `Join me on Luda, the app for Africans in North Cyprus: bills, bus tickets, houses, jobs & more. Use my code ${code} for 100 bonus XP 🎁`
   const copy = async () => {
     if (!s.referral) set((p) => ({ ...p, referral: code }))
     try { await navigator.clipboard.writeText(msg); toast({ title: 'Invite copied', emoji: '📋' }) } catch { toast({ title: `Your code: ${code}`, emoji: '🎁' }) }

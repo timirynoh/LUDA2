@@ -1,4 +1,5 @@
 // Support cases / appeals (live mode): students explain a problem and attach photos; the Luda team replies.
+import { WALLET } from '../config'
 import { Camera, FileText, Loader2, MessageCircle, Paperclip, RotateCcw, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { errMsg } from './LiveMoney'
@@ -8,7 +9,7 @@ import { RateSheet, ReopenSheet, StarsView, useMyRatings } from './Ratings'
 
 export type CaseCategory = 'kyc' | 'payment' | 'withdrawal' | 'account' | 'other'
 export const CATEGORY_LABEL: Record<CaseCategory, string> = {
-  kyc: '🪪 Identity check (ID / selfie)', payment: '💳 Top-up or payment', withdrawal: '🏦 Withdrawal', account: '🔐 Account / frozen / sign-in', other: '💬 Something else',
+  kyc: '🪪 Identity check (ID / selfie)', payment: WALLET ? '💳 Top-up or payment' : '💳 A payment or refund', withdrawal: '🏦 Withdrawal', account: '🔐 Account / frozen / sign-in', other: '💬 Something else',
 }
 export const STATUS_LABEL: Record<string, { t: string; c: string }> = {
   open: { t: 'With the Luda team', c: 'bg-sky-400/15 text-sky-300' },
