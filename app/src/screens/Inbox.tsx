@@ -28,6 +28,7 @@ export default function Inbox() {
   }, [])
   useEffect(() => {
     void load() // eslint-disable-line react-hooks/set-state-in-effect -- fetching from the server
+    clearTray() // you're looking at them now: take Luda's alerts off the phone's notification tray
     const on = () => void load()
     window.addEventListener('luda:inbox', on)
     return () => window.removeEventListener('luda:inbox', on)
@@ -35,7 +36,8 @@ export default function Inbox() {
 
   const items: Item[] = [
     ...(server ?? []).map((n) => ({ key: `s${n.id}`, serverId: n.id, emoji: n.emoji, title: n.title, body: n.body, to: n.url, read: n.read, at: Date.parse(n.at) })),
-    ...s.inbox.map((n) => ({ key: `l${n.id}`, localId: n.id, emoji: n.emoji, title: n.title, to: n.to, read: n.read, at: n.ts })),
+    // Phone-made reminders: read ones leave the list after a day (v1.37.3), like the server's.
+    ...s.inbox.filter((n) => !n.read || Date.now() - n.ts < 86_400_000).map((n) => ({ key: `l${n.id}`, localId: n.id, emoji: n.emoji, title: n.title, to: n.to, read: n.read, at: n.ts })),
   ].sort((a, b) => b.at - a.at)
   const unread = items.filter((n) => !n.read).length
 
@@ -45,6 +47,7 @@ export default function Inbox() {
       if (LIVE) void api('POST', 'inbox-read', n ? { ids: [n.serverId] } : {}).then(() => window.dispatchEvent(new Event('luda:inbox'))).catch(() => {})
     }
     if (!n || n.localId) set((p) => ({ ...p, inbox: p.inbox.map((x) => (!n || x.id === n.localId ? { ...x, read: true } : x)) }))
+    clearTray()
   }
 
   let lastDay = ''
@@ -81,4 +84,12 @@ export default function Inbox() {
       </div>
     </div>
   )
+}
+
+/** Removes Luda's notifications from the phone's notification tray (they were read in the app). */
+function clearTray() {
+  try {
+    if (!('serviceWorker' in navigator)) return
+    void navigator.serviceWorker.getRegistration().then((r) => r?.getNotifications().then((ns) => ns.forEach((x) => x.close()))).catch(() => {})
+  } catch { /* not supported */ }
 }

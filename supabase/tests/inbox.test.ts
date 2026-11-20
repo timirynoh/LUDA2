@@ -76,3 +76,19 @@ test('inbox: Market, Flash, support replies and sign-ins notify the right person
   await call('POST', 'login', { id: 'kwame', password: 'Lefkosa2026!' })
   assert.ok((await inbox('kwame')).items.some((i: any) => /^New sign-in on /.test(i.title)))
 })
+
+test('read notifications stay read: no repeat sign-in alerts from the same phone; read items leave the list after a day', async () => {
+  const login = (dev: string) => handleApi(new Request('https://proj.supabase.co/functions/v1/api/login', { method: 'POST', body: JSON.stringify({ id: 'ada', password: 'Lefkosa2026!' }),
+    headers: { origin: 'https://luda.test', 'x-forwarded-for': `10.9.0.${++ipN % 250}`, 'x-luda-device': dev } }), AENV, d)
+  const signins = async () => (await q(`select count(*)::int n from inbox where user_id=$1 and title like 'New sign-in%'`, [id.ada]))[0].n
+  const before = await signins()
+  await login('phone-aaaaaaaaaaaaaaaa'); await login('phone-aaaaaaaaaaaaaaaa'); await login('phone-aaaaaaaaaaaaaaaa')
+  assert.equal(await signins(), before + 1, 'same phone signing in again: only the first time alerts')
+  await login('laptop-bbbbbbbbbbbbbbbb')
+  assert.equal(await signins(), before + 2, 'a new phone/browser still alerts')
+  await call('POST', 'inbox-read', {}, T.ada)
+  assert.equal((await call('GET', 'inbox', undefined, T.ada)).j.unread, 0)
+  await q(`update inbox set read_at = now() - interval '2 days' where user_id=$1`, [id.ada])
+  const list = (await call('GET', 'inbox', undefined, T.ada)).j.items
+  assert.equal(list.length, 0, 'read more than a day ago: gone from the list')
+})

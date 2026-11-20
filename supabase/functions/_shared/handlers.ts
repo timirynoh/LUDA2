@@ -1131,7 +1131,10 @@ const routes: Record<string, Route> = {
     try { session = await signIn(email, String(body.password ?? ''), authEnv(env), d.fetch) } catch (e) { throw new Fail(e instanceof Error ? e.message : 'Sign-in failed', 401) }
     const who = await d.db.profileByEmail(email).catch(() => null)
     if (who) await d.db.fn('luda_sign_in_log', { p_user: who.user_id, p_how: 'password', p_device: deviceOf(req) }).catch(() => {})
-    if (who) await notifyUser(env, d, who.user_id, { emoji: '🔐', title: `New sign-in on ${deviceOf(req)}`, body: 'Not you? Freeze your payments in Security and change your password', url: '/security', tag: `signin:${Date.now()}`, cat: 'security' })
+    // Only a phone/browser this account hasn't used before gets a 'new sign-in' alert (v1.37.3: signing in again on
+    // your own phone kept adding alerts that looked like new notifications).
+    const known = who ? await d.db.fn<boolean>('luda_known_device', { p_user: who.user_id, p_dev: (await signalsOf(req, env)).dev }).catch(() => false) : false
+    if (who && !known) await notifyUser(env, d, who.user_id, { emoji: '🔐', title: `New sign-in on ${deviceOf(req)}`, body: 'Not you? Freeze your payments in Security and change your password', url: '/security', tag: `signin:${Date.now()}`, cat: 'security' })
     return { session }
   },
 

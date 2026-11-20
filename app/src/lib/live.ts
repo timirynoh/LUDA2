@@ -55,7 +55,7 @@ async function raw<T>(method: string, route: string, body?: unknown, auth = true
   try {
     r = await fetch(`${BASE}/api/${route}`, {
       method, body: body ? JSON.stringify(body) : undefined,
-      headers: { 'content-type': 'application/json', ...(ANON ? { apikey: ANON } : {}), ...(s ? { authorization: `Bearer ${s.access_token}`, 'x-luda-device': deviceId() } : {}) },
+      headers: { 'content-type': 'application/json', ...(ANON ? { apikey: ANON } : {}), 'x-luda-device': deviceId(), ...(s ? { authorization: `Bearer ${s.access_token}` } : {}) },
     })
   } catch { throw new ApiError("Can't reach Luda. Check your internet connection.", 0) }
   const j = await r.json().catch(() => ({}))
