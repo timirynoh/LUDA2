@@ -1,0 +1,7 @@
+{
+  "name": "luda-server-tests",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test tests/*.test.ts" },
+  "devDependencies": { "@electric-sql/pglite": "^0.5.14" }
+}

@@ -1,0 +1,29 @@
+# Loads real OpenStreetMap places for the Nearby page into the live server (places_cache).
+# Runs every Monday, on demand, and when this file or the loader changes. Nothing else is touched.
+name: Load Nearby places
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+  push:
+    branches: [claude/cyprus-expat-app-mlnvuc]
+    paths: ['.github/workflows/places.yml', 'supabase/scripts/load-places.ts', 'supabase/functions/_shared/places.ts']
+
+concurrency: load-places
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Fetch OpenStreetMap places and save them on the server
+        run: node --experimental-strip-types supabase/scripts/load-places.ts
+      - name: Check the app's route serves them
+        run: |
+          curl -s "https://${REF}.supabase.co/functions/v1/api/places?city=lefkosa&cat=pharmacy" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("places",[])), "pharmacies in Lefkoşa served to the app")'

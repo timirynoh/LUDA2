@@ -1,0 +1,10 @@
+{
+ "confirmation": "Confirm your Luda account",
+ "recovery": "Reset your Luda password",
+ "magic_link": "Your Luda sign-in link",
+ "email_change": "Confirm your new email for Luda",
+ "invite": "You're invited to Luda",
+ "reauthentication": "{{ .Token }} is your Luda code",
+ "password_changed_notification": "Your Luda password was changed",
+ "email_changed_notification": "Your Luda email was changed"
+}
